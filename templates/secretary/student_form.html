@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Matrícula de Aluno (Etapa 1 de 2)</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">Escola Secundária da Manga | Matrícula de Aluno</div>
+        <a href="/secretary/dashboard">Voltar ao Painel</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <div class="card">
+            <h3 class="card-title">Etapa 1 de 2: Dados do Estudante (Obrigatório Pagamento na Etapa Seguinte)</h3>
+            <form action="/secretary/students/new" method="POST">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Nome Completo do Aluno:*</label>
+                        <input type="text" name="nome" required placeholder="Ex: Edson Alberto">
+                    </div>
+                    <div class="form-group">
+                        <label>Data de Nascimento:*</label>
+                        <input type="date" name="data_nascimento" id="dob" onchange="autoSuggestClass()" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nome do Pai:</label>
+                        <input type="text" name="nome_pai">
+                    </div>
+                    <div class="form-group">
+                        <label>Nome da Mãe:</label>
+                        <input type="text" name="nome_mae">
+                    </div>
+                    <div class="form-group">
+                        <label>Nº BI / Cédula Pessoal (ÚNICO):*</label>
+                        <input type="text" name="bi_cedula" required placeholder="Ex: 07019988A">
+                    </div>
+                    <div class="form-group">
+                        <label>Sexo:*</label>
+                        <select name="sexo">
+                            <option value="M">Masculino</option>
+                            <option value="F">Feminino</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Contacto Encarregado 1 (Principal):*</label>
+                        <input type="text" name="contacto_1" required placeholder="84/85/82/86/87...">
+                    </div>
+                    <div class="form-group">
+                        <label>Contacto Encarregado 2:</label>
+                        <input type="text" name="contacto_2">
+                    </div>
+                </div>
+
+                <hr style="border:0; border-top:1px solid #EEE; margin:20px 0;">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Classe (1.ª à 12.ª):*</label>
+                        <select name="classe" id="classe_select">
+                            {% for c in range(1, 13) %}
+                                <option value="{{ c }}">{{ c }}ª Classe</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Período (Turno):*</label>
+                        <select name="turno">
+                            <option value="Manhã">Manhã</option>
+                            <option value="Tarde">Tarde</option>
+                            <option value="Noite">Noite</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Modalidade / Curso:*</label>
+                        <select name="curso">
+                            <option value="Diurno">Diurno</option>
+                            <option value="Nocturno">Nocturno</option>
+                            <option value="À Distância">À Distância</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Morada / Residência:</label>
+                        <input type="text" name="morada">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:15px;">
+                    <div>
+                        <label><input type="checkbox" name="isento_taxa" value="1"> <strong>Aluno Isento de Propinas/Taxas</strong></label>
+                        <input type="text" name="justificacao_isencao" placeholder="Motivo da isenção (ex: Órfão, Bolsa)..." style="margin-top:5px;">
+                    </div>
+                    <div>
+                        <label>Necessidade Educativa Especial (NEE):</label>
+                        <select name="nee_tipo">
+                            <option value="Nenhuma">Nenhuma</option>
+                            <option value="Deficiência Visual / Baixa Visão">Deficiência Visual / Baixa Visão</option>
+                            <option value="Deficiência Auditiva">Deficiência Auditiva</option>
+                            <option value="Deficiência Motora / Física">Deficiência Motora / Física</option>
+                            <option value="Outra Necessidade Especial">Outra Necessidade Especial</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Justificação para alteração de classe (caso difira da idade):</label>
+                    <textarea name="justificacao_alteracao" rows="2"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Avançar para Dados de Pagamento (Etapa 2) &rarr;</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        function autoSuggestClass() {
+            var dob = document.getElementById('dob').value;
+            if(dob) {
+                var year = parseInt(dob.split('-')[0]);
+                var currentYear = new Date().getFullYear();
+                var idade = currentYear - year;
+                var sug = idade - 5;
+                if(sug < 1) sug = 1;
+                if(sug > 12) sug = 12;
+                document.getElementById('classe_select').value = sug;
+            }
+        }
+    </script>
+</body>
+</html>

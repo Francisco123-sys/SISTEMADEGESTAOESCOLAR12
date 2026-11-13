@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Alunos por Classe e Turma</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">Escola Secundária da Manga | Alunos por Classe e Turma</div>
+        <div>
+            <a href="/secretary/students/new" class="btn btn-success" style="padding:6px 12px; font-size:0.85rem;">+ Matricular Novo Aluno</a>
+            <a href="/secretary/dashboard">Voltar ao Painel</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="card" style="padding:18px;">
+            <form method="GET" action="/secretary/students" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
+                <div>
+                    <label style="margin-bottom:2px;">Pesquisar Nome/Código/BI:</label>
+                    <input type="text" name="q" value="{{ busca }}" placeholder="Ex: Maria ou ALU-000001">
+                </div>
+                <div>
+                    <label style="margin-bottom:2px;">Filtrar Classe:</label>
+                    <select name="classe">
+                        <option value="">Todas as Classes</option>
+                        {% for c in range(1, 13) %}
+                        <option value="{{ c }}" {% if classe_filtro == c|string %}selected{% endif %}>{{ c }}ª Classe</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="margin-bottom:2px;">Filtrar Turma:</label>
+                    <select name="turma_id">
+                        <option value="">Todas as Turmas</option>
+                        {% for t in turmas_disponiveis %}
+                        <option value="{{ t.id }}" {% if turma_filtro == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="margin-bottom:2px;">Estatística Especial:</label>
+                    <select name="especial">
+                        <option value="">Todos os Alunos</option>
+                        <option value="isentos" {% if filtro_especial == 'isentos' %}selected{% endif %}>Apenas Isentos de Taxa</option>
+                        <option value="nee" {% if filtro_especial == 'nee' %}selected{% endif %}>Apenas Alunos com NEE</option>
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary" style="height:40px;">Filtrar</button>
+                </div>
+            </form>
+        </div>
+
+        {% if estrutura_escola %}
+            {% for c_num, classe_data in estrutura_escola.items() %}
+                <div class="classe-header">
+                    {{ c_num }}.ª CLASSE — Ensino {{ classe_data.nivel }}
+                </div>
+                
+                {% for t_nome, turma_info in classe_data.turmas.items() %}
+                    <div class="turma-subcard">
+                        <div class="turma-title">
+                            <div>
+                                📌 {{ t_nome }} &nbsp;&nbsp;<span style="font-size:0.85rem; font-weight:normal; color:#666;">({{ turma_info.alunos|length }} aluno(s))</span>
+                            </div>
+                            {% if turma_info.id %}
+                            <a href="/secretary/exportar-lista-doc/{{ turma_info.id }}" class="btn btn-primary" style="padding:5px 12px; font-size:0.8rem;">📄 Baixar Lista da Turma (.DOC)</a>
+                            {% endif %}
+                        </div>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Nome Completo do Aluno</th>
+                                    <th>Nº BI / Cédula</th>
+                                    <th>Curso / Período</th>
+                                    <th>Isento</th>
+                                    <th>Documentos Oficiais</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for a in turma_info.alunos %}
+                                <tr>
+                                    <td><strong>{{ a.code }}</strong></td>
+                                    <td>{{ a.nome }}</td>
+                                    <td>{{ a.bi_cedula }}</td>
+                                    <td>{{ a.curso }} ({{ a.turno }})</td>
+                                    <td>{{ 'SIM' if a.isento_taxa else 'NÃO' }}</td>
+                                    <td>
+                                        <a href="/secretary/students/edit/{{ a.id }}" class="btn btn-warning" style="padding:2px 6px; font-size:0.75rem;">Editar</a>
+                                        <a href="/secretary/documentos/{{ a.id }}/frequencia" target="_blank" class="btn btn-primary" style="padding:2px 6px; font-size:0.75rem;">Decl. Freq.</a>
+                                        <a href="/secretary/documentos/{{ a.id }}/notas" target="_blank" class="btn btn-primary" style="padding:2px 6px; font-size:0.75rem;">Decl. Notas</a>
+                                        <a href="/secretary/documentos/{{ a.id }}/boletim" target="_blank" class="btn btn-success" style="padding:2px 6px; font-size:0.75rem;">Boletim</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        {% else %}
+            <div class="card" style="text-align:center; padding:40px;">
+                <h4 style="color:#666;">Nenhum aluno encontrado.</h4>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

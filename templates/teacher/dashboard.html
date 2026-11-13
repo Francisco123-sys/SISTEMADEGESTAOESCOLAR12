@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Painel do Professor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Portal do Docente</span></div>
+            </div>
+        </div>
+        <div>
+            <span>Professor: {{ session.get('user_nome') }}</span>
+            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
+            <a href="/logout">Sair</a>
+        </div>
+    </div>
+
+    <div class="container" style="max-width: 1180px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3 class="card-title">As Minhas Turmas, Indicadores Pedagógicos e Disciplinas Atribuídas</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Classe / Turma</th>
+                        <th>Disciplina</th>
+                        <th>Indicadores da Turma</th>
+                        <th>Aulas Dadas</th>
+                        <th>Estado Pauta</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in atribuicoes %}
+                    <tr>
+                        <td><strong>{{ a.classe_num }}ª Classe</strong><br>{{ a.turma_nome }} ({{ a.total_alunos }} alunos)</td>
+                        <td><strong>{{ a.disciplina_nome }}</strong></td>
+                        <td style="font-size:0.82rem; line-height:1.5;">
+                            {% if a.submetida_count > 0 %}
+                                Média Turma: <strong>{{ "%.1f"|format(a.media_turma or 0) }} val.</strong><br>
+                                <span style="color:#027A48;">✔ Positivas: {{ a.aprovados_count }}</span> |
+                                <span style="color:#B42318;">✖ Negativas: {{ a.negativas_count }}</span>
+                                {% if a.risco_faltas_count > 0 %}
+                                    <br><span style="color:#B54708; font-weight:600;">⚠️ {{ a.risco_faltas_count }} aluno(s) em risco por faltas</span>
+                                {% endif %}
+                            {% else %}
+                                <span style="color:#667085;">Aguardando lançamento de notas</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            <strong>{{ a.total_aulas_dadas }}</strong> aula(s)
+                        </td>
+                        <td>
+                            {% if a.submetida_count > 0 %}
+                                <span style="background:#ECFDF3; color:#027A48; padding:3px 8px; border-radius:4px; font-weight:600; font-size:0.8rem;">🔒 Submetida</span>
+                            {% else %}
+                                <span style="background:#FFFAEB; color:#B54708; padding:3px 8px; border-radius:4px; font-weight:600; font-size:0.8rem;">Pendente</span>
+                            {% endif %}
+                        </td>
+                        <td style="white-space:nowrap;">
+                            {% if a.submetida_count > 0 %}
+                                <a href="/teacher/grades/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-warning" style="padding:5px 10px; font-size:0.82rem;">👁️ Consultar Pauta</a>
+                            {% else %}
+                                <a href="/teacher/grades/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-primary" style="padding:5px 10px; font-size:0.82rem;">✏️ Lançar Notas & Faltas</a>
+                            {% endif %}
+                            <a href="/teacher/sumarios/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-primary" style="padding:5px 10px; font-size:0.82rem; background:#344054;">📘 Sumários</a>
+                            <a href="/teacher/pauta-oficial/{{ a.turma_id }}/{{ a.subject_id }}" target="_blank" class="btn btn-success" style="padding:5px 10px; font-size:0.82rem;">🖨️ Pauta A4</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6">Nenhuma turma atribuída a este professor.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

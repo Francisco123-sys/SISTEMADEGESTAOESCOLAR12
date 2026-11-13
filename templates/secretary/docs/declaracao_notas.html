@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Declaração de Notas - {{ aluno.nome }}</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; padding: 40px; background: white; }
+        .box { border: 2px solid #000; padding: 40px; max-width: 750px; margin: auto; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }
+        .header img { width: 65px; height: 65px; object-fit: contain; }
+        .content { font-size: 1.05rem; line-height: 1.6; text-align: justify; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        td { border-bottom: 1px dotted #000; padding: 4px; font-size: 1rem; }
+        .footer { margin-top: 50px; text-align: center; font-weight: bold; }
+        .sig { border-top: 1px solid #000; width: 55%; margin: auto; padding-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="header">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique">
+            <h3 style="margin:5px 0 2px 0;">REPÚBLICA DE MOÇAMBIQUE</h3>
+            <h4 style="margin:0;">PROVÍNCIA DE SOFALA</h4>
+            <h4 style="margin:5px 0 0 0;">GOVERNO DO DISTRITO DA BEIRA</h4>
+            <h3 style="margin:5px 0 0 0; text-decoration:underline;">ESCOLA SECUNDÁRIA DA MANGA</h3>
+            <h2 style="margin:15px 0 0 0;">Declaração</h2>
+        </div>
+
+        <div class="content">
+            <p><strong>{{ funcionario_atendeu }}</strong>, declara-se que <strong>{{ aluno.nome }}</strong>, filho de {{ aluno.nome_pai or '----------------' }} e de {{ aluno.nome_mae or '----------------' }}, nascido a {{ aluno.data_nascimento }}, fez nesta Escola a <strong>{{ aluno.classe_num }}ª Classe</strong>, Turma <strong>{{ aluno.turma_nome }}</strong>, em 2026, com o número de BI {{ aluno.bi_cedula }} e obteve as seguintes classificações por disciplina:</p>
+
+            <table>
+                <tbody>
+                    {% for n in notas %}
+                    <tr>
+                        <td style="width:300px;"><strong>{{ n.disciplina_nome }}</strong></td>
+                        <td style="text-align:right;">...........................................................................</td>
+                        <td style="text-align:right; width:100px;"><strong>{{ "%.0f"|format(n.media_final) }} valores</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <p style="text-align:center; margin-top:30px;">Beira, aos {{ data_hoje }}</p>
+        </div>
+
+        <div class="footer">
+            <div class="sig">
+                A Directora / Secretaria<br><br>
+                ({{ funcionario_atendeu }})<br>
+                <span style="font-size:0.85rem; font-weight:normal;">(Docente de N1)</span>
+            </div>
+        </div>
+    </div>
+    <div style="text-align:center; margin-top:20px;">
+        <button onclick="window.print()" style="padding:10px 20px; font-size:1rem; cursor:pointer;">Imprimir Declaração (A4)</button>
+    </div>
+</body>
+</html>

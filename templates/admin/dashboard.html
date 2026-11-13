@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Administração Geral</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Administrador Geral</span></div>
+            </div>
+        </div>
+        <a href="/logout">Sair</a>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h3 class="card-title">Trilho de Auditoria (Logs de Segurança)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID Log</th>
+                        <th>Utilizador ID</th>
+                        <th>Operação</th>
+                        <th>Detalhes</th>
+                        <th>Data / Hora</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in logs %}
+                    <tr>
+                        <td>{{ l.id }}</td>
+                        <td>{{ l.user_id }}</td>
+                        <td><strong>{{ l.operacao }}</strong></td>
+                        <td>{{ l.detalhes }}</td>
+                        <td>{{ l.timestamp }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

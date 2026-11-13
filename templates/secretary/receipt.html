@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Recibo Oficial {{ recibo.receipt_number }} - Escola Secundária da Manga</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; padding: 40px; background: #fff; }
+        .receipt-box { border: 2px solid #000; padding: 30px; max-width: 720px; margin: auto; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }
+        .header img { width: 65px; height: 65px; object-fit: contain; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size:1.05rem; }
+        .signatures { margin-top: 60px; text-align: center; font-weight: bold; }
+        .sig-line { border-top: 1px solid #000; width: 65%; margin: auto; padding-top: 8px; font-size: 0.95rem; }
+        .no-print { text-align: center; margin-top: 25px; display: flex; justify-content: center; gap: 15px; font-family: 'Segoe UI', sans-serif; }
+        .btn-action { padding: 10px 22px; font-size: 0.95rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-print { background-color: #245B8F; color: #fff; }
+        .btn-back { background-color: #142B4A; color: #fff; }
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-box">
+        <div class="header">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique">
+            <h3 style="margin:4px 0 2px 0;">REPÚBLICA DE MOÇAMBIQUE</h3>
+            <h4 style="margin:0;">PROVÍNCIA DE SOFALA</h4>
+            <h4 style="margin:2px 0;">GOVERNO DO DISTRITO DA BEIRA</h4>
+            <h3 style="margin:4px 0 0 0; text-decoration:underline;">ESCOLA SECUNDÁRIA DA MANGA</h3>
+            <span style="font-size:1.1rem; display:block; margin-top:10px;">RECIBO OFICIAL DE PAGAMENTO N.º: <strong>{{ recibo.receipt_number }}</strong></span>
+        </div>
+
+        <div class="row">
+            <span><strong>Recebido de:</strong> {{ recibo.aluno_nome }}</span>
+            <span><strong>Código Aluno:</strong> {{ recibo.aluno_code }}</span>
+        </div>
+        <div class="row">
+            <span><strong>Classe:</strong> {{ recibo.classe_num }}ª Classe</span>
+            <span><strong>Período / Descrição:</strong> {{ recibo.mes_pago }}</span>
+        </div>
+        <div class="row">
+            <span><strong>Banco / Carteira Móvel:</strong> {{ recibo.banco_plataforma }}</span>
+            <span><strong>Referência Talão (9 Dígitos):</strong> {{ recibo.referencia_talao }}</span>
+        </div>
+        <div class="row">
+            <span><strong>Data do Depósito Bancário:</strong> {{ recibo.data_deposito }}</span>
+            <span><strong>Data do Registo no Sistema:</strong> {{ recibo.data_registo }}</span>
+        </div>
+
+        <div class="row" style="margin-top:20px; font-size:1.25rem; background:#F0F0F0; padding:12px; border:1px solid #000;">
+            <span><strong>VALOR TOTAL RECEBIDO:</strong></span>
+            <span><strong>{{ "%.2f"|format(recibo.valor_pago) }} MZN</strong></span>
+        </div>
+
+        <div class="signatures">
+            <div class="sig-line">
+                Funcionário(a) que Atendeu / Emitiu:<br>
+                <strong>{{ recibo.funcionario_nome }}</strong><br><br>
+                ________________________________________________<br>
+                <span style="font-size:0.85rem; font-weight:normal;">(Espaço reservado para Assinatura Manual e Carimbo da Instituição)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="no-print">
+        <button onclick="window.print()" class="btn-action btn-print">🖨️ Imprimir Recibo (A4)</button>
+        <a href="{{ url_for('secretary.dashboard') }}" class="btn-action btn-back">&larr; Voltar ao Painel da Secretaria</a>
+    </div>
+
+    <script>
+        window.onafterprint = function() {
+            window.location.href = "{{ url_for('secretary.dashboard') }}";
+        };
+    </script>
+</body>
+</html>

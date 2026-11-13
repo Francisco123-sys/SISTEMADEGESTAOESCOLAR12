@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Livro de Ponto Digital (Sumários)</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Livro de Ponto Digital</span></div>
+            </div>
+        </div>
+        <a href="/teacher/dashboard">Voltar ao Painel</a>
+    </div>
+
+    <div class="container" style="max-width: 960px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3 class="card-title">Registar Novo Sumário — {{ info.classe_num }}ª Classe ({{ info.turma_nome }}) • {{ info.disciplina_nome }}</h3>
+            <form method="POST">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Número da Aula:*</label>
+                        <input type="number" name="numero_aula" min="1" value="{{ proxima_aula }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data da Aula:*</label>
+                        <input type="date" name="data_aula" value="{{ hoje }}" max="{{ hoje }}" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Sumário / Conteúdo Lecionado:*</label>
+                    <textarea name="sumario" rows="3" required placeholder="Ex: Equações quadráticas completas. Resolução de exercícios práticos do manual." style="width:100%; padding:8px; border:1px solid #D0D5DD; border-radius:6px; box-sizing:border-box;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Observações da Aula (Opcional):</label>
+                    <input type="text" name="observacoes" placeholder="Ex: TPC marcado na página 42; turma participativa.">
+                </div>
+                <button type="submit" class="btn btn-success" style="width:100%;">Gravar Sumário no Livro de Ponto</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Histórico de Aulas e Sumários Registados ({{ sumarios|length }} aulas)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:80px;">Aula N.º</th>
+                        <th style="width:120px;">Data</th>
+                        <th>Sumário Lecionado</th>
+                        <th>Observações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in sumarios %}
+                    <tr>
+                        <td><strong>{{ s.numero_aula }}</strong></td>
+                        <td>{{ s.data_aula }}</td>
+                        <td>{{ s.sumario }}</td>
+                        <td>{{ s.observacoes or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4">Nenhum sumário registado até ao momento para esta turma.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

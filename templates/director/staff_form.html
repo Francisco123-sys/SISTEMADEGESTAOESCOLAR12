@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Cadastrar Funcionário / Cargo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">Escola Secundária da Manga | Cadastro de Cargos</div>
+        <a href="/director/dashboard">Voltar ao Painel</a>
+    </div>
+    <div class="container" style="max-width:550px;">
+        <div class="card">
+            <h3 class="card-title">Novo Colaborador / Cargo Pedagógico</h3>
+            <form action="/director/new-staff" method="POST">
+                <div class="form-group">
+                    <label>Nome Completo:*</label>
+                    <input type="text" name="nome" required>
+                </div>
+                <div class="form-group">
+                    <label>Email de Acesso:*</label>
+                    <input type="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label>Contacto Telefónico:*</label>
+                    <input type="text" name="contacto" required>
+                </div>
+                <div class="form-group">
+                    <label>Cargo / Perfil:*</label>
+                    <select name="role">
+                        <option value="pedagogico_1">Director Pedagógico 1º Ciclo (1.ª à 6.ª Classe)</option>
+                        <option value="pedagogico_2">Director Pedagógico 2º Ciclo (7.ª à 12.ª Classe)</option>
+                        <option value="chefe_secretaria">Chefe da Secretaria</option>
+                        <option value="teacher">Professor</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Cadastrar Funcionário</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

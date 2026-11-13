@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Escola Secundária da Manga - SIGE</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .login-wrapper { max-width: 440px; margin: 50px auto; }
+        .profile-selector { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .profile-btn { flex: 1; padding: 10px; margin: 0 4px; background: #E4E7EC; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; text-align: center; font-weight: 600; font-size: 0.85rem; }
+        .profile-btn.active { background: var(--navy-dark); color: white; border-color: var(--navy-dark); }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="card">
+            <div style="text-align:center; margin-bottom: 20px;">
+                <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:70px; height:70px; object-fit:contain;">
+                <h4 style="margin:5px 0 0 0; color:#666; font-size:0.8rem;">REPÚBLICA DE MOÇAMBIQUE</h4>
+                <h4 style="margin:0; color:#666; font-size:0.8rem;">PROVÍNCIA DE SOFALA | BEIRA</h4>
+                <h3 style="color:var(--navy-dark); margin:5px 0 0 0;">ESCOLA SECUNDÁRIA DA MANGA</h3>
+                <span style="font-size:0.8rem; color:#667085;">Sistema Integrado de Gestão Escolar (SIGE)</span>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <label>Selecione o seu perfil de acesso:</label>
+            <div class="profile-selector">
+                <div class="profile-btn active" onclick="selectProfile('secretary', this)">Secretaria</div>
+                <div class="profile-btn" onclick="selectProfile('teacher', this)">Professor</div>
+                <div class="profile-btn" onclick="selectProfile('director', this)">Direção</div>
+            </div>
+
+            <form action="/login" method="POST">
+                <input type="hidden" name="perfil" id="perfil_input" value="secretary">
+                <div class="form-group">
+                    <label>Código / Email de Acesso:</label>
+                    <input type="text" name="identificador" placeholder="Ex: SEC-000001 ou email" required>
+                </div>
+                <div class="form-group">
+                    <label>Palavra-passe:</label>
+                    <input type="password" name="password" id="password_input" required>
+                </div>
+                <div style="margin-bottom:15px; font-size:0.85rem;">
+                    <input type="checkbox" onclick="togglePassword()"> Mostrar palavra-passe
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Entrar no Sistema</button>
+            </form>
+
+            <hr style="border:0; border-top:1px solid #EEE; margin:20px 0;">
+            <div style="text-align:center;">
+                <a href="/portal-encarregado" style="color:var(--navy-brand); font-weight:600; text-decoration:none;">👨‍👩‍👧 Área do Encarregado de Educação (Acompanhar Filho)</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        function selectProfile(perfil, elem) {
+            document.querySelectorAll('.profile-btn').forEach(b => b.classList.remove('active'));
+            elem.classList.add('active');
+            document.getElementById('perfil_input').value = perfil;
+        }
+        function togglePassword() {
+            var x = document.getElementById("password_input");
+            x.type = x.type === "password" ? "text" : "password";
+        }
+    </script>
+</body>
+</html>

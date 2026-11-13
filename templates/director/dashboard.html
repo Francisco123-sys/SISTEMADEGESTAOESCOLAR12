@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Painel da Direção</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Direção Escolar</span></div>
+            </div>
+        </div>
+        <div>
+            <span>Utilizador: {{ session.get('user_nome') }}</span>
+            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
+            <a href="/logout">Sair</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_alunos }}</div>
+                <div class="stat-label">Total de Alunos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_professores }}</div>
+                <div class="stat-label">Professores Ativos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_turmas }}</div>
+                <div class="stat-label">Turmas Ativas</div>
+            </div>
+            {% if session.get('user_role') in ['director', 'admin'] %}
+            <div class="stat-card">
+                <div class="stat-value">{{ "%.2f"|format(total_receita) }} MZN</div>
+                <div class="stat-label">Receita Global</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="card-title" style="border:none; margin:0;">Gestão da Direção</h3>
+                <div>
+                    <a href="/director/assign-teacher" class="btn btn-primary">🔗 Atribuir Turma/Disciplina a Professor</a>
+                    <a href="/director/new-staff" class="btn btn-success">+ Cadastrar Cargo / Funcionário</a>
+                    {% if session.get('user_role') in ['director', 'chefe_secretaria', 'admin'] %}
+                    <a href="/director/rectificar-notas" class="btn btn-warning">📝 Rectificar Notas</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Gestão de Contas de Funcionários</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Cargo/Função</th>
+                        <th>Estado</th>
+                        <th>Ações da Direção</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in funcionarios %}
+                    <tr>
+                        <td><strong>{{ f.code }}</strong></td>
+                        <td>{{ f.nome }}</td>
+                        <td>{{ f.email }}</td>
+                        <td><span style="background:#E4E7EC; padding:2px 6px; border-radius:4px;">{{ f.role }}</span></td>
+                        <td>{{ 'ATIVO' if f.ativo else 'BLOQUEADO' }}</td>
+                        <td>
+                            {% if f.role != 'admin' %}
+                            <a href="/director/user/edit/{{ f.id }}" class="btn btn-warning" style="padding:3px 8px; font-size:0.75rem;">Editar</a>
+                            <a href="/director/user/toggle/{{ f.id }}" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">
+                                {{ 'Bloquear' if f.ativo else 'Desbloquear' }}
+                            </a>
+                            <a href="/director/user/delete/{{ f.id }}" onclick="return confirm('Tem certeza que deseja apagar este funcionário?')" class="btn btn-danger" style="padding:3px 8px; font-size:0.75rem;">Apagar</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Pauta de Frequência - {{ info.classe_num }}ª Classe - {{ info.turma_nome }}</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; padding: 15px; background: #fff; color: #000; }
+        .pauta-wrapper { width: 100%; }
+        .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .ministry-header { text-align: center; flex: 1; line-height: 1.25; font-size: 0.92rem; }
+        .ministry-header img { width: 54px; height: 54px; object-fit: contain; }
+        .visto-box { width: 230px; text-align: center; font-size: 0.82rem; padding-top: 8px; }
+        .school-meta { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; line-height: 1.5; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+        th, td { border: 1px solid #000; padding: 4px 3px; text-align: center; }
+        th { background: #F2F2F2; font-weight: bold; }
+        .footer-grid { margin-top: 16px; display: flex; justify-content: space-between; font-size: 0.82rem; }
+        .legend { line-height: 1.45; }
+        .sig-block { text-align: center; width: 28%; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="text-align:right; margin-bottom:10px;">
+        <button onclick="window.print()" style="padding:6px 14px; cursor:pointer;">🖨️ Imprimir Pauta de Frequência (A4)</button>
+    </div>
+
+    <div class="pauta-wrapper">
+        <div class="top-row">
+            <div style="width:230px;"></div>
+            <div class="ministry-header">
+                <img src="/static/img/emblema_moz.png" alt="Emblema"><br>
+                <strong>República de Moçambique</strong><br>
+                Ministério da Educação<br>
+                Governo da Província de Sofala / Distrito da Beira<br>
+                Serviço Distrital de Educação Juventude e Tecnologia
+            </div>
+            <div class="visto-box">
+                Visto<br>
+                ______/________/2026<br>
+                <strong>O DIRECTOR DA ESCOLA</strong><br><br>
+                ___________________________
+            </div>
+        </div>
+
+        <div class="school-meta">
+            ESCOLA SECUNDÁRIA DA MANGA &nbsp;|&nbsp; SALA: {{ info.sala or 'Sala 01' }} &nbsp;|&nbsp; CURSO: {{ info.curso or 'Diurno' }} ({{ info.turno or 'Manhã' }})<br>
+            PAUTA DE FREQUÊNCIA DA <u>{{ info.classe_num }}ª CLASSE</u> — TURMA: <u>{{ info.turma_nome }}</u> — DISCIPLINA: <u>{{ info.disciplina_nome }}</u> — ANO LECTIVO DE 2026
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th rowspan="2" style="width:28px;">Nº</th>
+                    <th rowspan="2" style="width:82px;">PROCESSO</th>
+                    <th rowspan="2" style="text-align:left; min-width:190px;">NOME DO ALUNO</th>
+                    <th colspan="5">{{ info.disciplina_nome|upper }}</th>
+                    <th colspan="3">ASSIDUIDADE</th>
+                    <th rowspan="2">MGC</th>
+                    <th rowspan="2">RESULTADO FINAL</th>
+                </tr>
+                <tr>
+                    <th>1º Tri.</th>
+                    <th>2º Tri.</th>
+                    <th>3º Tri.</th>
+                    <th>AF</th>
+                    <th>NF</th>
+                    <th>FJ</th>
+                    <th>FNJ</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in alunos %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ a.code }}</td>
+                    <td style="text-align:left;">{{ a.nome }}</td>
+                    <td>{{ "%.1f"|format(a.media_trimestral) if a.media_trimestral is not none else '' }}</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>{{ a.exame if a.exame is not none else '-' }}</td>
+                    <td><strong>{{ "%.1f"|format(a.media_final) if a.media_final is not none else '' }}</strong></td>
+                    <td>{{ a.faltas_justificadas or 0 }}</td>
+                    <td>{{ a.faltas_nao_justificadas or 0 }}</td>
+                    <td>{{ a.total_faltas or 0 }}</td>
+                    <td><strong>{{ "%.1f"|format(a.media_final) if a.media_final is not none else '' }}</strong></td>
+                    <td>
+                        {% if a.media_final is not none %}
+                            {% if (a.faltas_nao_justificadas or 0) >= limite_fnj %}
+                                EXCLUÍDO
+                            {% elif a.media_final >= 9.5 %}
+                                APROVADO
+                            {% else %}
+                                REPROVADO
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="footer-grid">
+            <div class="legend">
+                <strong>Tri.</strong> – Trimestre<br>
+                <strong>AF</strong> – Avaliação Final<br>
+                <strong>NF</strong> – Nota Final da Disciplina<br>
+                <strong>MGC</strong> – Média Geral
+            </div>
+            <div class="sig-block">
+                <strong>O Director da Turma</strong><br>
+                ______/________/2026<br><br>
+                ___________________________
+            </div>
+            <div class="sig-block">
+                <strong>O DAE</strong><br>
+                ______/________/2026<br><br>
+                ___________________________
+            </div>
+        </div>
+    </div>
+</body>
+</html>

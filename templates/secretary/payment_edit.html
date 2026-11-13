@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Editar Pagamento</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Editar Pagamento {{ p.receipt_number }}</div>
+        <a href="/secretary/dashboard">Voltar ao Painel</a>
+    </div>
+    <div class="container" style="max-width:600px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <div class="card">
+            <h3 class="card-title">Corrigir Dados do Recibo {{ p.receipt_number }} ({{ p.aluno_nome }})</h3>
+            <form method="POST">
+                <div class="form-group">
+                    <label>Banco / Carteira Móvel:*</label>
+                    <select name="banco_plataforma" required>
+                        {% for b in bancos %}
+                        <option value="{{ b }}" {% if p.banco_plataforma == b %}selected{% endif %}>{{ b }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Referência do Talão (9 Dígitos):*</label>
+                    <input type="text" name="referencia_talao" pattern="\d{9}" maxlength="9" minlength="9" value="{{ p.referencia_talao }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Mês / Descrição:*</label>
+                    <input type="text" name="mes_pago" value="{{ p.mes_pago }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Valor Pago (MZN):*</label>
+                    <input type="number" step="0.01" name="valor_pago" value="{{ p.valor_pago }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Data em que o Depósito foi Efectuado:*</label>
+                    <input type="date" name="data_deposito" value="{{ p.data_deposito }}" required>
+                </div>
+                <button type="submit" class="btn btn-success" style="width:100%;">Guardar Alterações</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

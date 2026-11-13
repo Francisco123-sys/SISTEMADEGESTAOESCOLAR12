@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Registo de Pagamento</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Pagamento e Talão Bancário</span></div>
+            </div>
+        </div>
+        <a href="/secretary/dashboard">Voltar ao Painel</a>
+    </div>
+    <div class="container" style="max-width:650px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <div class="card">
+            <h3 class="card-title">Lançamento de Pagamento de Mensalidade / Propina</h3>
+            <form action="/secretary/payments/new" method="POST">
+                <div class="form-group">
+                    <label>Selecionar Aluno:*</label>
+                    <select name="student_id" id="student_select" onchange="carregarDadosMatricula(this.value)" required>
+                        <option value="">-- Escolha um aluno --</option>
+                        {% for a in alunos %}
+                        <option value="{{ a.id }}">{{ a.classe_ingresso }}ª Classe - {{ a.code }} - {{ a.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="talao_matricula_box" style="display:none; background:#F0F9FF; border:1px solid #B9E6FE; padding:12px 15px; border-radius:6px; margin-bottom:18px; justify-content:space-between; align-items:center; gap:10px;">
+                    <div>
+                        <strong style="color:#026AA2;">Dados da Matrícula Carregados:</strong>
+                        <div id="talao_info_texto" style="font-size:0.85rem; color:#344054;"></div>
+                    </div>
+                    <a id="btn_baixar_talao" href="#" target="_blank" class="btn btn-primary" style="padding:6px 12px; font-size:0.82rem; white-space:nowrap;">📄 Baixar / Imprimir Talão</a>
+                </div>
+
+                <div class="form-group">
+                    <label>Banco ou Carteira Móvel onde o Depósito foi Efectuado:*</label>
+                    <select name="banco_plataforma" id="banco_plataforma" required>
+                        <option value="">-- Selecione o Banco / Carteira --</option>
+                        {% for b in bancos %}
+                        <option value="{{ b }}">{{ b }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Referência do Talão (EXATAMENTE 9 DÍGITOS):*</label>
+                    <input type="text" name="referencia_talao" id="referencia_talao" pattern="\d{9}" maxlength="9" minlength="9" required placeholder="Ex: 123456789" title="A referência deve conter exatamente 9 dígitos numéricos">
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Mês / Período Pago:*</label>
+                        <select name="mes_pago">
+                            <option value="Fevereiro">Fevereiro</option>
+                            <option value="Março">Março</option>
+                            <option value="Abril">Abril</option>
+                            <option value="Maio">Maio</option>
+                            <option value="Junho">Junho</option>
+                            <option value="Julho">Julho</option>
+                            <option value="Agosto">Agosto</option>
+                            <option value="Setembro">Setembro</option>
+                            <option value="Outubro">Outubro</option>
+                            <option value="Novembro">Novembro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Valor Pago (MZN):*</label>
+                        <input type="number" step="0.01" min="1" name="valor_pago" id="valor_pago" required placeholder="Ex: 500.00">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Data em que o Depósito foi Efectuado:*</label>
+                        <input type="date" name="data_deposito" id="data_deposito" max="{{ hoje }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data do Registo no Sistema:</label>
+                        <input type="date" value="{{ hoje }}" disabled style="background:#EAECF0;">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success" style="width:100%;">Validar Referência e Emitir Recibo Oficial</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        function carregarDadosMatricula(studentId) {
+            const box = document.getElementById('talao_matricula_box');
+            if (!studentId) {
+                box.style.display = 'none';
+                return;
+            }
+            fetch(`/secretary/payments/student-info/${studentId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.found) {
+                        document.getElementById('banco_plataforma').value = data.banco_plataforma;
+                        document.getElementById('referencia_talao').value = data.referencia_talao;
+                        document.getElementById('valor_pago').value = data.valor_pago;
+                        document.getElementById('data_deposito').value = data.data_deposito;
+
+                        document.getElementById('talao_info_texto').innerText =
+                            `Recibo ${data.receipt_number} | ${data.banco_plataforma} | Ref: ${data.referencia_talao}`;
+                        document.getElementById('btn_baixar_talao').href = `/secretary/receipt/${data.payment_id}`;
+                        box.style.display = 'flex';
+                    } else {
+                        box.style.display = 'none';
+                    }
+                });
+        }
+    </script>
+</body>
+</html>

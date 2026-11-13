@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Nota Informativa - {{ aluno.nome }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 30px; background: white; }
+        .card { border: 2px solid #245B8F; padding: 25px; max-width: 820px; margin: auto; }
+        .header { text-align: center; background: #142B4A; color: white; padding: 15px; margin: -25px -25px 20px -25px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        th, td { border: 1px solid #CCC; padding: 8px; text-align: center; }
+        th { background: #F3F5F8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <h3 style="margin:0;">ESCOLA SECUNDÁRIA DA MANGA - BEIRA</h3>
+            <h2 style="margin:5px 0 0 0;">BOLETIM INFORMATIVO DO EDUCANDO</h2>
+        </div>
+
+        <p><strong>Aluno:</strong> {{ aluno.nome }} ({{ aluno.code }})</p>
+        <p><strong>Classe/Turma:</strong> {{ aluno.classe_num }}ª Classe - {{ aluno.turma_nome }}</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Disciplina</th>
+                    <th>AV1</th>
+                    <th>AV2</th>
+                    <th>AV3</th>
+                    <th>AV4</th>
+                    <th>Média Final</th>
+                    <th>Faltas (FJ / FNJ / Total)</th>
+                    <th>Parecer do Professor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for n in notas %}
+                <tr>
+                    <td style="text-align:left;"><strong>{{ n.disciplina_nome }}</strong></td>
+                    <td>{{ n.av1 }}</td>
+                    <td>{{ n.av2 }}</td>
+                    <td>{{ n.av3 }}</td>
+                    <td>{{ n.av4 }}</td>
+                    <td><strong>{{ "%.1f"|format(n.media_final) }}</strong></td>
+                    <td>{{ n.faltas_justificadas or 0 }} / {{ n.faltas_nao_justificadas or 0 }} / <strong>{{ n.total_faltas or 0 }}</strong></td>
+                    <td style="text-align:left; font-size:0.85rem;">{{ n.comentario_professor or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div style="text-align:center; margin-top:20px;">
+        <button onclick="window.print()" style="padding:8px 16px; cursor:pointer;">Imprimir Boletim</button>
+    </div>
+</body>
+</html>

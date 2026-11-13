@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Editar Aluno</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Editar Dados do Aluno {{ aluno.code }}</div>
+        <a href="/secretary/students">Voltar à Lista</a>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h3 class="card-title">Atualizar Cadastro de {{ aluno.nome }}</h3>
+            <form method="POST">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Nome Completo:*</label>
+                        <input type="text" name="nome" value="{{ aluno.nome }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data de Nascimento:*</label>
+                        <input type="date" name="data_nascimento" value="{{ aluno.data_nascimento }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nome do Pai:</label>
+                        <input type="text" name="nome_pai" value="{{ aluno.nome_pai or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Nome da Mãe:</label>
+                        <input type="text" name="nome_mae" value="{{ aluno.nome_mae or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Nº BI / Cédula Pessoal:*</label>
+                        <input type="text" name="bi_cedula" value="{{ aluno.bi_cedula }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Sexo:</label>
+                        <select name="sexo">
+                            <option value="M" {% if aluno.sexo == 'M' %}selected{% endif %}>Masculino</option>
+                            <option value="F" {% if aluno.sexo == 'F' %}selected{% endif %}>Feminino</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Contacto Encarregado 1:*</label>
+                        <input type="text" name="contacto_1" value="{{ aluno.encarregado_contacto_1 }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contacto Encarregado 2:</label>
+                        <input type="text" name="contacto_2" value="{{ aluno.encarregado_contacto_2 or '' }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Morada:</label>
+                    <input type="text" name="morada" value="{{ aluno.morada or '' }}">
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:15px;">
+                    <div>
+                        <label><input type="checkbox" name="isento_taxa" value="1" {% if aluno.isento_taxa %}checked{% endif %}> <strong>Aluno Isento de Propinas</strong></label>
+                        <input type="text" name="justificacao_isencao" value="{{ aluno.justificacao_isencao or '' }}" placeholder="Motivo da isenção">
+                    </div>
+                    <div>
+                        <label>Necessidade Educativa Especial (NEE):</label>
+                        <input type="text" name="nee_tipo" value="{{ aluno.nee_tipo }}">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" style="width:100%;">Guardar Alterações</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

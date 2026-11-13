@@ -1,0 +1,127 @@
+:root {
+    --navy-dark: #142B4A;
+    --navy-brand: #245B8F;
+    --bg-light: #F3F5F8;
+    --text-dark: #344054;
+    --border-color: #D0D5DD;
+    --success-green: #12B76A;
+    --danger-red: #F04438;
+    --white: #FFFFFF;
+}
+body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-dark);
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+}
+.navbar {
+    background-color: var(--navy-dark);
+    color: var(--white);
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.navbar .brand { font-size: 1.25rem; font-weight: 700; }
+.navbar a { color: #EAECF0; text-decoration: none; margin-left: 20px; font-size: 0.95rem; }
+.navbar a:hover { color: var(--white); }
+.container { max-width: 1180px; margin: 30px auto; padding: 0 20px; }
+.card {
+    background: var(--white);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    padding: 25px;
+    margin-bottom: 25px;
+}
+.card-title {
+    font-size: 1.15rem;
+    color: var(--navy-dark);
+    font-weight: 600;
+    margin-top: 0;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--bg-light);
+    padding-bottom: 10px;
+}
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+.stat-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-left: 5px solid var(--navy-brand);
+    border-radius: 6px;
+    padding: 18px;
+}
+.stat-value { font-size: 1.6rem; font-weight: 700; color: var(--navy-dark); }
+.stat-label { font-size: 0.8rem; color: #667085; text-transform: uppercase; font-weight: 600; }
+.form-group { margin-bottom: 18px; }
+label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--navy-dark); }
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], input[type="number"], select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+    background-color: #FAFAFA;
+}
+input:focus, select:focus { border-color: var(--navy-brand); outline: none; background-color: var(--white); }
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+}
+.btn-primary { background-color: var(--navy-brand); color: var(--white); }
+.btn-primary:hover { background-color: var(--navy-dark); }
+.btn-success { background-color: var(--success-green); color: var(--white); }
+.btn-danger { background-color: var(--danger-red); color: var(--white); }
+.btn-warning { background-color: #F79009; color: var(--white); }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; background: var(--white); }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.88rem; }
+th { background-color: #F8F9FA; color: var(--navy-dark); font-weight: 700; }
+tr:hover { background-color: #F9FAFB; }
+.alert { padding: 12px 18px; border-radius: 6px; margin-bottom: 20px; font-size: 0.95rem; }
+.alert-success { background-color: #ECFDF3; color: #027A48; border: 1px solid #ABE5C5; }
+.alert-danger { background-color: #FEF3F2; color: #B42318; border: 1px solid #FECDCA; }
+.alert-info { background-color: #F0F9FF; color: #026AA2; border: 1px solid #B9E6FE; }
+.alert-warning { background-color: #FFFAEB; color: #B54708; border: 1px solid #FEDF89; }
+.classe-header {
+    background-color: var(--navy-dark);
+    color: white;
+    padding: 12px 18px;
+    border-radius: 6px 6px 0 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-top: 25px;
+}
+.turma-subcard {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-top: none;
+    padding: 15px 20px;
+    margin-bottom: 15px;
+}
+.turma-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--navy-brand);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #E4E7EC;
+}

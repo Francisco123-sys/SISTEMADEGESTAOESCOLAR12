@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Painel da Secretaria</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Painel da Secretaria</span></div>
+            </div>
+        </div>
+        <div>
+            <span>Utilizador: {{ session.get('user_nome') }}</span>
+            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
+            <a href="/logout">Sair</a>
+        </div>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_alunos }}</div>
+                <div class="stat-label">Alunos Matriculados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_isentos }}</div>
+                <div class="stat-label">Alunos Isentos de Taxa</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_nee }}</div>
+                <div class="stat-label">Alunos com NEE</div>
+            </div>
+            {% if session.get('user_role') in ['chefe_secretaria', 'director', 'admin'] %}
+            <div class="stat-card">
+                <div class="stat-value">{{ "%.2f"|format(total_receita) }} MZN</div>
+                <div class="stat-label">Receita Registada</div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="card-title" style="border:none; margin:0;">Ações Rápidas da Secretaria</h3>
+                <div>
+                    <a href="/secretary/students/new" class="btn btn-primary">+ Matricular Aluno</a>
+                    <a href="/secretary/payments/new" class="btn btn-success">+ Registar Pagamento</a>
+                    <a href="/secretary/students" class="btn btn-primary">Ver Alunos e Listas (.DOC)</a>
+                    {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                    <a href="/secretary/colaboradores" class="btn btn-primary">👥 Gerir Colegas</a>
+                    <a href="/director/rectificar-notas" class="btn btn-warning">📝 Rectificar Notas</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <h3 class="card-title">Últimos Pagamentos Registados</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nº Recibo</th>
+                        <th>Aluno</th>
+                        <th>Banco / Carteira</th>
+                        <th>Referência (9 Dígitos)</th>
+                        <th>Data Depósito</th>
+                        <th>Data Registo</th>
+                        <th>Valor (MZN)</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pagamentos %}
+                    <tr>
+                        <td>{{ p.receipt_number }}</td>
+                        <td>{{ p.aluno_nome }} ({{ p.aluno_code }})</td>
+                        <td><strong>{{ p.banco_plataforma }}</strong></td>
+                        <td><strong>{{ p.referencia_talao }}</strong></td>
+                        <td>{{ p.data_deposito }}</td>
+                        <td>{{ p.data_registo }}</td>
+                        <td>{{ "%.2f"|format(p.valor_pago) }}</td>
+                        <td>
+                            <a href="/secretary/receipt/{{ p.id }}" target="_blank" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">Recibo</a>
+                            <a href="/secretary/payments/edit/{{ p.id }}" class="btn btn-warning" style="padding:3px 8px; font-size:0.75rem;">Editar</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8">Nenhum pagamento registado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,179 @@
+-- SIGE Database Schema (Escola Secundária da Manga - Beira, Sofala)
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('admin', 'director', 'pedagogico_1', 'pedagogico_2', 'teacher', 'secretary', 'chefe_secretaria')),
+    contacto TEXT,
+    foto_path TEXT DEFAULT 'default_avatar.png',
+    ativo INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS academic_years (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ano INTEGER UNIQUE NOT NULL,
+    ativo INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero INTEGER NOT NULL CHECK(numero BETWEEN 1 AND 12),
+    nivel TEXT NOT NULL CHECK(nivel IN ('Primário', 'Secundário'))
+);
+
+CREATE TABLE IF NOT EXISTS turmas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    sala TEXT DEFAULT 'Sala 01',
+    classe_id INTEGER NOT NULL,
+    ano_lectivo_id INTEGER NOT NULL,
+    turno TEXT NOT NULL CHECK(turno IN ('Manhã', 'Tarde', 'Noite')),
+    curso TEXT NOT NULL DEFAULT 'Diurno' CHECK(curso IN ('Diurno', 'Nocturno', 'À Distância')),
+    capacidade_maxima INTEGER DEFAULT 40,
+    vagas_disponiveis INTEGER DEFAULT 40,
+    FOREIGN KEY(classe_id) REFERENCES classes(id),
+    FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id)
+);
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    codigo TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS teacher_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_id INTEGER NOT NULL,
+    turma_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    FOREIGN KEY(teacher_id) REFERENCES users(id),
+    FOREIGN KEY(turma_id) REFERENCES turmas(id),
+    FOREIGN KEY(subject_id) REFERENCES subjects(id)
+);
+
+CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    nome TEXT NOT NULL,
+    nome_pai TEXT,
+    nome_mae TEXT,
+    bi_cedula TEXT UNIQUE NOT NULL,
+    data_nascimento TEXT NOT NULL,
+    sexo TEXT CHECK(sexo IN ('M', 'F')),
+    morada TEXT,
+    naturalidade TEXT,
+    encarregado_contacto_1 TEXT NOT NULL,
+    encarregado_contacto_2 TEXT,
+    encarregado_contacto_3 TEXT,
+    encarregado_contacto_4 TEXT,
+    classe_ingresso INTEGER NOT NULL,
+    turma_id INTEGER NOT NULL,
+    ano_lectivo_id INTEGER NOT NULL,
+    turno TEXT NOT NULL DEFAULT 'Manhã',
+    curso TEXT NOT NULL DEFAULT 'Diurno',
+    data_matricula TEXT NOT NULL,
+    isento_taxa INTEGER DEFAULT 0,
+    justificacao_isencao TEXT,
+    nee_tipo TEXT DEFAULT 'Nenhuma',
+    classe_sugerida INTEGER,
+    justificacao_alteracao TEXT,
+    funcionario_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(turma_id) REFERENCES turmas(id),
+    FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id),
+    FOREIGN KEY(funcionario_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    turma_id INTEGER NOT NULL,
+    trimestre INTEGER CHECK(trimestre IN (1, 2, 3)),
+    av1 REAL DEFAULT 0,
+    av2 REAL DEFAULT 0,
+    av3 REAL DEFAULT 0,
+    av4 REAL DEFAULT 0,
+    media_trimestral REAL DEFAULT 0,
+    exame REAL DEFAULT NULL,
+    media_final REAL DEFAULT 0,
+    faltas_justificadas INTEGER DEFAULT 0,
+    faltas_nao_justificadas INTEGER DEFAULT 0,
+    total_faltas INTEGER DEFAULT 0,
+    comentario_professor TEXT DEFAULT '',
+    status TEXT DEFAULT 'Rascunho' CHECK(status IN ('Rascunho', 'Submetida', 'Fechada', 'Reaberta')),
+    FOREIGN KEY(student_id) REFERENCES students(id),
+    FOREIGN KEY(subject_id) REFERENCES subjects(id),
+    FOREIGN KEY(turma_id) REFERENCES turmas(id)
+);
+
+CREATE TABLE IF NOT EXISTS lesson_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_id INTEGER NOT NULL,
+    turma_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    numero_aula INTEGER NOT NULL,
+    data_aula TEXT NOT NULL,
+    sumario TEXT NOT NULL,
+    observacoes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(teacher_id) REFERENCES users(id),
+    FOREIGN KEY(turma_id) REFERENCES turmas(id),
+    FOREIGN KEY(subject_id) REFERENCES subjects(id)
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    turma_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    data_aula TEXT NOT NULL,
+    tipo TEXT CHECK(tipo IN ('Presença', 'Falta', 'Justificada')),
+    motivo TEXT,
+    FOREIGN KEY(student_id) REFERENCES students(id)
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    receipt_number TEXT UNIQUE NOT NULL,
+    student_id INTEGER NOT NULL,
+    mes_pago TEXT NOT NULL,
+    ano_lectivo_id INTEGER NOT NULL,
+    valor_pago REAL NOT NULL,
+    banco_plataforma TEXT NOT NULL,
+    referencia_talao TEXT UNIQUE NOT NULL,
+    data_deposito TEXT NOT NULL,
+    data_registo TEXT NOT NULL,
+    funcionario_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(student_id) REFERENCES students(id),
+    FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id),
+    FOREIGN KEY(funcionario_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS reclamacoes_encarregados (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    nome_encarregado TEXT NOT NULL,
+    contacto TEXT NOT NULL,
+    mensagem TEXT NOT NULL,
+    status TEXT DEFAULT 'Pendente' CHECK(status IN ('Pendente', 'Respondida')),
+    resposta_escola TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(student_id) REFERENCES students(id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    operacao TEXT NOT NULL,
+    detalhes TEXT NOT NULL,
+    ip_address TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);

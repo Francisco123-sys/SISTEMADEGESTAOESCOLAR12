@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Atribuição de Professores</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">Escola Secundária da Manga | Atribuição Docente</div>
+        <a href="/director/dashboard">Voltar ao Painel</a>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h3 class="card-title">Associar Professor a Turma e Disciplina</h3>
+            <form action="/director/assign-teacher" method="POST" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
+                <div class="form-group">
+                    <label>Selecionar Professor:*</label>
+                    <select name="teacher_id" required>
+                        {% for p in professores %}
+                        <option value="{{ p.id }}">{{ p.code }} - {{ p.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Selecionar Turma:*</label>
+                    <select name="turma_id" required>
+                        {% for t in turmas %}
+                        <option value="{{ t.id }}">{{ t.classe_num }}ª Classe - {{ t.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Selecionar Disciplina:*</label>
+                    <select name="subject_id" required>
+                        {% for d in disciplinas %}
+                        <option value="{{ d.id }}">{{ d.nome }} ({{ d.codigo }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success" style="grid-column: span 3;">Confirmar Atribuição</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Atribuições Docentes Ativas</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código Prof.</th>
+                        <th>Nome do Professor</th>
+                        <th>Turma Atribuída</th>
+                        <th>Disciplina</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in atribuicoes %}
+                    <tr>
+                        <td>{{ a.prof_code }}</td>
+                        <td>{{ a.prof_nome }}</td>
+                        <td>{{ a.turma_nome }}</td>
+                        <td><strong>{{ a.disciplina_nome }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4">Nenhuma atribuição docente registada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Rectificação de Notas</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">Escola Secundária da Manga <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Direção & Secretaria</span></div>
+            </div>
+        </div>
+        <div>
+            <a href="/director/dashboard">Voltar ao Painel</a>
+        </div>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3 class="card-title">Rectificação Exclusiva de Notas (Director & Chefe da Secretaria)</h3>
+            <p style="font-size:0.9rem; color:#666;">Apenas contas com privilégio de Direção ou Chefe da Secretaria podem rectificar notas após a submissão pelo professor. Todas as alterações são registadas permanentemente no Trilho de Auditoria.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Turma</th>
+                        <th>Aluno</th>
+                        <th>Disciplina</th>
+                        <th>AV1</th>
+                        <th>AV2</th>
+                        <th>AV3</th>
+                        <th>AV4</th>
+                        <th>Média / Final</th>
+                        <th>Ação de Rectificação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for n in notas %}
+                    <tr>
+                        <form method="POST">
+                            <input type="hidden" name="grade_id" value="{{ n.id }}">
+                            <td>{{ n.turma_nome }}</td>
+                            <td>{{ n.aluno_nome }} ({{ n.aluno_code }})</td>
+                            <td><strong>{{ n.disciplina_nome }}</strong></td>
+                            <td><input type="number" step="0.1" min="0" max="20" name="av1" value="{{ n.av1 }}" style="width:60px;"></td>
+                            <td><input type="number" step="0.1" min="0" max="20" name="av2" value="{{ n.av2 }}" style="width:60px;"></td>
+                            <td><input type="number" step="0.1" min="0" max="20" name="av3" value="{{ n.av3 }}" style="width:60px;"></td>
+                            <td><input type="number" step="0.1" min="0" max="20" name="av4" value="{{ n.av4 }}" style="width:60px;"></td>
+                            <td><strong>{{ "%.1f"|format(n.media_final) }}</strong></td>
+                            <td>
+                                <input type="text" name="motivo" placeholder="Motivo obrigatório..." required style="width:140px; display:inline-block; font-size:0.8rem; padding:4px;">
+                                <button type="submit" class="btn btn-warning" style="padding:4px 10px; font-size:0.8rem;">Rectificar</button>
+                            </td>
+                        </form>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9">Nenhuma nota registada no sistema.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

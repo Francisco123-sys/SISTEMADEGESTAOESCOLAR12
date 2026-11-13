@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Reclamações e Esclarecimentos dos Encarregados</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Atendimento e Reclamações dos Encarregados</div>
+        <div class="nav-links">
+            <a href="/secretary/dashboard">Dashboard</a>
+            <a href="/secretary/students">Alunos & Matrículas</a>
+            <a href="/secretary/turmas">Turmas & Vagas</a>
+            <a href="/secretary/reclamacoes" style="font-weight:bold; text-decoration:underline;">Reclamações</a>
+            <a href="/secretary/colaboradores">Colaboradores</a>
+            <a href="/logout" style="color:#FFB4AB;">Sair</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3 class="card-title">Reclamações e Pedidos de Esclarecimento Submetidos pelos Encarregados</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Aluno</th>
+                        <th>Encarregado</th>
+                        <th>Contacto</th>
+                        <th>Mensagem / Preocupação</th>
+                        <th>Estado</th>
+                        <th>Responder ao Encarregado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reclamacoes %}
+                    <tr>
+                        <td>{{ r.created_at[:10] }}</td>
+                        <td><strong>{{ r.aluno_nome }}</strong><br><small>{{ r.aluno_code }}</small></td>
+                        <td>{{ r.nome_encarregado }}</td>
+                        <td>{{ r.contacto }}</td>
+                        <td style="text-align:left; max-width:260px;">{{ r.mensagem }}</td>
+                        <td>
+                            {% if r.status == 'Pendente' %}
+                                <span style="color:#B42318; font-weight:bold;">Pendente</span>
+                            {% else %}
+                                <span style="color:#027A48; font-weight:bold;">Respondida</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:left;">
+                            <form method="POST" action="/secretary/reclamacoes" style="display:flex; gap:6px;">
+                                <input type="hidden" name="rec_id" value="{{ r.id }}">
+                                <input type="text" name="resposta_escola" value="{{ r.resposta_escola or '' }}" placeholder="Escreva a resposta..." required style="padding:5px; font-size:0.82rem;">
+                                <button type="submit" class="btn btn-primary" style="padding:5px 10px; font-size:0.8rem;">Enviar</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7">Nenhuma reclamação ou pedido de esclarecimento registado até ao momento.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

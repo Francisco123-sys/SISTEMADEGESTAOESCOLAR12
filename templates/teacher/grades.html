@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Pauta de Lançamento</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .num-input { width: 58px; padding: 5px; text-align: center; }
+        .total-faltas-badge { display: inline-block; min-width: 34px; padding: 4px 8px; border-radius: 4px; font-weight: 700; background: #F2F4F7; color: #101828; }
+        .alerta-faltas { background: #FEF3F2 !important; color: #B42318 !important; border: 1px solid #FECDCA; }
+        .comment-input { width: 100%; min-width: 190px; padding: 5px 8px; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="navbar" style="padding: 10px 30px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+            <div>
+                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
+                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Lançamento de Notas, Faltas e Pareceres</span></div>
+            </div>
+        </div>
+        <a href="/teacher/dashboard">Voltar ao Painel</a>
+    </div>
+
+    <div class="container" style="max-width: 1280px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                <h3 class="card-title" style="margin:0;">Pauta: {{ info.turma_nome }} — Disciplina: {{ info.disciplina_nome }}</h3>
+                <span style="font-size:0.85rem; background:#EFF8FF; color:#175CD3; padding:5px 10px; border-radius:6px; border:1px solid #B2DDFF;">
+                    ℹ️ Limite de Faltas Não Justificadas (FNJ): <strong>{{ limite_fnj }}</strong> | Use <strong>Tab</strong> ou <strong>Enter</strong> para avançar
+                </span>
+            </div>
+
+            {% if ja_submetida %}
+            <div class="alert alert-warning">
+                <strong>🔒 Pauta Submetida e Bloqueada para Edição:</strong> As notas, faltas e pareceres desta disciplina já foram submetidos. Para rectificações, contacte o <strong>Chefe da Secretaria</strong> ou o <strong>Director da Escola</strong>.
+            </div>
+            {% endif %}
+
+            <datalist id="sugestoes_parecer">
+                <option value="Bom empenho e participação activa nas aulas.">
+                <option value="Aproveitamento satisfatório, deve manter o ritmo.">
+                <option value="Necessita de maior dedicação e estudo individual.">
+                <option value="Atrasos e faltas frequentes prejudicam o rendimento.">
+                <option value="Excelente desempenho académico e comportamento exemplar.">
+            </datalist>
+
+            <form method="POST">
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nome do Aluno</th>
+                                <th>AV1</th>
+                                <th>AV2</th>
+                                <th>AV3</th>
+                                <th>AV4</th>
+                                {% if is_exame_class %}
+                                <th style="background:#FFEAD5;">EXAME ({{ info.classe_num }}ª)</th>
+                                {% endif %}
+                                <th style="background:#ECFDF3;">F. Just.</th>
+                                <th style="background:#FEF3F2;">F. N/Just.</th>
+                                <th style="background:#F2F4F7;">Total Faltas</th>
+                                <th>Parecer / Comentário Pedagógico</th>
+                                {% if ja_submetida %}
+                                <th>Média Final</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in alunos %}
+                            {% set fj_val = a.faltas_justificadas if a.faltas_justificadas is not none else 0 %}
+                            {% set fnj_val = a.faltas_nao_justificadas if a.faltas_nao_justificadas is not none else 0 %}
+                            {% set tot_val = a.total_faltas if a.total_faltas is not none else (fj_val + fnj_val) %}
+                            <tr>
+                                <td>{{ a.code }}</td>
+                                <td style="white-space:nowrap;">{{ a.nome }}</td>
+                                <input type="hidden" name="student_id" value="{{ a.id }}">
+                                <td><input class="num-input grade-nav" type="number" step="0.1" min="0" max="20" name="av1_{{ a.id }}" value="{{ a.av1 if a.av1 is not none else 10 }}" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}></td>
+                                <td><input class="num-input grade-nav" type="number" step="0.1" min="0" max="20" name="av2_{{ a.id }}" value="{{ a.av2 if a.av2 is not none else 12 }}" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}></td>
+                                <td><input class="num-input grade-nav" type="number" step="0.1" min="0" max="20" name="av3_{{ a.id }}" value="{{ a.av3 if a.av3 is not none else 14 }}" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}></td>
+                                <td><input class="num-input grade-nav" type="number" step="0.1" min="0" max="20" name="av4_{{ a.id }}" value="{{ a.av4 if a.av4 is not none else 11 }}" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}></td>
+                                {% if is_exame_class %}
+                                <td><input class="num-input grade-nav" type="number" step="0.1" min="0" max="20" name="exame_{{ a.id }}" value="{{ a.exame if a.exame is not none else '' }}" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}></td>
+                                {% endif %}
+                                <td>
+                                    <input class="num-input grade-nav" type="number" min="0" max="100" id="fj_{{ a.id }}" name="fj_{{ a.id }}" value="{{ fj_val }}" oninput="calcularTotalFaltas({{ a.id }})" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}>
+                                </td>
+                                <td>
+                                    <input class="num-input grade-nav" type="number" min="0" max="100" id="fnj_{{ a.id }}" name="fnj_{{ a.id }}" value="{{ fnj_val }}" oninput="calcularTotalFaltas({{ a.id }})" {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}>
+                                </td>
+                                <td style="text-align:center;">
+                                    <span id="total_faltas_{{ a.id }}" class="total-faltas-badge {% if fnj_val >= limite_fnj %}alerta-faltas{% endif %}">{{ tot_val }}</span>
+                                    <div id="aviso_faltas_{{ a.id }}" style="font-size:0.7rem; color:#B42318; font-weight:700; display:{% if fnj_val >= limite_fnj %}block{% else %}none{% endif %};">⚠️ Excesso FNJ</div>
+                                </td>
+                                <td>
+                                    <input class="comment-input grade-nav" type="text" list="sugestoes_parecer" name="comentario_{{ a.id }}" value="{{ a.comentario_professor or '' }}" placeholder="Observação sobre o aluno..." {% if ja_submetida %}readonly disabled style="background:#EAECF0;"{% endif %}>
+                                </td>
+                                {% if ja_submetida %}
+                                <td><strong>{{ "%.1f"|format(a.media_final) if a.media_final is not none else '-' }}</strong></td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <br>
+                {% if not ja_submetida %}
+                <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Atenção: Após submeter a pauta, não poderá alterar as notas, faltas ou comentários diretamente. Confirma a submissão?')">Submeter Pauta Definitiva (Notas, Faltas e Pareceres)</button>
+                {% else %}
+                <a href="/teacher/pauta-oficial/{{ turma_id }}/{{ subject_id }}" target="_blank" class="btn btn-primary" style="width:100%; box-sizing:border-box;">🖨️ Visualizar / Imprimir Pauta Oficial (A4)</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const LIMITE_FNJ = {{ limite_fnj }};
+
+        function calcularTotalFaltas(studentId) {
+            const fj = parseInt(document.getElementById('fj_' + studentId).value) || 0;
+            const fnj = parseInt(document.getElementById('fnj_' + studentId).value) || 0;
+            const total = Math.max(0, fj) + Math.max(0, fnj);
+
+            const badge = document.getElementById('total_faltas_' + studentId);
+            const aviso = document.getElementById('aviso_faltas_' + studentId);
+
+            badge.innerText = total;
+            if (fnj >= LIMITE_FNJ) {
+                badge.classList.add('alerta-faltas');
+                aviso.style.display = 'block';
+            } else {
+                badge.classList.remove('alerta-faltas');
+                aviso.style.display = 'none';
+            }
+        }
+
+        document.querySelectorAll('.grade-nav').forEach((input, idx, all) => {
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (all[idx + 1]) all[idx + 1].focus();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

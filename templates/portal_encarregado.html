@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Escola Secundária da Manga - Portal do Encarregado</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">Escola Secundária da Manga | Resultados Escolares do Educando</div>
+        <a href="/">Voltar ao Login</a>
+    </div>
+
+    <div class="container" style="max-width:980px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <h3 class="card-title">Consultar Resultados do Educando</h3>
+            <form method="POST" action="/portal-encarregado" style="display:flex; gap:10px;">
+                <input type="text" name="codigo_aluno" placeholder="Digite o Código do Aluno (ex: ALU-000001) ou Nº de BI..." required>
+                <button type="submit" class="btn btn-primary">Ver Resultados</button>
+            </form>
+        </div>
+
+        {% if aluno %}
+        <div class="card">
+            <h3 class="card-title">Resultados Escolares: {{ aluno.nome }}</h3>
+            {% set ns = namespace(soma_faltas=0) %}
+            {% for n in notas %}
+                {% set ns.soma_faltas = ns.soma_faltas + (n.total_faltas or 0) %}
+            {% endfor %}
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:20px;">
+                <div><strong>Código / Processo:</strong> {{ aluno.code }}</div>
+                <div><strong>Classe:</strong> {{ aluno.classe_num }}ª Classe</div>
+                <div><strong>Turma / Sala:</strong> {{ aluno.turma_nome }} ({{ aluno.turma_sala or 'Sala 01' }})</div>
+                <div><strong>Curso / Turno:</strong> {{ aluno.curso }} ({{ aluno.turno }})</div>
+                <div><strong>Total de Faltas:</strong> <span style="color:#B42318; font-weight:bold;">{{ ns.soma_faltas + total_faltas }}</span></div>
+                <div><strong>Estado:</strong> Matriculado</div>
+            </div>
+
+            <h4>Pauta Individual de Aproveitamento</h4>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Disciplina</th>
+                            <th>AV1</th>
+                            <th>AV2</th>
+                            <th>AV3</th>
+                            <th>AV4</th>
+                            <th>Média Trim.</th>
+                            <th>Exame</th>
+                            <th>Média Final</th>
+                            <th>Situação</th>
+                            <th>Faltas (FJ/FNJ)</th>
+                            <th>Observação do Professor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for n in notas %}
+                        <tr>
+                            <td><strong>{{ n.disciplina_nome }}</strong></td>
+                            <td>{{ n.av1 }}</td>
+                            <td>{{ n.av2 }}</td>
+                            <td>{{ n.av3 }}</td>
+                            <td>{{ n.av4 }}</td>
+                            <td>{{ "%.1f"|format(n.media_trimestral) }}</td>
+                            <td>{{ n.exame or '-' }}</td>
+                            <td><strong>{{ "%.1f"|format(n.media_final) }}</strong></td>
+                            <td>
+                                {% if n.media_final >= 9.5 %}
+                                    <span style="color:#027A48; font-weight:bold;">Aprovado</span>
+                                {% else %}
+                                    <span style="color:#B42318; font-weight:bold;">Reprovado</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ n.faltas_justificadas or 0 }} / {{ n.faltas_nao_justificadas or 0 }}</td>
+                            <td style="text-align:left; font-size:0.85rem;">{{ n.comentario_professor or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="11">Ainda não existem notas lançadas para este aluno.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Submeter Reclamação ou Pedido de Esclarecimento</h3>
+            <p style="font-size:0.9rem; color:#475467; margin-bottom:15px;">
+                Caso tenha alguma preocupação ou dúvida relativamente ao aluno <strong>{{ aluno.nome }}</strong> ({{ aluno.code }}), preencha os seus dados e envie a sua mensagem à Secretaria da Escola.
+            </p>
+            <form method="POST" action="/portal-encarregado">
+                <input type="hidden" name="acao" value="reclamacao">
+                <input type="hidden" name="student_id" value="{{ aluno.id }}">
+                <input type="hidden" name="codigo_aluno" value="{{ aluno.code }}">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label>Nome do Encarregado:*</label>
+                        <input type="text" name="nome_encarregado" required placeholder="Nome completo do encarregado">
+                    </div>
+                    <div class="form-group">
+                        <label>Contacto Telefónico:*</label>
+                        <input type="text" name="contacto" required placeholder="Ex: 84 / 85 / 82 / 86 / 87...">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Mensagem sobre a sua preocupação:*</label>
+                    <textarea name="mensagem" rows="4" required placeholder="Escreva aqui a sua reclamação ou pedido de esclarecimento sobre o aluno..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Enviar Reclamação / Esclarecimento</button>
+            </form>
+
+            {% if reclamacoes %}
+            <hr style="margin:20px 0; border:0; border-top:1px solid #EAECF0;">
+            <h4>Pedidos de Esclarecimento / Reclamações Registados</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Encarregado</th>
+                        <th>Mensagem</th>
+                        <th>Estado</th>
+                        <th>Resposta da Secretaria</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reclamacoes %}
+                    <tr>
+                        <td>{{ r.created_at[:10] }}</td>
+                        <td>{{ r.nome_encarregado }}</td>
+                        <td style="text-align:left;">{{ r.mensagem }}</td>
+                        <td><strong>{{ r.status }}</strong></td>
+                        <td style="text-align:left;">{{ r.resposta_escola or 'Aguardando resposta da secretaria' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

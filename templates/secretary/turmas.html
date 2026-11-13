@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>SIGE - Gestão de Turmas, Vagas e Pautas CSV</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Gestão de Turmas, Salas, Vagas e Pautas CSV</div>
+        <div class="nav-links">
+            <a href="/secretary/dashboard">Dashboard</a>
+            <a href="/secretary/students">Alunos & Matrículas</a>
+            <a href="/secretary/turmas" style="font-weight:bold; text-decoration:underline;">Turmas & Vagas</a>
+            <a href="/secretary/reclamacoes">Reclamações</a>
+            <a href="/secretary/colaboradores">Colaboradores</a>
+            <a href="/logout" style="color:#FFB4AB;">Sair</a>
+        </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+            <div class="card">
+                <h3 class="card-title">Criar Nova Turma & Definir Capacidade da Sala</h3>
+                <form method="POST" action="/secretary/turmas">
+                    <input type="hidden" name="acao" value="criar_turma">
+                    <div class="form-group">
+                        <label>Nome da Turma (Ex: 8ª A):*</label>
+                        <input type="text" name="nome" required placeholder="Ex: 8ª A">
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div class="form-group">
+                            <label>Sala de Aula:*</label>
+                            <input type="text" name="sala" required placeholder="Ex: Sala 04">
+                        </div>
+                        <div class="form-group">
+                            <label>Capacidade / Vagas:*</label>
+                            <input type="number" name="capacidade_maxima" value="40" min="1" max="100" required>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                        <div class="form-group">
+                            <label>Classe:*</label>
+                            <select name="classe_id" required>
+                                {% for c in range(1, 13) %}
+                                <option value="{{ c }}">{{ c }}ª Classe</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Curso:*</label>
+                            <select name="curso" required>
+                                <option value="Diurno">Diurno</option>
+                                <option value="Nocturno">Nocturno</option>
+                                <option value="À Distância">À Distância</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Turno:*</label>
+                            <select name="turno" required>
+                                <option value="Manhã">Manhã</option>
+                                <option value="Tarde">Tarde</option>
+                                <option value="Noite">Noite</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Registar Turma e Vagas</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Atribuir / Transferir Aluno de Turma (Com Controle de Vagas)</h3>
+                <form method="POST" action="/secretary/turmas">
+                    <input type="hidden" name="acao" value="transferir_aluno">
+                    <div class="form-group">
+                        <label>Selecionar Aluno:*</label>
+                        <select name="student_id" required>
+                            {% for a in alunos %}
+                            <option value="{{ a.id }}">{{ a.code }} - {{ a.nome }} ({{ a.classe_ingresso }}ª Classe)</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Turma / Sala de Destino:*</label>
+                        <select name="nova_turma_id" required>
+                            {% for t in turmas %}
+                            <option value="{{ t.id }}">{{ t.nome }} | {{ t.sala }} ({{ t.curso }} - {{ t.turno }}) - Vagas: {{ t.vagas_disponiveis }}/{{ t.capacidade_maxima }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-secondary" style="width:100%;">Confirmar Alocação na Turma</button>
+                </form>
+
+                <hr style="margin:18px 0; border:0; border-top:1px solid #EAECF0;">
+                <h4>Importar Pauta Oficial via CSV (Delimitador ;)</h4>
+                <form method="POST" action="/secretary/pautas/importar-csv" enctype="multipart/form-data">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div class="form-group">
+                            <label>Turma:</label>
+                            <select name="turma_id" required>
+                                {% for t in turmas %}
+                                <option value="{{ t.id }}">{{ t.nome }} ({{ t.sala }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Disciplina:</label>
+                            <select name="subject_id" required>
+                                {% for d in disciplinas %}
+                                <option value="{{ d.id }}">{{ d.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <input type="file" name="ficheiro_csv" accept=".csv" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Carregar e Importar Pauta CSV</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Mapa de Turmas, Salas, Vagas e Listas Nominais</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Classe</th>
+                        <th>Turma</th>
+                        <th>Sala</th>
+                        <th>Curso / Turno</th>
+                        <th>Capacidade</th>
+                        <th>Inscritos</th>
+                        <th>Vagas Livres</th>
+                        <th>Listas & Pautas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in turmas %}
+                    <tr>
+                        <td>{{ t.classe_num }}ª Classe</td>
+                        <td><strong>{{ t.nome }}</strong></td>
+                        <td>{{ t.sala or 'Sala 01' }}</td>
+                        <td>{{ t.curso }} ({{ t.turno }})</td>
+                        <td>{{ t.capacidade_maxima }}</td>
+                        <td>{{ t.inscritos }}</td>
+                        <td>
+                            {% if t.vagas_disponiveis > 0 %}
+                                <span style="color:#027A48; font-weight:bold;">{{ t.vagas_disponiveis }} livres</span>
+                            {% else %}
+                                <span style="color:#B42318; font-weight:bold;">ESGOTADA (0)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="/secretary/lista-nominal/{{ t.id }}" target="_blank" class="btn btn-primary" style="padding:4px 8px; font-size:0.78rem;">Lista Oficial</a>
+                            <a href="/secretary/lista-nominal-doc/{{ t.id }}" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Word (.DOCX)</a>
+                            <a href="/secretary/pautas/exportar-csv/{{ t.id }}/1" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Modelo CSV</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
