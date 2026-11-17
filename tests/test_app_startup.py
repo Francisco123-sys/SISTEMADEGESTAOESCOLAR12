@@ -30,6 +30,10 @@ class AppStartupTests(unittest.TestCase):
     def test_changed_templates_compile(self):
         app_module = importlib.import_module('app')
         for template in (
+            'components/dashboard_ui.html',
+            'login.html',
+            'teacher/dashboard.html',
+            'teacher/grades.html',
             'secretary/student_form.html',
             'secretary/student_registration_payment.html',
             'secretary/students.html',
@@ -39,10 +43,55 @@ class AppStartupTests(unittest.TestCase):
             'secretary/lista_nominal.html',
             'secretary/guardians.html',
             'secretary/dashboard.html',
+            'director/dashboard.html',
+            'admin/dashboard.html',
             'director/turmas.html',
             'portal_encarregado.html',
         ):
             app_module.app.jinja_env.get_template(template)
+
+    def test_login_page_renders_two_column_profile_selector(self):
+        app_module = importlib.import_module('app')
+        app_module.app.config.update(TESTING=True)
+
+        client = app_module.app.test_client()
+        response = client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('sige-login-layout', html)
+        self.assertIn('sige-login-sidebar', html)
+        self.assertIn('sige-login-content', html)
+        self.assertIn('data-profile="guardian"', html)
+
+        css_response = client.get('/static/css/style.css?v=20261117-2')
+        self.assertEqual(css_response.status_code, 200)
+        css = css_response.get_data(as_text=True)
+        css_response.close()
+        self.assertIn('.sige-login-layout', css)
+        self.assertIn('.teacher-assignment-grid', css)
+
+    def test_shared_dashboard_header_renders_for_director_and_admin(self):
+        from flask import render_template
+
+        app_module = importlib.import_module('app')
+        with app_module.app.test_request_context('/director/dashboard'):
+            director_html = render_template(
+                'director/dashboard.html',
+                total_alunos=0,
+                total_professores=0,
+                total_turmas=0,
+                total_receita=0,
+                pedidos_eliminacao=[],
+                funcionarios=[],
+            )
+        with app_module.app.test_request_context('/admin/dashboard'):
+            admin_html = render_template('admin/dashboard.html', logs=[])
+
+        self.assertIn('sige-topbar', director_html)
+        self.assertIn('Direcção Escolar', director_html)
+        self.assertIn('sige-topbar', admin_html)
+        self.assertIn('Trilho de Auditoria', admin_html)
 
 
 if __name__ == '__main__':

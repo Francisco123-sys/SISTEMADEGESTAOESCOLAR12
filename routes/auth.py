@@ -392,7 +392,19 @@ def login():
     perfil = request.form.get('perfil')
     identificador = request.form.get('identificador', '').strip()
     password = request.form.get('password', '')
-    
+
+    role_map = {
+        'director': ['director'],
+        'pedagogico_1': ['pedagogico_1'],
+        'pedagogico_2': ['pedagogico_2'],
+        'teacher': ['teacher'],
+        'secretary': ['secretary', 'chefe_secretaria'],
+        'admin': ['admin'],
+    }
+    if perfil not in role_map:
+        flash('Seleccione um perfil de acesso válido.', 'danger')
+        return redirect(url_for('auth.login_landing'))
+
     db = get_db()
     cursor = db.cursor()
     if is_login_rate_limited(cursor, identificador):
@@ -402,17 +414,15 @@ def login():
     user = cursor.fetchone()
     
     if user and password and check_password_hash(user['password_hash'], password):
+        if user['role'] not in role_map[perfil]:
+            record_login_failure(cursor, identificador)
+            db.commit()
+            flash('Credenciais inválidas ou perfil de acesso incorrecto.', 'danger')
+            return redirect(url_for('auth.login_landing'))
+
         record_login_success(cursor, identificador)
         db.commit()
-        role_map = {
-            'director': ['director', 'admin', 'pedagogico_1', 'pedagogico_2'],
-            'teacher': ['teacher'],
-            'secretary': ['secretary', 'chefe_secretaria']
-        }
-        if perfil in role_map and user['role'] not in role_map[perfil]:
-            flash('Perfil de acesso incorreto para esta conta.', 'danger')
-            return redirect(url_for('auth.login_landing'))
-            
+
         session.clear()
         session['user_id'] = user['id']
         session['user_code'] = user['code']
@@ -421,7 +431,9 @@ def login():
         
         log_audit(user['id'], 'LOGIN', f"Utilizador {user['code']} autenticado com sucesso.")
         
-        if user['role'] in ['admin', 'director', 'pedagogico_1', 'pedagogico_2']:
+        if user['role'] == 'admin':
+            return redirect(url_for('admin.dashboard'))
+        elif user['role'] in ['director', 'pedagogico_1', 'pedagogico_2']:
             return redirect(url_for('director.dashboard'))
         elif user['role'] in ['secretary', 'chefe_secretaria']:
             return redirect(url_for('secretary.dashboard'))

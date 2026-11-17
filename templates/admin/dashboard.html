@@ -2,27 +2,28 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Administração Geral</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
 </head>
 <body>
-    <div class="navbar" style="padding: 10px 30px;">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+    {% from 'components/dashboard_ui.html' import institutional_header with context %}
+    {{ institutional_header('Administração do Sistema', url_for('admin.dashboard'),
+        user_name=session.get('user_nome'),
+        password_url=url_for('auth.change_password'),
+        logout_url=url_for('auth.logout')) }}
+    <main class="container secretary-dashboard admin-dashboard">
+        <section class="secretary-page-heading">
             <div>
-                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
-                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Administrador Geral</span></div>
+                <p class="secretary-eyebrow">Segurança e conformidade</p>
+                <h1>Administração do Sistema</h1>
+                <p>Consulte os registos de auditoria e as operações efectuadas no SIGE.</p>
             </div>
-        </div>
-        <form method="POST" action="/logout" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="nav-link" style="border:0;background:none;color:inherit;cursor:pointer;">Sair</button>
-        </form>
-    </div>
-    <div class="container">
+        </section>
         <div class="card">
-            <h3 class="card-title">Trilho de Auditoria (Logs de Segurança)</h3>
-            <table>
+            <h2 class="card-title">Trilho de Auditoria</h2>
+            <div class="secretary-table-wrap">
+            <table class="admin-audit-table">
                 <thead>
                     <tr>
                         <th>ID Log</th>
@@ -44,7 +45,8 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
-    </div>
+    </main>
 </body>
 </html>

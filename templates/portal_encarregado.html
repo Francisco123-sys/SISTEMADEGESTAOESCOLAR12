@@ -2,24 +2,22 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Escola Secundária da Manga - Portal do Encarregado</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
 </head>
 <body>
-    <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Portal do Encarregado</div>
-        {% if guardian %}
-        <form method="POST" action="/portal-encarregado" style="margin:0;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="acao" value="logout">
-            <button type="submit" class="btn btn-primary">Terminar sessão</button>
-        </form>
-        {% else %}
-        <a href="/">Voltar ao Login</a>
-        {% endif %}
-    </div>
+    {% from 'components/dashboard_ui.html' import institutional_header with context %}
+    {{ institutional_header(
+        'Portal do Encarregado',
+        url_for('auth.portal_encarregado'),
+        nav_items=[{'url': url_for('auth.login_landing'), 'label': 'Voltar ao Login'}] if not guardian else (),
+        user_name=guardian.nome if guardian else None,
+        logout_url=url_for('auth.portal_encarregado') if guardian else None,
+        logout_action='logout' if guardian else None
+    ) }}
 
-    <div class="container" style="max-width:980px;">
+    <main class="container secretary-dashboard guardian-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -103,7 +101,7 @@
             <img src="/portal-encarregado/foto/{{ aluno.foto_path }}" alt="Fotografia de {{ aluno.nome }}"
                  style="width:100px;height:120px;object-fit:cover;border-radius:6px;">
             {% endif %}
-            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:20px;">
+            <div class="guardian-student-summary">
                 <div><strong>Código / Processo:</strong> {{ aluno.code }}</div>
                 <div><strong>Classe:</strong> {{ aluno.classe_num }}ª Classe</div>
                 <div><strong>Turma / Sala:</strong> {{ aluno.turma_nome }} ({{ aluno.turma_sala or 'Sala 01' }})</div>
@@ -168,7 +166,7 @@
                 <input type="hidden" name="acao" value="reclamacao">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="student_id" value="{{ aluno.id }}">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                <div class="guardian-reclamation-contact">
                     <p><strong>Encarregado:</strong> {{ guardian.nome }}</p>
                     <p><strong>Contacto:</strong> {{ guardian.contacto or 'Não indicado' }}</p>
                 </div>
@@ -207,6 +205,6 @@
             {% endif %}
         </div>
         {% endif %}
-    </div>
+    </main>
 </body>
 </html>

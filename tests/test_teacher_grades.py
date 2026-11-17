@@ -126,6 +126,8 @@ class TeacherGradeWorkflowTests(unittest.TestCase):
         pending_html = pending.get_data(as_text=True)
         self.assertEqual(submitted.status_code, 200)
         self.assertEqual(pending.status_code, 200)
+        self.assertIn('teacher-assignment-grid', submitted_html)
+        self.assertNotIn('<table', submitted_html)
         self.assertIn('12ª A', submitted_html)
         self.assertNotIn('8ª A', submitted_html)
         self.assertIn('2 / 2', submitted_html)

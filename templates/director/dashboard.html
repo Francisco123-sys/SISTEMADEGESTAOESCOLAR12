@@ -2,29 +2,18 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Painel da Direção</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
 </head>
 <body>
-    <div class="navbar" style="padding: 10px 30px;">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
-            <div>
-                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
-                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Direção Escolar</span></div>
-            </div>
-        </div>
-        <div>
-            <span>Utilizador: {{ session.get('user_nome') }}</span>
-            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="nav-link" style="border:0;background:none;color:inherit;cursor:pointer;">Sair</button>
-            </form>
-        </div>
-    </div>
+    {% from 'components/dashboard_ui.html' import institutional_header, metric_card with context %}
+    {{ institutional_header('Direcção Escolar', url_for('director.dashboard'),
+        user_name=session.get('user_nome'),
+        password_url=url_for('auth.change_password'),
+        logout_url=url_for('auth.logout')) }}
 
-    <div class="container">
+    <main class="container secretary-dashboard director-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -33,24 +22,20 @@
           {% endif %}
         {% endwith %}
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">{{ total_alunos }}</div>
-                <div class="stat-label">Total de Alunos</div>
+        <section class="secretary-page-heading">
+            <div>
+                <p class="secretary-eyebrow">Administração escolar</p>
+                <h1>Painel da Direcção</h1>
+                <p>Indicadores institucionais, gestão de turmas e acompanhamento administrativo.</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ total_professores }}</div>
-                <div class="stat-label">Professores Ativos</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ total_turmas }}</div>
-                <div class="stat-label">Turmas Ativas</div>
-            </div>
+        </section>
+
+        <div class="stats-grid director-dashboard-stats" aria-label="Indicadores da escola">
+            {{ metric_card(total_alunos, 'Total de alunos', icon='people') }}
+            {{ metric_card(total_professores, 'Professores activos', icon='people') }}
+            {{ metric_card(total_turmas, 'Turmas activas', icon='building') }}
             {% if session.get('user_role') in ['director', 'admin'] %}
-            <div class="stat-card">
-                <div class="stat-value">{{ "%.2f"|format(total_receita) }} MZN</div>
-                <div class="stat-label">Receita Global</div>
-            </div>
+            {{ metric_card('%.2f'|format(total_receita) ~ ' MZN', 'Receita global', icon='receipt') }}
             {% endif %}
         </div>
 
@@ -58,11 +43,11 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <h3 class="card-title" style="border:none; margin:0;">Gestão da Direção</h3>
                 <div>
-                    <a href="/director/turmas" class="btn btn-primary">🏫 Gestão de Turmas e Capacidade</a>
-                    <a href="/director/assign-teacher" class="btn btn-primary">🔗 Atribuir Turma/Disciplina a Professor</a>
+                    <a href="/director/turmas" class="btn btn-primary">Gestão de Turmas e Capacidade</a>
+                    <a href="/director/assign-teacher" class="btn btn-primary">Atribuir Turma/Disciplina a Professor</a>
                     <a href="/director/new-staff" class="btn btn-success">+ Cadastrar Cargo / Funcionário</a>
                     {% if session.get('user_role') in ['director', 'chefe_secretaria', 'admin'] %}
-                    <a href="/director/rectificar-notas" class="btn btn-warning">📝 Rectificar Notas</a>
+                    <a href="/director/rectificar-notas" class="btn btn-warning">Rectificar Notas</a>
                     {% endif %}
                 </div>
             </div>
@@ -164,6 +149,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </main>
 </body>
 </html>

@@ -2,74 +2,189 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>Escola Secundária da Manga - SIGE</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        .login-wrapper { max-width: 440px; margin: 50px auto; }
-        .profile-selector { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .profile-btn { flex: 1; padding: 10px; margin: 0 4px; background: #E4E7EC; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; text-align: center; font-weight: 600; font-size: 0.85rem; }
-        .profile-btn.active { background: var(--navy-dark); color: white; border-color: var(--navy-dark); }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | Acesso institucional</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
 </head>
-<body>
-    <div class="login-wrapper">
-        <div class="card">
-            <div style="text-align:center; margin-bottom: 20px;">
-                <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:70px; height:70px; object-fit:contain;">
-                <h4 style="margin:5px 0 0 0; color:#666; font-size:0.8rem;">REPÚBLICA DE MOÇAMBIQUE</h4>
-                <h4 style="margin:0; color:#666; font-size:0.8rem;">PROVÍNCIA DE SOFALA | BEIRA</h4>
-                <h3 style="color:var(--navy-dark); margin:5px 0 0 0;">ESCOLA SECUNDÁRIA DA MANGA</h3>
-                <span style="font-size:0.8rem; color:#667085;">Sistema Integrado de Gestão Escolar (SIGE)</span>
+<body class="sige-login-page">
+    <main class="sige-login-layout">
+        <aside class="sige-login-sidebar" aria-labelledby="institution-name">
+            <a class="sige-login-identity" href="{{ url_for('auth.login_landing') }}">
+                <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                     alt="Emblema da República de Moçambique">
+                <span>REPÚBLICA DE MOÇAMBIQUE</span>
+                <span>PROVÍNCIA DE SOFALA | BEIRA</span>
+                <strong id="institution-name">ESCOLA SECUNDÁRIA DA MANGA</strong>
+                <span>Sistema Integrado de Gestão Escolar (SIGE)</span>
+            </a>
+
+            <div class="sige-login-profile-heading">
+                <h2>Seleccione o seu perfil</h2>
+                <p>Escolha o tipo de conta para apresentar o formulário de acesso.</p>
             </div>
+            <nav class="sige-profile-list" aria-label="Perfis de acesso">
+                <button class="sige-profile-option is-selected" type="button"
+                        data-profile="secretary" data-label="Secretaria"
+                        data-title="Acesso da Secretaria" aria-pressed="true">
+                    <span class="sige-profile-mark" aria-hidden="true">SE</span>
+                    <span><strong>Secretaria</strong><small>Gestão escolar e financeira</small></span>
+                </button>
+                <button class="sige-profile-option" type="button"
+                        data-profile="director" data-label="Director"
+                        data-title="Acesso do Director" aria-pressed="false">
+                    <span class="sige-profile-mark" aria-hidden="true">DI</span>
+                    <span><strong>Director</strong><small>Direcção e gestão da escola</small></span>
+                </button>
+                <button class="sige-profile-option" type="button"
+                        data-profile="pedagogico_1" data-label="Direcção Pedagógica I"
+                        data-title="Acesso da Direcção Pedagógica I" aria-pressed="false">
+                    <span class="sige-profile-mark" aria-hidden="true">P1</span>
+                    <span><strong>Direcção Pedagógica I</strong><small>Perfil pedagógico autorizado</small></span>
+                </button>
+                <button class="sige-profile-option" type="button"
+                        data-profile="pedagogico_2" data-label="Direcção Pedagógica II"
+                        data-title="Acesso da Direcção Pedagógica II" aria-pressed="false">
+                    <span class="sige-profile-mark" aria-hidden="true">P2</span>
+                    <span><strong>Direcção Pedagógica II</strong><small>Perfil pedagógico autorizado</small></span>
+                </button>
+                <button class="sige-profile-option" type="button"
+                        data-profile="teacher" data-label="Professor"
+                        data-title="Acesso do Professor" aria-pressed="false">
+                    <span class="sige-profile-mark" aria-hidden="true">PR</span>
+                    <span><strong>Professor</strong><small>Área pedagógica e avaliações</small></span>
+                </button>
+                <button class="sige-profile-option" type="button"
+                        data-profile="admin" data-label="Administrador do Sistema"
+                        data-title="Acesso do Administrador do Sistema" aria-pressed="false">
+                    <span class="sige-profile-mark" aria-hidden="true">AD</span>
+                    <span><strong>Administrador do Sistema</strong><small>Administração e auditoria</small></span>
+                </button>
+                <a class="sige-profile-option" href="{{ url_for('auth.portal_encarregado') }}"
+                   data-profile="guardian" data-label="Encarregado de Educação"
+                   data-title="Acesso do Encarregado de Educação"
+                   aria-label="Acesso do Encarregado de Educação">
+                    <span class="sige-profile-mark" aria-hidden="true">EE</span>
+                    <span><strong>Encarregado de Educação</strong><small>Acompanhamento dos educandos</small></span>
+                </a>
+            </nav>
+            <p class="sige-login-sidebar-footer">Acesso reservado a utilizadores autorizados.</p>
+        </aside>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
-                  <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
+        <section class="sige-login-content" aria-labelledby="login-title">
+            <div class="sige-login-panel">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                    <div class="sige-login-messages" aria-live="polite">
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                {% endwith %}
 
-            <label>Selecione o seu perfil de acesso:</label>
-            <div class="profile-selector">
-                <div class="profile-btn active" onclick="selectProfile('secretary', this)">Secretaria</div>
-                <div class="profile-btn" onclick="selectProfile('teacher', this)">Professor</div>
-                <div class="profile-btn" onclick="selectProfile('director', this)">Direção</div>
+                <div class="sige-login-panel-heading">
+                    <p class="sige-login-eyebrow">Portal institucional</p>
+                    <h1 id="login-title">Acesso da Secretaria</h1>
+                    <p id="login-description">Introduza as suas credenciais institucionais para continuar.</p>
+                </div>
+
+                <form id="profile-login-form" action="{{ url_for('auth.login') }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input id="selected-profile" type="hidden" name="perfil" value="secretary">
+                    <input id="guardian-action" type="hidden" name="acao" value="login" disabled>
+
+                    <div id="staff-identifier-field" class="form-group">
+                        <label for="identificador">Código de utilizador ou e-mail</label>
+                        <input id="identificador" type="text" name="identificador"
+                               autocomplete="username" placeholder="Introduza o código ou e-mail"
+                               required>
+                    </div>
+                    <div id="guardian-identifier-field" class="form-group" hidden>
+                        <label for="guardian-email">E-mail</label>
+                        <input id="guardian-email" type="email" name="email"
+                               autocomplete="username" placeholder="Introduza o e-mail associado à conta"
+                               disabled required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Palavra-passe</label>
+                        <input id="login-password" type="password" name="password"
+                               autocomplete="current-password" required>
+                    </div>
+
+                    <label class="sige-show-password">
+                        <input id="show-password" type="checkbox">
+                        <span>Mostrar palavra-passe</span>
+                    </label>
+                    <button id="login-submit" class="btn btn-primary sige-login-submit" type="submit">
+                        Entrar como Secretaria
+                    </button>
+                </form>
+
+                <p id="guardian-recovery-link" class="sige-login-recovery" hidden>
+                    <a href="{{ url_for('auth.guardian_password_recovery') }}">Esqueci-me da palavra-passe</a>
+                </p>
+                <div class="sige-login-footer">
+                    <span>Escola Secundária da Manga</span>
+                    <span>Beira · Sofala</span>
+                </div>
             </div>
+        </section>
+    </main>
 
-            <form action="/login" method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="perfil" id="perfil_input" value="secretary">
-                <div class="form-group">
-                    <label>Código / Email de Acesso:</label>
-                    <input type="text" name="identificador" placeholder="Ex: SEC-000001 ou email" required>
-                </div>
-                <div class="form-group">
-                    <label>Palavra-passe:</label>
-                    <input type="password" name="password" id="password_input" required>
-                </div>
-                <div style="margin-bottom:15px; font-size:0.85rem;">
-                    <input type="checkbox" onclick="togglePassword()"> Mostrar palavra-passe
-                </div>
-                <button type="submit" class="btn btn-primary" style="width:100%;">Entrar no Sistema</button>
-            </form>
-
-            <hr style="border:0; border-top:1px solid #EEE; margin:20px 0;">
-            <div style="text-align:center;">
-                <a href="/portal-encarregado" style="color:var(--navy-brand); font-weight:600; text-decoration:none;">👨‍👩‍👧 Área do Encarregado de Educação (Acompanhar Filho)</a>
-            </div>
-        </div>
-    </div>
     <script>
-        function selectProfile(perfil, elem) {
-            document.querySelectorAll('.profile-btn').forEach(b => b.classList.remove('active'));
-            elem.classList.add('active');
-            document.getElementById('perfil_input').value = perfil;
+        const profileForm = document.getElementById('profile-login-form');
+        const profileButtons = document.querySelectorAll('[data-profile]');
+        const profileInput = document.getElementById('selected-profile');
+        const staffField = document.getElementById('staff-identifier-field');
+        const guardianField = document.getElementById('guardian-identifier-field');
+        const staffIdentifier = document.getElementById('identificador');
+        const guardianEmail = document.getElementById('guardian-email');
+        const guardianAction = document.getElementById('guardian-action');
+        const passwordInput = document.getElementById('login-password');
+        const loginTitle = document.getElementById('login-title');
+        const loginDescription = document.getElementById('login-description');
+        const loginSubmit = document.getElementById('login-submit');
+        const guardianRecovery = document.getElementById('guardian-recovery-link');
+
+        function selectProfile(profile, label, element) {
+            profileButtons.forEach((option) => {
+                option.classList.remove('is-selected');
+                option.setAttribute('aria-pressed', 'false');
+            });
+            element.classList.add('is-selected');
+            element.setAttribute('aria-pressed', 'true');
+            profileInput.value = profile;
+            loginTitle.textContent = element.dataset.title;
+            loginDescription.textContent = profile === 'guardian'
+                ? 'Aceda apenas aos educandos associados à sua conta.'
+                : 'Introduza as suas credenciais institucionais para continuar.';
+            loginSubmit.textContent = `Entrar como ${label}`;
+
+            const isGuardian = profile === 'guardian';
+            profileForm.action = isGuardian
+                ? '{{ url_for("auth.portal_encarregado") }}'
+                : '{{ url_for("auth.login") }}';
+            staffField.hidden = isGuardian;
+            staffIdentifier.disabled = isGuardian;
+            staffIdentifier.required = !isGuardian;
+            guardianField.hidden = !isGuardian;
+            guardianEmail.disabled = !isGuardian;
+            guardianEmail.required = isGuardian;
+            guardianAction.disabled = !isGuardian;
+            guardianRecovery.hidden = !isGuardian;
+            (isGuardian ? guardianEmail : staffIdentifier).focus();
         }
-        function togglePassword() {
-            var x = document.getElementById("password_input");
-            x.type = x.type === "password" ? "text" : "password";
-        }
+
+        profileButtons.forEach((element) => {
+            element.addEventListener('click', (event) => {
+                if (element.tagName === 'A') event.preventDefault();
+                selectProfile(element.dataset.profile, element.dataset.label, element);
+            });
+        });
+
+        document.getElementById('show-password').addEventListener('change', (event) => {
+            passwordInput.type = event.target.checked ? 'text' : 'password';
+        });
     </script>
 </body>
 </html>

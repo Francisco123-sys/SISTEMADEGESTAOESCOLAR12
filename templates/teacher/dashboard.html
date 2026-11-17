@@ -4,28 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE | Painel do Professor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
 </head>
 <body>
-    <header class="navbar secretary-navbar teacher-navbar">
-        <div class="secretary-brand">
-            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
-                 alt="Emblema da República de Moçambique">
-            <div>
-                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
-                <div class="brand">Escola Secundária da Manga</div>
-                <div class="secretary-brand-section">Painel do Professor</div>
-            </div>
-        </div>
-        <div class="secretary-user-nav">
-            <span>Professor: {{ session.get('user_nome') }}</span>
-            <a href="{{ url_for('auth.change_password') }}">Trocar palavra-passe</a>
-            <form method="POST" action="{{ url_for('auth.logout') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit">Sair</button>
-            </form>
-        </div>
-    </header>
+    {% from 'components/dashboard_ui.html' import institutional_header with context %}
+    {{ institutional_header('Painel do Professor', url_for('teacher.dashboard'),
+        user_name=session.get('user_nome'),
+        password_url=url_for('auth.change_password'),
+        logout_url=url_for('auth.logout')) }}
 
     <main class="container secretary-dashboard teacher-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}
