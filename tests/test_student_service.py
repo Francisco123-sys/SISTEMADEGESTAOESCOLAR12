@@ -22,7 +22,7 @@ class AutomaticClassAssignmentTests(unittest.TestCase):
                 vagas_disponiveis INTEGER NOT NULL,
                 area_curricular TEXT
             );
-            INSERT INTO classes (id, numero) VALUES (8, 8), (10, 10);
+            INSERT INTO classes (id, numero) VALUES (8, 8), (10, 10), (11, 11), (12, 12);
         ''')
 
     def tearDown(self):
@@ -80,6 +80,28 @@ class AutomaticClassAssignmentTests(unittest.TestCase):
         self.assertEqual(turma['area_curricular'], 'B')
         self.assertEqual(turma['capacidade_maxima'], 32)
         self.assertEqual(turma['vagas_disponiveis'], 31)
+
+    def test_areas_a_b_and_c_are_separate_for_classes_10_to_12(self):
+        cursor = self.db.cursor()
+        for class_number in (10, 11, 12):
+            for area in ('A', 'B', 'C'):
+                turma_id = atribuir_turma_automatica(
+                    self.db,
+                    class_number,
+                    1,
+                    'Manhã',
+                    area_curricular=area,
+                    capacidade_padrao=24,
+                )
+                cursor.execute('''
+                    SELECT nome, area_curricular, capacidade_maxima, vagas_disponiveis
+                    FROM turmas WHERE id = ?
+                ''', (turma_id,))
+                turma = cursor.fetchone()
+                self.assertEqual(turma['nome'], f'{class_number}ª {area}01')
+                self.assertEqual(turma['area_curricular'], area)
+                self.assertEqual(turma['capacidade_maxima'], 24)
+                self.assertEqual(turma['vagas_disponiveis'], 23)
 
     def test_rejects_night_mode_and_missing_second_cycle_area(self):
         with self.assertRaises(ValueError):

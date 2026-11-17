@@ -1,6 +1,8 @@
 import csv
 from html import escape
+import math
 import re
+from decimal import Decimal, InvalidOperation
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from services.db import get_db, log_audit, DB_INTEGRITY_ERRORS
 from services.student_service import (
@@ -35,12 +37,41 @@ from reportlab.platypus import (
 secretary_bp = Blueprint('secretary', __name__, url_prefix='/secretary')
 
 BANCOS_PERMITIDOS = ['Banco BCI', 'Millennium BIM', 'Standard Bank', 'M-Pesa', 'e-Mola']
+MESES_PAGAMENTO = {
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+}
 
 def check_secretary():
     return session.get('user_role') in ['secretary', 'chefe_secretaria', 'admin']
 
 def validar_referencia_9_digitos(ref):
-    return ref.isdigit() and len(ref) == 9
+    return bool(re.fullmatch(r'[0-9]{9}', ref))
+
+
+def _valid_payment_amount(value):
+    try:
+        amount = Decimal(value)
+    except (InvalidOperation, TypeError):
+        return None
+    if not amount.is_finite() or amount <= 0:
+        return None
+    converted = float(amount)
+    return converted if math.isfinite(converted) else None
+
+
+def _valid_deposit_date(value):
+    try:
+        deposit_date = datetime.strptime(value, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return False
+    return deposit_date <= datetime.now().date()
+
+
+def _valid_payment_period(value):
+    return value in MESES_PAGAMENTO or bool(
+        re.fullmatch(r'Matrícula / Inscrição \d{4}', value)
+    )
 
 
 @secretary_bp.route('/dashboard')
@@ -524,13 +555,18 @@ def student_registration_payment():
         if not validar_referencia_9_digitos(referencia):
             flash('ERRO: A referência do talão deve conter EXATAMENTE 9 dígitos numéricos (ex: 123456789). O aluno não foi registado.', 'danger')
             return redirect(url_for('secretary.student_registration_payment'))
+
+        if not _valid_payment_period(mes_pago):
+            flash('ERRO: Seleccione um período de pagamento válido.', 'danger')
+            return redirect(url_for('secretary.student_registration_payment'))
             
-        if not valor_pago or float(valor_pago) <= 0:
+        valor_validado = _valid_payment_amount(valor_pago)
+        if valor_validado is None:
             flash('ERRO: O valor do pagamento deve ser maior que zero. Sem pagamento válido, o sistema não regista o aluno.', 'danger')
             return redirect(url_for('secretary.student_registration_payment'))
             
-        if not data_deposito:
-            flash('ERRO: Informe a data em que o depósito foi efectuado.', 'danger')
+        if not _valid_deposit_date(data_deposito):
+            flash('ERRO: Informe uma data de depósito válida, que não seja futura.', 'danger')
             return redirect(url_for('secretary.student_registration_payment'))
             
         db = get_db()
@@ -544,7 +580,7 @@ def student_registration_payment():
         dados_pagamento = {
             'banco': banco,
             'referencia': referencia,
-            'valor_pago': float(valor_pago),
+            'valor_pago': valor_validado,
             'data_deposito': data_deposito,
             'mes_pago': mes_pago
         }
@@ -977,12 +1013,25 @@ def payment_form():
     cursor = db.cursor()
     
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
-        mes_pago = request.form.get('mes_pago')
-        valor = float(request.form.get('valor_pago'))
+        student_id = request.form.get('student_id', '').strip()
+        mes_pago = request.form.get('mes_pago', '').strip()
+        valor = _valid_payment_amount(request.form.get('valor_pago', ''))
         banco = request.form.get('banco_plataforma', '').strip()
         referencia = request.form.get('referencia_talao', '').strip()
         data_deposito = request.form.get('data_deposito', '').strip()
+
+        try:
+            student_id = int(student_id)
+        except ValueError:
+            student_id = None
+        if (
+            student_id is None
+            or valor is None
+            or not _valid_payment_period(mes_pago)
+            or not _valid_deposit_date(data_deposito)
+        ):
+            flash('ERRO: Informe aluno, período, valor positivo e data de depósito válida.', 'danger')
+            return redirect(url_for('secretary.payment_form'))
         
         if banco not in BANCOS_PERMITIDOS:
             flash('ERRO: Selecione um banco ou carteira móvel válida (Banco BCI, Millennium BIM, Standard Bank, M-Pesa ou e-Mola).', 'danger')
@@ -992,8 +1041,14 @@ def payment_form():
             flash('ERRO: A referência do talão deve conter EXATAMENTE 9 dígitos numéricos.', 'danger')
             return redirect(url_for('secretary.payment_form'))
             
-        if not data_deposito:
-            flash('ERRO: Preencha a data em que o depósito foi efectuado.', 'danger')
+        cursor.execute(
+            '''SELECT id, ano_lectivo_id FROM students
+               WHERE id = ? AND COALESCE(isento_taxa, 0) = 0''',
+            (student_id,),
+        )
+        student = cursor.fetchone()
+        if not student:
+            flash('ERRO: O aluno seleccionado não existe ou está isento de pagamento.', 'danger')
             return redirect(url_for('secretary.payment_form'))
         
         cursor.execute('SELECT p.*, s.nome as aluno_nome FROM payments p JOIN students s ON p.student_id = s.id WHERE referencia_talao = ?', (referencia,))
@@ -1008,9 +1063,17 @@ def payment_form():
         
         try:
             cursor.execute('''
-                INSERT INTO payments (receipt_number, student_id, mes_pago, ano_lectivo_id, valor_pago, banco_plataforma, referencia_talao, data_deposito, data_registo, funcionario_id)
-                VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
-            ''', (recibo_num, student_id, mes_pago, valor, banco, referencia, data_deposito, data_registo, session['user_id']))
+                INSERT INTO payments (
+                    receipt_number, student_id, mes_pago, ano_lectivo_id,
+                    valor_pago, banco_plataforma, referencia_talao,
+                    data_deposito, data_registo, funcionario_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                recibo_num, student_id, mes_pago, student['ano_lectivo_id'],
+                valor, banco, referencia, data_deposito, data_registo,
+                session['user_id'],
+            ))
             db.commit()
             
             payment_id = cursor.lastrowid
@@ -1033,12 +1096,21 @@ def payment_edit(payment_id):
     db = get_db()
     cursor = db.cursor()
     if request.method == 'POST':
-        mes_pago = request.form.get('mes_pago')
-        valor_pago = float(request.form.get('valor_pago'))
-        banco = request.form.get('banco_plataforma')
-        referencia = request.form.get('referencia_talao').strip()
-        data_deposito = request.form.get('data_deposito')
+        mes_pago = request.form.get('mes_pago', '').strip()
+        valor_pago = _valid_payment_amount(request.form.get('valor_pago', ''))
+        banco = request.form.get('banco_plataforma', '').strip()
+        referencia = request.form.get('referencia_talao', '').strip()
+        data_deposito = request.form.get('data_deposito', '').strip()
         
+        if (
+            not _valid_payment_period(mes_pago)
+            or valor_pago is None
+            or banco not in BANCOS_PERMITIDOS
+            or not _valid_deposit_date(data_deposito)
+        ):
+            flash('ERRO: Informe período, valor, banco e data de depósito válidos.', 'danger')
+            return redirect(url_for('secretary.payment_edit', payment_id=payment_id))
+
         if not validar_referencia_9_digitos(referencia):
             flash('ERRO: A referência deve ter exatamente 9 dígitos numéricos.', 'danger')
             return redirect(url_for('secretary.payment_edit', payment_id=payment_id))
@@ -1078,6 +1150,8 @@ def receipt_view(payment_id):
         WHERE p.id = ?
     ''', (payment_id,))
     recibo = cursor.fetchone()
+    if not recibo:
+        return '', 404
     return render_template('secretary/receipt.html', recibo=recibo)
 
 # GERAR LISTA DE ESTUDANTES POR CLASSE E TURMA EM FORMATO WORD (.DOC / .DOCX)

@@ -34,6 +34,12 @@ class GuardianPortalTests(unittest.TestCase):
                 principal INTEGER DEFAULT 0,
                 PRIMARY KEY (guardian_id, student_id)
             );
+            CREATE TABLE auth_rate_limits (
+                bucket_hash TEXT PRIMARY KEY,
+                failures INTEGER NOT NULL,
+                window_started_at REAL NOT NULL,
+                blocked_until REAL NOT NULL DEFAULT 0
+            );
             CREATE TABLE students (
                 id INTEGER PRIMARY KEY,
                 nome TEXT,

@@ -193,6 +193,23 @@ def init_db():
             ALTER TABLE guardians ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0
         ''')
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardian_password_resets (
+                token_hash TEXT PRIMARY KEY,
+                guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+                expires_at DOUBLE PRECISION NOT NULL,
+                used_at DOUBLE PRECISION,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auth_rate_limits (
+                bucket_hash TEXT PRIMARY KEY,
+                failures INTEGER NOT NULL,
+                window_started_at DOUBLE PRECISION NOT NULL,
+                blocked_until DOUBLE PRECISION NOT NULL DEFAULT 0
+            )
+        ''')
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS guardian_students (
                 guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
                 student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -301,6 +318,23 @@ def init_db():
             cursor.execute('''
                 ALTER TABLE guardians ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0
             ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardian_password_resets (
+                token_hash TEXT PRIMARY KEY,
+                guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+                expires_at REAL NOT NULL,
+                used_at REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auth_rate_limits (
+                bucket_hash TEXT PRIMARY KEY,
+                failures INTEGER NOT NULL,
+                window_started_at REAL NOT NULL,
+                blocked_until REAL NOT NULL DEFAULT 0
+            )
+        ''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS guardian_students (
                 guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,

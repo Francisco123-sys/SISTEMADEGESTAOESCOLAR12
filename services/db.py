@@ -43,7 +43,12 @@ def _adapt_sql_for_postgres(sql):
     return adapted
 
 
-TABLES_WITHOUT_ID = {'guardian_students', 'code_counters'}
+TABLES_WITHOUT_ID = {
+    'auth_rate_limits',
+    'code_counters',
+    'guardian_password_resets',
+    'guardian_students',
+}
 
 
 class PgCursorWrapper:

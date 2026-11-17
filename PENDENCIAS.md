@@ -1,5 +1,4 @@
 # Pendências
 
-- Adicionar limitação de tentativas e monitorização de autenticação.
-- Configurar SMTP e implementar recuperação autónoma de palavra-passe por e-mail; até lá, a redefinição é assistida pela Secretaria.
-- Executar regressão funcional das áreas académicas e de pagamentos com dados de teste representativos.
+- Configurar e testar SMTP com as credenciais e certificados do ambiente de deploy; a recuperação por e-mail fica indisponível até essa configuração.
+- Considerar CAPTCHA adaptativo e alertas de monitorização para tentativas suspeitas se o ambiente de produção justificar esse controlo adicional.

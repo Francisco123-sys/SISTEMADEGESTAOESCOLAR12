@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 from urllib.parse import unquote, urlparse
 
 os.environ.setdefault('SECRET_KEY', 'postgres-integration-test-only')
@@ -68,7 +69,9 @@ class PostgreSQLGuardianIntegrationTests(unittest.TestCase):
         cls.connection.autocommit = False
         cls.suffix = os.urandom(8).hex()
         cls.guardian_email = f'pg-{cls.suffix}@example.test'
+        cls.reset_email = f'reset-pg-{cls.suffix}@example.test'
         cls.secretary_code = f'SEC-PG-{cls.suffix}'
+        cls.teacher_code = f'TEA-PG-{cls.suffix}'
         cls.student_code = f'ALU-PG-{cls.suffix}'
         cls.unrelated_student_code = f'ALU-PG-OTHER-{cls.suffix}'
         cls.bi = f'BI-PG-{cls.suffix}'
@@ -100,6 +103,53 @@ class PostgreSQLGuardianIntegrationTests(unittest.TestCase):
             RETURNING id
         ''', (f'Turma de Destino PG {cls.suffix}',))
         cls.destination_group_id = cursor.fetchone()[0]
+        cursor.execute('''
+            INSERT INTO turmas (
+                nome, classe_id, ano_lectivo_id, turno, curso,
+                capacidade_maxima, vagas_disponiveis, area_curricular
+            )
+            VALUES (%s, 12, 1, 'Manhã', 'Diurno', 10, 10, 'A')
+            RETURNING id
+        ''', (f'Turma de Avaliação PG {cls.suffix}',))
+        cls.grade_group_id = cursor.fetchone()[0]
+        cursor.execute('''
+            INSERT INTO users (code, nome, email, password_hash, role)
+            VALUES (%s, 'Professor de Teste PG', %s, 'unused', 'teacher')
+            RETURNING id
+        ''', (cls.teacher_code, f'teacher-{cls.suffix}@example.test'))
+        cls.teacher_id = cursor.fetchone()[0]
+        cursor.execute('''
+            INSERT INTO subjects (nome, codigo)
+            VALUES (%s, %s)
+            RETURNING id
+        ''', (f'Matemática PG {cls.suffix}', f'MAT{cls.suffix.upper()}'))
+        cls.subject_id = cursor.fetchone()[0]
+        cursor.execute('''
+            INSERT INTO students (
+                code, nome, bi_cedula, data_nascimento,
+                encarregado_contacto_1, classe_ingresso, turma_id,
+                ano_lectivo_id, turno, curso, data_matricula, funcionario_id
+            )
+            VALUES (%s, 'Aluno de Avaliação PostgreSQL', %s, '2008-01-01',
+                    '840000000', 12, %s, 1, 'Manhã', 'Diurno', '2026-01-01', %s)
+            RETURNING id
+        ''', (
+            f'ALU-PG-GRADE-{cls.suffix}',
+            f'BI-PG-GRADE-{cls.suffix}',
+            cls.grade_group_id,
+            cls.secretary_id,
+        ))
+        cls.grade_student_id = cursor.fetchone()[0]
+        cursor.execute('''
+            INSERT INTO teacher_assignments (teacher_id, turma_id, subject_id)
+            VALUES (%s, %s, %s)
+        ''', (cls.teacher_id, cls.grade_group_id, cls.subject_id))
+        cursor.execute('''
+            INSERT INTO guardians (
+                nome, email, password_hash, contacto, ativo, session_version
+            )
+            VALUES (%s, %s, 'unused', '840000000', 1, 0)
+        ''', ('Encarregado de Recuperação PG', cls.reset_email))
         for code, bi, name in (
             (cls.student_code, cls.bi, 'Aluno Associado PostgreSQL'),
             (
@@ -129,21 +179,47 @@ class PostgreSQLGuardianIntegrationTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cursor = cls.connection.cursor()
-        cursor.execute('DELETE FROM audit_logs WHERE user_id = %s', (cls.secretary_id,))
+        cursor.execute(
+            'DELETE FROM audit_logs WHERE user_id IN (%s, %s)',
+            (cls.secretary_id, cls.teacher_id),
+        )
+        cursor.execute(
+            'DELETE FROM grades WHERE turma_id = %s',
+            (cls.grade_group_id,),
+        )
+        cursor.execute(
+            'DELETE FROM teacher_assignments WHERE turma_id = %s',
+            (cls.grade_group_id,),
+        )
+        cursor.execute(
+            'DELETE FROM payments WHERE student_id = %s',
+            (cls.student_id,),
+        )
         cursor.execute(
             'DELETE FROM code_counters WHERE counter_key = %s',
             (f'users:{cls.counter_prefix}',),
         )
         cursor.execute('DELETE FROM guardians WHERE email = %s', (cls.guardian_email,))
         cursor.execute(
-            'DELETE FROM students WHERE id IN (%s, %s)',
-            (cls.student_id, cls.unrelated_student_id),
+            'DELETE FROM students WHERE id IN (%s, %s, %s)',
+            (cls.student_id, cls.unrelated_student_id, cls.grade_student_id),
         )
         cursor.execute(
-            'DELETE FROM turmas WHERE id IN (%s, %s)',
-            (cls.class_group_id, cls.destination_group_id),
+            'DELETE FROM turmas WHERE id IN (%s, %s, %s)',
+            (cls.class_group_id, cls.destination_group_id, cls.grade_group_id),
         )
-        cursor.execute('DELETE FROM users WHERE id = %s', (cls.secretary_id,))
+        cursor.execute(
+            'DELETE FROM subjects WHERE id = %s',
+            (cls.subject_id,),
+        )
+        cursor.execute(
+            'DELETE FROM users WHERE id IN (%s, %s)',
+            (cls.secretary_id, cls.teacher_id),
+        )
+        cursor.execute(
+            'DELETE FROM guardians WHERE email = %s',
+            (cls.reset_email,),
+        )
         cls.connection.commit()
         cls.connection.close()
         if cls._old_database_url is None:
@@ -264,6 +340,128 @@ class PostgreSQLGuardianIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, 'application/pdf')
         self.assertTrue(response.data.startswith(b'%PDF-'))
+
+    def test_password_recovery_uses_single_use_token_on_postgresql(self):
+        client = app.test_client()
+        client.get('/portal-encarregado/recuperar')
+        with client.session_transaction() as browser_session:
+            csrf_token = browser_session['_csrf_token']
+        with (
+            patch.dict(os.environ, {
+                'APP_BASE_URL': 'https://school.example.test',
+                'SMTP_HOST': 'smtp.example.test',
+                'SMTP_FROM': 'school@example.test',
+            }),
+            patch('routes.auth.send_password_reset_email') as send_email,
+        ):
+            response = client.post('/portal-encarregado/recuperar', data={
+                'csrf_token': csrf_token,
+                'email': self.reset_email,
+            })
+            self.assertEqual(response.status_code, 302)
+            reset_path = urlparse(send_email.call_args.args[1]).path
+            reset_form = client.get(reset_path)
+            self.assertEqual(reset_form.status_code, 200)
+            with client.session_transaction() as browser_session:
+                csrf_token = browser_session['_csrf_token']
+            changed = client.post(reset_path, data={
+                'csrf_token': csrf_token,
+                'new_password': 'replacement-postgres-password',
+                'confirm_password': 'replacement-postgres-password',
+            })
+            reused = client.get(reset_path)
+
+        self.assertEqual(changed.status_code, 302)
+        self.assertEqual(reused.status_code, 302)
+        cursor = self.connection.cursor()
+        cursor.execute(
+            'SELECT session_version FROM guardians WHERE email = %s',
+            (self.reset_email,),
+        )
+        self.assertEqual(cursor.fetchone()[0], 1)
+
+    def test_login_throttle_persists_in_postgresql(self):
+        client = app.test_client()
+        remote = {'REMOTE_ADDR': f'2001:db8::{self.suffix}'}
+        client.get('/portal-encarregado', environ_overrides=remote)
+        with client.session_transaction() as browser_session:
+            csrf_token = browser_session['_csrf_token']
+        for _ in range(5):
+            response = client.post(
+                '/portal-encarregado',
+                environ_overrides=remote,
+                data={
+                    'csrf_token': csrf_token,
+                    'acao': 'login',
+                    'email': f'unknown-{self.suffix}@example.test',
+                    'password': 'invalid-password',
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+        with app.test_request_context('/', environ_overrides=remote):
+            from services.auth_security import is_login_rate_limited
+            from services.db import get_db
+
+            blocked = is_login_rate_limited(
+                get_db().cursor(),
+                f'unknown-{self.suffix}@example.test',
+            )
+        self.assertTrue(blocked)
+
+    def test_assigned_teacher_submits_grades_on_postgresql(self):
+        client = app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session['user_role'] = 'teacher'
+            browser_session['user_id'] = self.teacher_id
+            browser_session['user_nome'] = 'Professor de Teste PG'
+        client.get(f'/teacher/grades/{self.grade_group_id}/{self.subject_id}')
+        with client.session_transaction() as browser_session:
+            csrf_token = browser_session['_csrf_token']
+        response = client.post(
+            f'/teacher/grades/{self.grade_group_id}/{self.subject_id}',
+            data={
+                'csrf_token': csrf_token,
+                'student_id': str(self.grade_student_id),
+                f'av1_{self.grade_student_id}': '10',
+                f'av2_{self.grade_student_id}': '12',
+                f'av3_{self.grade_student_id}': '14',
+                f'av4_{self.grade_student_id}': '16',
+                f'exame_{self.grade_student_id}': '15',
+                f'fj_{self.grade_student_id}': '1',
+                f'fnj_{self.grade_student_id}': '2',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        cursor = self.connection.cursor()
+        cursor.execute(
+            'SELECT media_trimestral, media_final, status FROM grades WHERE student_id = %s',
+            (self.grade_student_id,),
+        )
+        self.assertEqual(cursor.fetchone(), (13.0, 13.8, 'Submetida'))
+
+    def test_payment_and_receipt_generation_on_postgresql(self):
+        client = app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session['user_role'] = 'secretary'
+            browser_session['user_id'] = self.secretary_id
+        client.get('/secretary/payments/new')
+        with client.session_transaction() as browser_session:
+            csrf_token = browser_session['_csrf_token']
+        with patch('routes.secretary.log_audit'):
+            response = client.post('/secretary/payments/new', data={
+                'csrf_token': csrf_token,
+                'student_id': str(self.student_id),
+                'mes_pago': 'Abril',
+                'valor_pago': '500.50',
+                'banco_plataforma': 'Banco BCI',
+                'referencia_talao': f'{int(self.suffix[:8], 16) % 100000000:08d}1',
+                'data_deposito': '2026-01-10',
+            })
+            self.assertEqual(response.status_code, 302)
+            receipt = client.get(response.headers['Location'])
+
+        self.assertEqual(receipt.status_code, 200)
+        self.assertIn(b'500.50', receipt.data)
 
 
 if __name__ == '__main__':

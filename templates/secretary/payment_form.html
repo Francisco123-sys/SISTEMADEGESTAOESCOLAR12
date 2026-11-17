@@ -61,7 +61,7 @@
                     <input type="text" name="referencia_talao" id="referencia_talao" pattern="\d{9}" maxlength="9" minlength="9" required placeholder="Ex: 123456789" title="A referência deve conter exatamente 9 dígitos numéricos">
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                <div class="payment-field-grid">
                     <div class="form-group">
                         <label>Mês / Período Pago:*</label>
                         <select name="mes_pago">
@@ -83,7 +83,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                <div class="payment-field-grid">
                     <div class="form-group">
                         <label>Data em que o Depósito foi Efectuado:*</label>
                         <input type="date" name="data_deposito" id="data_deposito" max="{{ hoje }}" required>

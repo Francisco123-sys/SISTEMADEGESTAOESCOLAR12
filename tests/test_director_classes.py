@@ -35,12 +35,15 @@ class DirectorClassManagementTests(unittest.TestCase):
             );
             CREATE TABLE students (id INTEGER PRIMARY KEY, turma_id INTEGER);
             INSERT INTO academic_years VALUES (1, 2026, 1);
-            INSERT INTO classes VALUES (8, 8);
+            INSERT INTO classes VALUES (8, 8), (10, 10);
             INSERT INTO users VALUES (9, 'Professor de Teste', 'teacher', 1);
             INSERT INTO turmas VALUES
                 (1, '8ª A', 'Sala 01', 'Manhã', 'Diurno', 35, 33, NULL, NULL, 8, 1),
                 (2, '8ª B', 'Sala 02', 'Tarde', 'Diurno', 30, 30, NULL, NULL, 8, 1),
-                (3, '8ª C', 'Sala 03', 'Manhã', 'À Distância', 25, 25, NULL, NULL, 8, 1);
+                (3, '8ª C', 'Sala 03', 'Manhã', 'À Distância', 25, 25, NULL, NULL, 8, 1),
+                (4, '10ª A01', 'Sala 04', 'Manhã', 'Diurno', 30, 29, 'A', NULL, 10, 1),
+                (5, '10ª B01', 'Sala 05', 'Tarde', 'Diurno', 30, 30, 'B', NULL, 10, 1),
+                (6, '10ª C01', 'Sala 06', 'Manhã', 'Diurno', 30, 0, 'C', NULL, 10, 1);
             INSERT INTO students VALUES (1, 1), (2, 1);
         ''')
         with self.client.session_transaction() as browser_session:
@@ -68,6 +71,16 @@ class DirectorClassManagementTests(unittest.TestCase):
         self.assertIn(b'8\xc2\xaa B', response.data)
         self.assertNotIn(b'8\xc2\xaa A', response.data)
         self.assertIn(b'>30<', response.data)
+
+    def test_dashboard_filters_by_area_and_available_capacity(self):
+        with patch('routes.director.get_db', return_value=self.db):
+            response = self.client.get('/director/turmas?classe=10&area=C&estado=com_vagas')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'10\xc2\xaa C01', response.data)
+        self.assertNotIn(b'10\xc2\xaa A01', response.data)
+        self.assertNotIn(b'10\xc2\xaa B01', response.data)
+        self.assertIn(b'>1<', response.data)
 
     def test_capacity_cannot_be_lowered_below_enrollment(self):
         with patch('routes.director.get_db', return_value=self.db):

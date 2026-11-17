@@ -27,13 +27,21 @@ def calcular_classe_sugerida(data_nascimento):
         return 1
 
 def gerar_codigo_unico(prefixo, tabela):
-    allowed_tables = {'students', 'payments', 'users'}
-    if tabela not in allowed_tables or not re.fullmatch(r'[A-Z0-9]+', prefixo):
+    code_columns = {
+        'students': 'code',
+        'payments': 'receipt_number',
+        'users': 'code',
+    }
+    if tabela not in code_columns or not re.fullmatch(r'[A-Z0-9]+', prefixo):
         raise ValueError('Tabela ou prefixo de código inválido.')
 
     db = get_db()
     cursor = db.cursor()
-    cursor.execute(f'SELECT code FROM {tabela} WHERE code LIKE ?', (f'{prefixo}-%',))
+    code_column = code_columns[tabela]
+    cursor.execute(
+        f'SELECT {code_column} AS code FROM {tabela} WHERE {code_column} LIKE ?',
+        (f'{prefixo}-%',),
+    )
     highest_existing = 0
     pattern = re.compile(rf'{re.escape(prefixo)}-(\d+)')
     for row in cursor.fetchall():

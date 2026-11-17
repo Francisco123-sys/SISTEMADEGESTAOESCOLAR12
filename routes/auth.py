@@ -1,12 +1,35 @@
+import hashlib
 import re
+import secrets
+import smtplib
+import time
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_from_directory
+from flask import (
+    Blueprint,
+    current_app,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session,
+    send_from_directory,
+)
 from werkzeug.security import check_password_hash, generate_password_hash
+from services.auth_security import (
+    is_login_rate_limited,
+    is_recovery_rate_limited,
+    record_login_failure,
+    record_login_success,
+    record_recovery_attempt,
+)
 from services.csrf import generate_csrf_token, validate_csrf_token
 from services.db import get_db, log_audit
+from services.email import build_password_reset_url, send_password_reset_email
 from services.uploads import UPLOAD_DIRECTORY
 
 auth_bp = Blueprint('auth', __name__)
+PASSWORD_RESET_TTL_SECONDS = 30 * 60
 
 @auth_bp.route('/')
 def login_landing():
@@ -22,16 +45,24 @@ def portal_encarregado():
 
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '')
-            cursor = get_db().cursor()
+            db = get_db()
+            cursor = db.cursor()
+            if is_login_rate_limited(cursor, email):
+                flash('E-mail ou palavra-passe inválidos.', 'danger')
+                return redirect(url_for('auth.portal_encarregado'))
             cursor.execute(
                 'SELECT id, nome, email, password_hash, session_version FROM guardians WHERE LOWER(email) = ? AND ativo = 1',
                 (email,),
             )
             guardian = cursor.fetchone()
             if not guardian or not password or not check_password_hash(guardian['password_hash'], password):
+                record_login_failure(cursor, email)
+                db.commit()
                 flash('E-mail ou palavra-passe inválidos.', 'danger')
                 return redirect(url_for('auth.portal_encarregado'))
 
+            record_login_success(cursor, email)
+            db.commit()
             session.clear()
             session['guardian_id'] = guardian['id']
             session['guardian_nome'] = guardian['nome']
@@ -215,18 +246,150 @@ def _render_guardian_portal():
 def _valid_portal_csrf():
     return validate_csrf_token(request.form.get('csrf_token', ''))
 
+
+def _password_reset_digest(token):
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+
+@auth_bp.route('/portal-encarregado/recuperar', methods=['GET', 'POST'])
+def guardian_password_recovery():
+    if request.method == 'GET':
+        return render_template('guardian_password_recovery.html')
+
+    email = request.form.get('email', '').strip().lower()
+    db = get_db()
+    cursor = db.cursor()
+    now = time.time()
+    if is_recovery_rate_limited(cursor, email):
+        flash(
+            'Se existir uma conta activa, será enviada uma ligação de recuperação.',
+            'info',
+        )
+        return redirect(url_for('auth.guardian_password_recovery'))
+
+    record_recovery_attempt(cursor, email)
+    db.commit()
+    cursor.execute(
+        'SELECT id, email FROM guardians WHERE LOWER(email) = ? AND ativo = 1',
+        (email,),
+    )
+    guardian = cursor.fetchone()
+    if guardian:
+        token = secrets.token_urlsafe(32)
+        digest = _password_reset_digest(token)
+        cursor.execute('''
+            UPDATE guardian_password_resets
+            SET used_at = ?
+            WHERE guardian_id = ? AND used_at IS NULL
+        ''', (now, guardian['id']))
+        cursor.execute('''
+            INSERT INTO guardian_password_resets (token_hash, guardian_id, expires_at)
+            VALUES (?, ?, ?)
+        ''', (digest, guardian['id'], now + PASSWORD_RESET_TTL_SECONDS))
+        db.commit()
+        try:
+            reset_url = build_password_reset_url(token)
+            send_password_reset_email(guardian['email'], reset_url)
+        except (OSError, ValueError, smtplib.SMTPException) as exc:
+            cursor.execute('''
+                UPDATE guardian_password_resets
+                SET used_at = ?
+                WHERE token_hash = ? AND used_at IS NULL
+            ''', (time.time(), digest))
+            db.commit()
+            current_app.logger.error(
+                'Não foi possível enviar recuperação de palavra-passe: %s',
+                type(exc).__name__,
+            )
+
+    flash(
+        'Se existir uma conta activa, será enviada uma ligação de recuperação.',
+        'info',
+    )
+    return redirect(url_for('auth.guardian_password_recovery'))
+
+
+@auth_bp.route(
+    '/portal-encarregado/redefinir/<token>',
+    methods=['GET', 'POST'],
+)
+def guardian_password_reset(token):
+    digest = _password_reset_digest(token)
+    db = get_db()
+    cursor = db.cursor()
+    now = time.time()
+    cursor.execute('''
+        SELECT guardian_id FROM guardian_password_resets
+        WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+    ''', (digest, now))
+    reset = cursor.fetchone()
+    if not reset:
+        flash('A ligação de recuperação é inválida ou expirou.', 'danger')
+        return redirect(url_for('auth.guardian_password_recovery'))
+
+    if request.method == 'GET':
+        return render_template('guardian_password_reset.html', token=token)
+
+    new_password = request.form.get('new_password', '')
+    confirmation = request.form.get('confirm_password', '')
+    if len(new_password) < 12 or new_password != confirmation:
+        flash(
+            'As palavras-passe devem coincidir e ter pelo menos 12 caracteres.',
+            'danger',
+        )
+        return render_template(
+            'guardian_password_reset.html',
+            token=token,
+        ), 400
+
+    cursor.execute('''
+        UPDATE guardian_password_resets
+        SET used_at = ?
+        WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+    ''', (now, digest, now))
+    if cursor.rowcount != 1:
+        db.rollback()
+        flash('A ligação de recuperação é inválida ou expirou.', 'danger')
+        return redirect(url_for('auth.guardian_password_recovery'))
+
+    cursor.execute('''
+        UPDATE guardians
+        SET password_hash = ?, session_version = session_version + 1
+        WHERE id = ? AND ativo = 1
+    ''', (generate_password_hash(new_password), reset['guardian_id']))
+    if cursor.rowcount != 1:
+        db.rollback()
+        flash('A conta não está disponível. Contacte a Secretaria.', 'danger')
+        return redirect(url_for('auth.guardian_password_recovery'))
+
+    cursor.execute('''
+        UPDATE guardian_password_resets
+        SET used_at = ?
+        WHERE guardian_id = ? AND used_at IS NULL
+    ''', (now, reset['guardian_id']))
+    db.commit()
+    session.clear()
+    flash('Palavra-passe alterada. Pode iniciar sessão com a nova credencial.', 'success')
+    return redirect(url_for('auth.portal_encarregado'))
+
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     perfil = request.form.get('perfil')
-    identificador = request.form.get('identificador')
-    password = request.form.get('password')
+    identificador = request.form.get('identificador', '').strip()
+    password = request.form.get('password', '')
     
     db = get_db()
     cursor = db.cursor()
+    if is_login_rate_limited(cursor, identificador):
+        flash('Credenciais inválidas ou conta inativa.', 'danger')
+        return redirect(url_for('auth.login_landing'))
     cursor.execute('SELECT * FROM users WHERE (code = ? OR email = ?) AND ativo = 1', (identificador, identificador))
     user = cursor.fetchone()
     
-    if user and check_password_hash(user['password_hash'], password):
+    if user and password and check_password_hash(user['password_hash'], password):
+        record_login_success(cursor, identificador)
+        db.commit()
         role_map = {
             'director': ['director', 'admin', 'pedagogico_1', 'pedagogico_2'],
             'teacher': ['teacher'],
@@ -250,7 +413,8 @@ def login():
             return redirect(url_for('secretary.dashboard'))
         elif user['role'] == 'teacher':
             return redirect(url_for('teacher.dashboard'))
-            
+    record_login_failure(cursor, identificador)
+    db.commit()
     flash('Credenciais inválidas ou conta inativa.', 'danger')
     return redirect(url_for('auth.login_landing'))
 

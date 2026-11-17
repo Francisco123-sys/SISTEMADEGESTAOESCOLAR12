@@ -123,6 +123,21 @@ CREATE TABLE IF NOT EXISTS guardians (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS guardian_password_resets (
+    token_hash TEXT PRIMARY KEY,
+    guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+    expires_at DOUBLE PRECISION NOT NULL,
+    used_at DOUBLE PRECISION,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+    bucket_hash TEXT PRIMARY KEY,
+    failures INTEGER NOT NULL,
+    window_started_at DOUBLE PRECISION NOT NULL,
+    blocked_until DOUBLE PRECISION NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS guardian_students (
     guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
     student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,

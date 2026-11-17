@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from services.db import get_db, log_audit
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 teacher_bp = Blueprint('teacher', __name__, url_prefix='/teacher')
 
@@ -41,6 +42,14 @@ def pauta_oficial_impressao(turma_id, subject_id):
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
+    if session.get('user_role') != 'admin':
+        cursor.execute('''
+            SELECT 1 FROM teacher_assignments
+            WHERE teacher_id = ? AND turma_id = ? AND subject_id = ?
+        ''', (session['user_id'], turma_id, subject_id))
+        if not cursor.fetchone():
+            flash('Acesso negado à pauta desta turma ou disciplina.', 'danger')
+            return redirect(url_for('teacher.dashboard'))
     cursor.execute('''
         SELECT t.nome as turma_nome, t.sala as sala, t.curso as curso, t.turno as turno,
                c.numero as classe_num, s.nome as disciplina_nome 
@@ -94,21 +103,54 @@ def launch_grades(turma_id, subject_id):
             return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
 
         aluno_ids = request.form.getlist('student_id')
-        for sid in aluno_ids:
-            av1 = float(request.form.get(f'av1_{sid}', 0) or 0)
-            av2 = float(request.form.get(f'av2_{sid}', 0) or 0)
-            av3 = float(request.form.get(f'av3_{sid}', 0) or 0)
-            av4 = float(request.form.get(f'av4_{sid}', 0) or 0)
-            
-            fj = max(0, int(request.form.get(f'fj_{sid}', 0) or 0))
-            fnj = max(0, int(request.form.get(f'fnj_{sid}', 0) or 0))
-            total_faltas = fj + fnj
-            comentario = request.form.get(f'comentario_{sid}', '').strip()
+        cursor.execute(
+            'SELECT id FROM students WHERE turma_id = ? ORDER BY id',
+            (turma_id,),
+        )
+        expected_student_ids = {str(row['id']) for row in cursor.fetchall()}
+        if (
+            not aluno_ids
+            or len(aluno_ids) != len(set(aluno_ids))
+            or set(aluno_ids) != expected_student_ids
+        ):
+            flash('A lista de alunos submetida não corresponde à turma atribuída.', 'danger')
+            return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
 
+        validated_grades = []
+        try:
+            for sid in aluno_ids:
+                scores = []
+                for field in ('av1', 'av2', 'av3', 'av4'):
+                    score = Decimal(request.form.get(f'{field}_{sid}', '0') or '0')
+                    if not score.is_finite() or score < 0 or score > 20:
+                        raise ValueError('As notas devem estar entre 0 e 20.')
+                    scores.append(float(score))
+
+                raw_exam = request.form.get(f'exame_{sid}', '').strip()
+                if raw_exam and not is_exame_class:
+                    raise ValueError('Apenas classes com exame podem submeter essa nota.')
+                exam = None
+                if raw_exam:
+                    exam_value = Decimal(raw_exam)
+                    if not exam_value.is_finite() or exam_value < 0 or exam_value > 20:
+                        raise ValueError('A nota de exame deve estar entre 0 e 20.')
+                    exam = float(exam_value)
+
+                fj = int(request.form.get(f'fj_{sid}', 0) or 0)
+                fnj = int(request.form.get(f'fnj_{sid}', 0) or 0)
+                if fj < 0 or fnj < 0:
+                    raise ValueError('O número de faltas não pode ser negativo.')
+                comentario = request.form.get(f'comentario_{sid}', '').strip()
+                validated_grades.append((sid, scores, exam, fj, fnj, comentario))
+        except (InvalidOperation, TypeError, ValueError):
+            flash('Notas, exames ou faltas inválidos. Verifique os valores e tente novamente.', 'danger')
+            return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
+
+        for sid, scores, exame_val, fj, fnj, comentario in validated_grades:
+            av1, av2, av3, av4 = scores
+            total_faltas = fj + fnj
             media_trim = (av1 + av2 + av3 + av4) / 4.0
-            exame_val = None
-            if is_exame_class and request.form.get(f'exame_{sid}'):
-                exame_val = float(request.form.get(f'exame_{sid}'))
+            if exame_val is not None:
                 media_final = (media_trim * 0.6) + (exame_val * 0.4)
             else:
                 media_final = media_trim

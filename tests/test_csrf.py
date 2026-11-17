@@ -21,6 +21,9 @@ class EmptyDatabase:
     def cursor(self):
         return EmptyCursor()
 
+    def commit(self):
+        pass
+
 
 class PostFormTokenAudit(HTMLParser):
     def __init__(self):

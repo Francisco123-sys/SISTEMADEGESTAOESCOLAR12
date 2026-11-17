@@ -31,7 +31,9 @@ O projecto está configurado para persistir todos os dados na nuvem através do 
 - A Secretaria pode registar e actualizar dados do aluno e do agregado familiar, associar turma e ano lectivo activo e anexar fotografia/documento de transferência.
 - Fotografias são normalizadas e os documentos ficam em armazenamento privado, servidos apenas através de rotas autenticadas.
 - As contas de encarregados são criadas/geridas pela Secretaria, podem ser associadas a vários educandos e não usam BI ou código de aluno como credencial. A redefinição assistida invalida sessões anteriores.
-- O portal do encarregado requer autenticação, limita notas e reclamações aos educandos associados e permite alterar contacto e palavra-passe. Todos os formulários de alteração usam protecção CSRF; as acções de bloqueio, eliminação e logout são POST.
+- O portal do encarregado requer autenticação, limita notas e reclamações aos educandos associados e permite alterar contacto e palavra-passe. A recuperação por e-mail usa token aleatório de utilização única, validade de 30 minutos, invalidação de ligações anteriores e revogação das sessões após redefinição.
+- A recuperação exige `APP_BASE_URL` HTTPS, `SMTP_HOST`, `SMTP_FROM` e parâmetros SMTP. Use `SMTP_USE_SSL=true` para SSL directo (porta habitual 465) ou `SMTP_STARTTLS=true` (porta habitual 587), nunca ambos. Sem configuração completa, o sistema não envia a ligação e invalida o token emitido.
+- O login limita tentativas por endereço e credencial; o pedido de recuperação também tem limites separados. Todos os formulários de alteração usam protecção CSRF; as acções de bloqueio, eliminação e logout são POST.
 - A exportação PDF oferece lista de vitrine sem BI/contactos e lista oficial protegida por perfil.
 
 ## Testes
@@ -40,6 +42,6 @@ Execute os testes automatizados com:
 python -m unittest discover -s tests -v
 ```
 
-O acesso ao portal usa palavras-passe definidas pela Secretaria; ainda não existe recuperação autónoma por e-mail. Valide alterações ao esquema num banco PostgreSQL de teste isolado antes de qualquer migração em produção.
+Configure a entrega SMTP antes de disponibilizar a recuperação por e-mail. Valide alterações ao esquema num banco PostgreSQL de teste isolado antes de qualquer migração em produção.
 
 Para executar também os testes de integração PostgreSQL, use uma base efémera local chamada `sige_test` na porta `55432` e defina `SIGE_TEST_DATABASE_URL` e `DATABASE_URL` para essa base. Defina `DATABASE_URL_UNPOOLED` e `POSTGRES_URL_NON_POOLING` como vazias durante o teste: a inicialização do esquema dá prioridade a essas URLs não agrupadas quando estão configuradas no ambiente.
