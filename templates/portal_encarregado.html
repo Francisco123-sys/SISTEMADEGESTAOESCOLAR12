@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Escola Secundária da Manga - Portal do Encarregado</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
+    <style>
+        .guardian-complaint-list { display:grid; gap:16px; }
+        .guardian-complaint { margin:0; border:1px solid #e4e7ec; }
+        .guardian-complaint-heading { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+        .guardian-complaint-heading p { color:#667085; font-size:.88rem; margin:6px 0 0; }
+        .guardian-complaint-state { border-radius:999px; background:#eef4ff; color:#344054; padding:5px 10px; white-space:nowrap; font-size:.82rem; }
+        .guardian-complaint-thread { display:grid; gap:10px; margin:16px 0; }
+        .guardian-thread-message { border-left:3px solid #98a2b3; background:#f9fafb; padding:10px 12px; }
+        .guardian-thread-message p { margin:6px 0 0; white-space:pre-wrap; }
+        .guardian-reply-form { display:grid; gap:10px; }
+        @media (max-width:600px) {
+            .guardian-complaint-heading { flex-direction:column; }
+            .guardian-complaint-state { white-space:normal; }
+        }
+    </style>
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_header with context %}
@@ -47,6 +62,29 @@
             <p><a href="{{ url_for('auth.guardian_password_recovery') }}">Esqueci-me da palavra-passe</a></p>
         </div>
         {% else %}
+        {% if complaint_notifications %}
+        <section class="card" aria-label="Notificações do portal">
+            <h2 class="card-title">Novas actualizações nas reclamações</h2>
+            <ul>
+                {% for notification in complaint_notifications %}
+                <li>
+                    <a href="#complaint-{{ notification.complaint_id }}">
+                        {% if notification.kind == 'new_message' %}Nova mensagem na conversa
+                        {% elif notification.kind == 'status_changed' %}O estado da reclamação foi actualizado
+                        {% else %}A reclamação foi encaminhada para acompanhamento{% endif %}
+                    </a>
+                    <small>{{ notification.created_at|string }}</small>
+                </li>
+                {% endfor %}
+            </ul>
+            <form method="POST" action="/portal-encarregado">
+                <input type="hidden" name="acao" value="notifications_read">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="student_id" value="{{ aluno.id if aluno else '' }}">
+                <button type="submit" class="btn btn-secondary">Marcar notificações como lidas</button>
+            </form>
+        </section>
+        {% endif %}
         <div class="card">
             <h2 class="card-title">Bem-vindo(a), {{ guardian.nome }}</h2>
             <p>Seleccione um educando associado à sua conta:</p>
@@ -166,42 +204,92 @@
                 <input type="hidden" name="acao" value="reclamacao">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="student_id" value="{{ aluno.id }}">
+                <input type="hidden" name="submission_key" value="{{ complaint_submission_key }}">
                 <div class="guardian-reclamation-contact">
                     <p><strong>Encarregado:</strong> {{ guardian.nome }}</p>
                     <p><strong>Contacto:</strong> {{ guardian.contacto or 'Não indicado' }}</p>
                 </div>
                 <div class="form-group">
-                    <label>Mensagem sobre a sua preocupação:*</label>
-                    <textarea name="mensagem" rows="4" required placeholder="Escreva aqui a sua reclamação ou pedido de esclarecimento sobre o aluno..."></textarea>
+                    <label for="complaint-category">Categoria</label>
+                    <select id="complaint-category" name="categoria" required>
+                        {% for categoria in complaint_categories %}
+                        <option value="{{ categoria }}">{{ categoria }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <button type="submit" class="btn btn-primary">Enviar Reclamação / Esclarecimento</button>
+                <div class="form-group">
+                    <label for="complaint-subject">Assunto</label>
+                    <input id="complaint-subject" type="text" name="assunto" maxlength="160" required>
+                </div>
+                <div class="form-group">
+                    <label for="complaint-message">Mensagem</label>
+                    <textarea id="complaint-message" name="mensagem" rows="4" maxlength="5000" required placeholder="Descreva a sua reclamação ou pedido de esclarecimento..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Enviar para a Secretaria</button>
             </form>
 
             {% if reclamacoes %}
             <hr style="margin:20px 0; border:0; border-top:1px solid #EAECF0;">
-            <h4>Pedidos de Esclarecimento / Reclamações Registados</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Encarregado</th>
-                        <th>Mensagem</th>
-                        <th>Estado</th>
-                        <th>Resposta da Secretaria</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in reclamacoes %}
-                    <tr>
-                        <td>{{ r.created_at_display }}</td>
-                        <td>{{ r.nome_encarregado }}</td>
-                        <td style="text-align:left;">{{ r.mensagem }}</td>
-                        <td><strong>{{ r.status }}</strong></td>
-                        <td style="text-align:left;">{{ r.resposta_escola or 'Aguardando resposta da secretaria' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <h4>As suas reclamações e conversas</h4>
+            <div class="guardian-complaint-list">
+                {% for r in reclamacoes %}
+                <article class="card guardian-complaint" id="complaint-{{ r.id }}">
+                    <div class="guardian-complaint-heading">
+                        <div>
+                            <strong>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</strong>
+                            <p>{{ r.categoria or 'Outros Assuntos' }} · {{ r.created_at_display }}</p>
+                        </div>
+                        <span class="guardian-complaint-state">{{ r.estado or r.status }}</span>
+                    </div>
+                    <div class="guardian-complaint-thread">
+                        {% if r.messages %}
+                            {% for message in r.messages %}
+                            <div class="guardian-thread-message">
+                                <strong>
+                                    {% if message.sender_type == 'guardian' %}A sua mensagem
+                                    {% elif message.sender_type == 'director' %}Direcção
+                                    {% else %}Secretaria{% endif %}
+                                </strong>
+                                <p>{{ message.body }}</p>
+                            </div>
+                            {% if r.history %}
+                            <details>
+                                <summary>Histórico de estado</summary>
+                                <ul>
+                                    {% for event in r.history %}
+                                    <li>{{ event.old_state or 'Criada' }} → {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                            {% endif %}
+                            {% endfor %}
+                        {% else %}
+                        <div class="guardian-thread-message">
+                            <strong>A sua mensagem</strong>
+                            <p>{{ r.mensagem }}</p>
+                        </div>
+                        {% if r.resposta_escola %}
+                        <div class="guardian-thread-message">
+                            <strong>Secretaria</strong>
+                            <p>{{ r.resposta_escola }}</p>
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    {% if r.estado != 'Resolvida' %}
+                    <form method="POST" action="/portal-encarregado" class="guardian-reply-form">
+                        <input type="hidden" name="acao" value="reclamacao_message">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="rec_id" value="{{ r.id }}">
+                        <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
+                        <label for="reply-{{ r.id }}">Adicionar mensagem</label>
+                        <textarea id="reply-{{ r.id }}" name="mensagem" rows="2" maxlength="5000" required></textarea>
+                        <button type="submit" class="btn btn-primary">Enviar mensagem</button>
+                    </form>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
             {% endif %}
         </div>
         {% endif %}

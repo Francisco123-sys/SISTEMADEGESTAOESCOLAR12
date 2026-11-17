@@ -10,6 +10,7 @@ from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 
 from app import app
+from database.complaint_migrations import migrate_complaint_schema
 
 
 def _parse_timestamp(value):
@@ -26,6 +27,12 @@ class GuardianPortalTests(unittest.TestCase):
         self.db = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES)
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                nome TEXT,
+                role TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1
+            );
             CREATE TABLE guardians (
                 id INTEGER PRIMARY KEY,
                 nome TEXT NOT NULL,
@@ -85,6 +92,7 @@ class GuardianPortalTests(unittest.TestCase):
             INSERT INTO grades VALUES (1, 10, 1, 1, 1, 12, 13, 14, 15, 13.5, NULL, 13.5, 0, 0, 0, '', 'Submetida');
             INSERT INTO grades VALUES (2, 20, 1, 1, 1, 19, 19, 19, 19, 19, NULL, 19, 0, 0, 0, '', 'Submetida');
         ''')
+        migrate_complaint_schema(self.db.cursor())
         self.db.executemany('''
             INSERT INTO guardians (id, nome, email, password_hash, contacto, ativo, session_version)
             VALUES (?, ?, ?, ?, ?, 1, 0)

@@ -45,6 +45,9 @@
                 <div>
                     <a href="/director/turmas" class="btn btn-primary">Gestão de Turmas e Capacidade</a>
                     <a href="/director/assign-teacher" class="btn btn-primary">Atribuir Turma/Disciplina a Professor</a>
+                    {% if session.get('user_role') in ['director', 'admin'] %}
+                    <a href="{{ url_for('director.gerenciar_reclamacoes') }}" class="btn btn-primary">Reclamações encaminhadas</a>
+                    {% endif %}
                     <a href="/director/new-staff" class="btn btn-success">+ Cadastrar Cargo / Funcionário</a>
                     {% if session.get('user_role') in ['director', 'chefe_secretaria', 'admin'] %}
                     <a href="/director/rectificar-notas" class="btn btn-warning">Rectificar Notas</a>

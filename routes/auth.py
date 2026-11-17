@@ -27,6 +27,13 @@ from services.csrf import generate_csrf_token, validate_csrf_token
 from services.db import active_student_condition, get_db, log_audit
 from services.email import build_password_reset_url, send_password_reset_email
 from services.uploads import UPLOAD_DIRECTORY
+from services.complaints import (
+    COMPLAINT_CATEGORIES,
+    add_message,
+    notify_new_complaint,
+    notify_new_message,
+    record_state_change,
+)
 
 auth_bp = Blueprint('auth', __name__)
 PASSWORD_RESET_TTL_SECONDS = 30 * 60
@@ -133,11 +140,34 @@ def portal_encarregado():
             session['guardian_session_version'] = new_version
             flash('Palavra-passe alterada com sucesso.', 'success')
             return redirect(url_for('auth.portal_encarregado'))
+        if action == 'notifications_read':
+            cursor.execute('''
+                UPDATE complaint_notifications SET read_at = CURRENT_TIMESTAMP
+                WHERE recipient_guardian_id = ? AND read_at IS NULL
+            ''', (guardian['id'],))
+            db.commit()
+            return redirect(url_for(
+                'auth.portal_encarregado',
+                aluno=request.form.get('student_id', type=int),
+            ))
         if action == 'reclamacao':
             student_id = request.form.get('student_id', type=int)
             mensagem = request.form.get('mensagem', '').strip()
-            if not student_id or not mensagem:
-                flash('Seleccione um educando e escreva a mensagem.', 'danger')
+            categoria = request.form.get('categoria', 'Outros Assuntos').strip()
+            assunto = request.form.get('assunto', '').strip()
+            if not assunto:
+                assunto = 'Pedido de esclarecimento'
+            submission_key = request.form.get('submission_key', '').strip()
+            if (
+                not student_id
+                or not mensagem
+                or len(mensagem) > 5000
+                or categoria not in COMPLAINT_CATEGORIES
+                or not assunto
+                or len(assunto) > 160
+                or len(submission_key) > 128
+            ):
+                flash('Preencha o assunto e a mensagem com dados válidos.', 'danger')
                 return redirect(url_for('auth.portal_encarregado'))
             cursor.execute(
                 f'''SELECT 1 FROM guardian_students gs
@@ -149,13 +179,121 @@ def portal_encarregado():
             if not cursor.fetchone():
                 flash('Não tem permissão para enviar mensagens sobre esse aluno.', 'danger')
                 return redirect(url_for('auth.portal_encarregado'))
+            if not submission_key:
+                submission_key = secrets.token_urlsafe(32)
             cursor.execute('''
-                INSERT INTO reclamacoes_encarregados (student_id, nome_encarregado, contacto, mensagem)
-                VALUES (?, ?, ?, ?)
-            ''', (student_id, guardian['nome'], guardian['contacto'] or '', mensagem))
+                INSERT INTO reclamacoes_encarregados (
+                    student_id, guardian_id, nome_encarregado, contacto,
+                    mensagem, categoria, assunto, estado, updated_at,
+                    submission_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Nova', CURRENT_TIMESTAMP, ?)
+                ON CONFLICT(submission_key) WHERE submission_key IS NOT NULL
+                DO NOTHING
+            ''', (
+                student_id, guardian['id'], guardian['nome'],
+                guardian['contacto'] or '', mensagem, categoria, assunto,
+                submission_key,
+            ))
+            cursor.execute('''
+                SELECT id, student_id, guardian_id FROM reclamacoes_encarregados
+                WHERE submission_key = ? AND guardian_id = ?
+            ''', (submission_key, guardian['id']))
+            complaint = cursor.fetchone()
+            if not complaint:
+                flash('Não foi possível registar a reclamação. Tente novamente.', 'danger')
+                return redirect(url_for('auth.portal_encarregado', aluno=student_id))
+            message_id = add_message(
+                cursor,
+                complaint_id=complaint['id'],
+                sender_type='guardian',
+                guardian_id=guardian['id'],
+                body=mensagem,
+                message_key=f"complaint:{complaint['id']}:initial",
+            )
+            record_state_change(
+                cursor,
+                complaint_id=complaint['id'],
+                old_state=None,
+                new_state='Nova',
+                actor_type='guardian',
+                guardian_id=guardian['id'],
+            )
+            notify_new_complaint(cursor, complaint['id'], message_id)
             db.commit()
             flash('A mensagem foi enviada à Secretaria.', 'success')
             return redirect(url_for('auth.portal_encarregado', aluno=student_id))
+        if action == 'reclamacao_message':
+            complaint_id = request.form.get('rec_id', type=int)
+            mensagem = request.form.get('mensagem', '').strip()
+            message_key = request.form.get('message_key', '').strip()
+            if not complaint_id or not mensagem or len(mensagem) > 5000:
+                flash('Escreva uma mensagem válida.', 'danger')
+                return redirect(url_for('auth.portal_encarregado'))
+            cursor.execute('''
+                SELECT id, student_id, guardian_id, estado
+                FROM reclamacoes_encarregados
+                WHERE id = ? AND (
+                    guardian_id = ? OR (
+                        guardian_id IS NULL AND student_id IN (
+                            SELECT student_id FROM guardian_students
+                            WHERE guardian_id = ?
+                        )
+                    )
+                )
+            ''', (complaint_id, guardian['id'], guardian['id']))
+            complaint = cursor.fetchone()
+            if not complaint:
+                flash('Não tem permissão para responder a esta reclamação.', 'danger')
+                return redirect(url_for('auth.portal_encarregado'))
+            if not message_key:
+                message_key = f'complaint:{complaint_id}:{secrets.token_urlsafe(24)}'
+            if (
+                len(message_key) > 128
+                or not message_key.startswith(f'complaint:{complaint_id}:')
+            ):
+                flash('A chave da mensagem é inválida. Actualize a página e tente novamente.', 'danger')
+                return redirect(url_for(
+                    'auth.portal_encarregado', aluno=complaint['student_id']
+                ))
+            message_id = add_message(
+                cursor,
+                complaint_id=complaint_id,
+                sender_type='guardian',
+                guardian_id=guardian['id'],
+                body=mensagem,
+                message_key=message_key,
+            )
+            old_state = complaint['estado']
+            if old_state in ('Respondida', 'Resolvida'):
+                cursor.execute('''
+                    UPDATE reclamacoes_encarregados
+                    SET estado = 'Reaberta', status = 'Pendente',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (complaint_id,))
+                record_state_change(
+                    cursor,
+                    complaint_id=complaint_id,
+                    old_state=old_state,
+                    new_state='Reaberta',
+                    actor_type='guardian',
+                    guardian_id=guardian['id'],
+                    note='Nova mensagem do encarregado.',
+                )
+            else:
+                cursor.execute(
+                    'UPDATE reclamacoes_encarregados SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (complaint_id,),
+                )
+            notify_new_message(
+                cursor, complaint, message_id, 'guardian',
+                f'complaint:{complaint_id}:guardian-message:{message_id}',
+            )
+            db.commit()
+            flash('A mensagem foi adicionada à conversa.', 'success')
+            return redirect(url_for(
+                'auth.portal_encarregado', aluno=complaint['student_id']
+            ))
         flash('Acção desconhecida.', 'danger')
         return redirect(url_for('auth.portal_encarregado'))
 
@@ -175,6 +313,7 @@ def portal_encarregado():
     notas = []
     total_faltas = 0
     reclamacoes = []
+    complaint_notifications = []
     requested_student_id = request.args.get('aluno', type=int)
     if requested_student_id:
         cursor.execute('''
@@ -204,7 +343,8 @@ def portal_encarregado():
         ''', (aluno['id'],))
         total_faltas = cursor.fetchone()['total_faltas']
         cursor.execute('''
-            SELECT id, nome_encarregado, mensagem, status, resposta_escola, created_at
+            SELECT id, nome_encarregado, mensagem, status, resposta_escola,
+                   created_at, categoria, assunto, estado
             FROM reclamacoes_encarregados
             WHERE student_id = ? ORDER BY id DESC
         ''', (aluno['id'],))
@@ -218,6 +358,39 @@ def portal_encarregado():
                 else str(created_at)[:10] if created_at else '—'
             )
             reclamacoes.append(reclamacao)
+        cursor.execute('''
+            SELECT id, complaint_id, kind, created_at
+            FROM complaint_notifications
+            WHERE recipient_guardian_id = ? AND read_at IS NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 10
+        ''', (guardian['id'],))
+        complaint_notifications = cursor.fetchall()
+        if reclamacoes:
+            ids = [row['id'] for row in reclamacoes]
+            placeholders = ', '.join('?' for _ in ids)
+            cursor.execute(f'''
+                SELECT complaint_id, sender_type, body, created_at
+                FROM complaint_messages
+                WHERE complaint_id IN ({placeholders})
+                ORDER BY created_at, id
+            ''', tuple(ids))
+            messages_by_complaint = {}
+            for message in cursor.fetchall():
+                messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
+            for reclamacao in reclamacoes:
+                reclamacao['messages'] = messages_by_complaint.get(reclamacao['id'], [])
+            cursor.execute(f'''
+                SELECT complaint_id, old_state, new_state, note, created_at
+                FROM complaint_status_history
+                WHERE complaint_id IN ({placeholders})
+                ORDER BY created_at, id
+            ''', tuple(ids))
+            history_by_complaint = {}
+            for history in cursor.fetchall():
+                history_by_complaint.setdefault(history['complaint_id'], []).append(history)
+            for reclamacao in reclamacoes:
+                reclamacao['history'] = history_by_complaint.get(reclamacao['id'], [])
 
     return render_template(
         'portal_encarregado.html',
@@ -227,6 +400,13 @@ def portal_encarregado():
         notas=notas,
         total_faltas=total_faltas,
         reclamacoes=reclamacoes,
+        complaint_notifications=complaint_notifications,
+        complaint_categories=COMPLAINT_CATEGORIES,
+        complaint_submission_key=secrets.token_urlsafe(32),
+        complaint_message_keys={
+            row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
+            for row in reclamacoes
+        },
     )
 
 

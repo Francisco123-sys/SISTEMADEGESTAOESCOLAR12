@@ -2,6 +2,8 @@ import csv
 from html import escape
 import math
 import re
+import secrets
+import time
 from decimal import Decimal, InvalidOperation
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from services.db import (
@@ -20,6 +22,16 @@ from services.student_service import (
 from datetime import datetime
 from werkzeug.security import generate_password_hash
 from services.uploads import UPLOAD_DIRECTORY, save_student_photo, save_transfer_document
+from services.complaints import (
+    COMPLAINT_CATEGORIES,
+    COMPLAINT_STATES,
+    add_message,
+    notify_directors,
+    notify_guardian,
+    notify_new_message,
+    notify_state_change,
+    record_state_change,
+)
 import io
 import os
 from docx import Document
@@ -2369,21 +2381,205 @@ def gerenciar_reclamacoes():
     cursor = db.cursor()
     
     if request.method == 'POST':
-        rec_id = int(request.form.get('rec_id'))
-        resposta = request.form.get('resposta_escola', '').strip()
-        if resposta:
+        action = request.form.get('action', 'reply')
+        actor_id = session.get('user_id')
+        if action == 'notifications_read' and actor_id:
             cursor.execute('''
-                UPDATE reclamacoes_encarregados SET resposta_escola = ?, status = 'Respondida' WHERE id = ?
-            ''', (resposta, rec_id))
+                UPDATE complaint_notifications SET read_at = CURRENT_TIMESTAMP
+                WHERE recipient_user_id = ? AND read_at IS NULL
+            ''', (actor_id,))
             db.commit()
-            flash('Resposta registada com sucesso!', 'success')
+            return redirect(url_for('secretary.gerenciar_reclamacoes'))
+        rec_id = request.form.get('rec_id', type=int)
+        cursor.execute('''
+            SELECT id, student_id, guardian_id, estado, mensagem,
+                   forwarded_to_director
+            FROM reclamacoes_encarregados WHERE id = ?
+        ''', (rec_id,))
+        complaint = cursor.fetchone() if rec_id else None
+        if not complaint:
+            flash('A reclamação seleccionada não existe.', 'danger')
+            return redirect(url_for('secretary.gerenciar_reclamacoes'))
+
+        if action in ('reply', 'forward', 'status') and not actor_id:
+            flash('A sessão não permite efectuar esta operação.', 'danger')
+            return redirect(url_for('secretary.gerenciar_reclamacoes'))
+
+        if action == 'reply':
+            body = request.form.get('resposta_escola', '').strip()
+            message_key = request.form.get('message_key', '').strip()
+            if not body or len(body) > 5000:
+                flash('Escreva uma resposta válida (até 5000 caracteres).', 'danger')
+                return redirect(url_for('secretary.gerenciar_reclamacoes'))
+            if not message_key:
+                message_key = f'complaint:{rec_id}:{secrets.token_urlsafe(24)}'
+            if (
+                len(message_key) > 128
+                or not message_key.startswith(f'complaint:{rec_id}:')
+            ):
+                flash('A chave da mensagem é inválida. Actualize a página e tente novamente.', 'danger')
+                return redirect(url_for('secretary.gerenciar_reclamacoes'))
+            message_id = add_message(
+                cursor,
+                complaint_id=rec_id,
+                sender_type='secretary',
+                user_id=actor_id,
+                body=body,
+                message_key=message_key,
+            )
+            old_state = complaint['estado']
+            new_state = 'Respondida'
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados
+                SET resposta_escola = ?, status = 'Respondida', estado = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (body, new_state, rec_id))
+            if old_state != new_state:
+                record_state_change(
+                    cursor, complaint_id=rec_id, old_state=old_state,
+                    new_state=new_state, actor_type='secretary',
+                    user_id=actor_id,
+                )
+                notify_state_change(
+                    cursor, complaint,
+                    f'complaint:{rec_id}:state:{new_state}:{message_id}',
+                )
+            notify_new_message(
+                cursor, complaint, message_id, 'secretary',
+                f'complaint:{rec_id}:staff-message:{message_id}',
+            )
+            flash('Resposta adicionada à conversa.', 'success')
+        elif action == 'status':
+            new_state = request.form.get('estado', '').strip()
+            if new_state not in COMPLAINT_STATES:
+                flash('Seleccione um estado válido.', 'danger')
+                return redirect(url_for('secretary.gerenciar_reclamacoes'))
+            old_state = complaint['estado']
+            legacy_status = 'Respondida' if new_state in ('Respondida', 'Resolvida') else 'Pendente'
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados
+                SET estado = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (new_state, legacy_status, rec_id))
+            if old_state != new_state:
+                record_state_change(
+                    cursor, complaint_id=rec_id, old_state=old_state,
+                    new_state=new_state, actor_type='secretary',
+                    user_id=actor_id,
+                )
+                notify_state_change(
+                    cursor, complaint,
+                    f'complaint:{rec_id}:state:{new_state}:{time.time_ns()}',
+                )
+            flash('Estado actualizado.', 'success')
+        elif action == 'forward':
+            reason = request.form.get('forward_reason', '').strip()
+            if len(reason) > 1000:
+                flash('O motivo de encaminhamento excede 1000 caracteres.', 'danger')
+                return redirect(url_for('secretary.gerenciar_reclamacoes'))
+            if complaint['forwarded_to_director']:
+                flash('Esta reclamação já foi encaminhada à Direcção.', 'info')
+                return redirect(url_for('secretary.gerenciar_reclamacoes'))
+            old_state = complaint['estado']
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados
+                SET forwarded_to_director = 1, forwarded_by = ?,
+                    forwarded_at = CURRENT_TIMESTAMP, forward_reason = ?,
+                    estado = 'Em Tratamento', assigned_to = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (actor_id, reason or None, actor_id, rec_id))
+            record_state_change(
+                cursor, complaint_id=rec_id, old_state=old_state,
+                new_state='Em Tratamento', actor_type='secretary',
+                user_id=actor_id, note=reason or 'Encaminhada à Direcção.',
+            )
+            notify_directors(
+                cursor, rec_id,
+                f'complaint:{rec_id}:forwarded',
+            )
+            flash('Reclamação encaminhada à Direcção.', 'success')
+        else:
+            flash('Acção desconhecida.', 'danger')
+            return redirect(url_for('secretary.gerenciar_reclamacoes'))
+        db.commit()
         return redirect(url_for('secretary.gerenciar_reclamacoes'))
-        
-    cursor.execute('''
-        SELECT r.*, s.nome as aluno_nome, s.code as aluno_code
+
+    state_filter = request.args.get('estado', '').strip()
+    category_filter = request.args.get('categoria', '').strip()
+    search = request.args.get('q', '').strip()
+    conditions = ['1 = 1']
+    params = []
+    if state_filter in COMPLAINT_STATES:
+        conditions.append('r.estado = ?')
+        params.append(state_filter)
+    if category_filter:
+        conditions.append('r.categoria = ?')
+        params.append(category_filter)
+    if search:
+        conditions.append('''
+            (s.nome LIKE ? OR s.code LIKE ? OR r.assunto LIKE ?
+             OR r.nome_encarregado LIKE ?)
+        ''')
+        params.extend([f'%{search}%'] * 4)
+    cursor.execute(f'''
+        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code
         FROM reclamacoes_encarregados r
         JOIN students s ON r.student_id = s.id
-        ORDER BY r.status ASC, r.id DESC
-    ''')
+        WHERE {' AND '.join(conditions)}
+        ORDER BY CASE r.estado WHEN 'Nova' THEN 0 WHEN 'Reaberta' THEN 1 ELSE 2 END,
+                 r.updated_at DESC, r.id DESC
+    ''', tuple(params))
     reclamacoes = cursor.fetchall()
-    return render_template('secretary/reclamacoes.html', reclamacoes=reclamacoes)
+    cursor.execute('''
+        SELECT id, complaint_id, kind, created_at
+        FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 20
+    ''', (session.get('user_id'),))
+    complaint_notifications = cursor.fetchall()
+    if reclamacoes:
+        ids = [row['id'] for row in reclamacoes]
+        placeholders = ', '.join('?' for _ in ids)
+        cursor.execute(f'''
+            SELECT complaint_id, sender_type, body, created_at
+            FROM complaint_messages
+            WHERE complaint_id IN ({placeholders})
+            ORDER BY created_at, id
+        ''', tuple(ids))
+        messages_by_complaint = {}
+        for message in cursor.fetchall():
+            messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
+        cursor.execute(f'''
+            SELECT complaint_id, old_state, new_state, note, created_at
+            FROM complaint_status_history
+            WHERE complaint_id IN ({placeholders})
+            ORDER BY created_at, id
+        ''', tuple(ids))
+        history_by_complaint = {}
+        for event in cursor.fetchall():
+            history_by_complaint.setdefault(event['complaint_id'], []).append(event)
+        reclamacoes = [
+            {
+                **dict(row),
+                'messages': messages_by_complaint.get(row['id'], []),
+                'history': history_by_complaint.get(row['id'], []),
+            }
+            for row in reclamacoes
+        ]
+    return render_template(
+        'secretary/reclamacoes.html',
+        reclamacoes=reclamacoes,
+        complaint_states=COMPLAINT_STATES,
+        complaint_categories=COMPLAINT_CATEGORIES,
+        complaint_notifications=complaint_notifications,
+        complaint_message_keys={
+            row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
+            for row in reclamacoes
+        },
+        selected_state=state_filter,
+        selected_category=category_filter,
+        search=search,
+    )

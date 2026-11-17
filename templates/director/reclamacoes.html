@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE - Reclamações encaminhadas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .director-complaint-list { display:grid; gap:18px; max-width:1100px; margin:30px auto; }
+        .director-complaint { border:1px solid #e4e7ec; border-radius:12px; padding:20px; }
+        .director-complaint-head { display:flex; justify-content:space-between; gap:16px; }
+        .director-complaint-meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:#667085; }
+        .director-complaint-meta p { margin:5px 0; }
+        .director-thread { display:grid; gap:10px; margin:16px 0; }
+        .director-message { border-left:3px solid #98a2b3; background:#f9fafb; padding:12px; }
+        .director-message p { margin:5px 0 0; white-space:pre-wrap; }
+        .director-complaint-actions { display:grid; grid-template-columns:2fr 1fr; gap:16px; border-top:1px solid #eaecf0; padding-top:16px; }
+        .director-complaint-actions form { display:grid; gap:8px; align-content:start; }
+        .director-complaint-state { border-radius:999px; background:#eff4ff; padding:6px 12px; height:max-content; }
+        @media (max-width:680px) {
+            .director-complaint-head, .director-complaint-actions { display:grid; grid-template-columns:1fr; }
+        }
+    </style>
+</head>
+<body>
+    {% from 'components/dashboard_ui.html' import institutional_header with context %}
+    {{ institutional_header('Reclamações encaminhadas', url_for('director.dashboard'),
+        user_name=session.get('user_nome'),
+        password_url=url_for('auth.change_password'),
+        logout_url=url_for('auth.logout')) }}
+    <main class="container director-complaint-list">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endwith %}
+        {% if complaint_notifications %}
+        <section class="card">
+            <h2 class="card-title">Notificações por ler</h2>
+            <ul>
+                {% for notification in complaint_notifications %}
+                <li><a href="#director-complaint-{{ notification.complaint_id }}">Reclamação encaminhada para análise</a> · {{ notification.created_at|string }}</li>
+                {% endfor %}
+            </ul>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="notifications_read">
+                <button class="btn btn-secondary" type="submit">Marcar notificações como lidas</button>
+            </form>
+        </section>
+        {% endif %}
+        {% for r in reclamacoes %}
+        <article class="director-complaint" id="director-complaint-{{ r.id }}">
+            <header class="director-complaint-head">
+                <div>
+                    <h1>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h1>
+                    <div class="director-complaint-meta">
+                        <p><strong>Educando:</strong> {{ r.aluno_nome }} ({{ r.aluno_code }})</p>
+                        <p><strong>Encarregado:</strong> {{ r.nome_encarregado }}</p>
+                        <p><strong>Categoria:</strong> {{ r.categoria or 'Outros Assuntos' }}</p>
+                        <p><strong>Motivo do encaminhamento:</strong> {{ r.forward_reason or 'Não indicado' }}</p>
+                    </div>
+                </div>
+                <span class="director-complaint-state">{{ r.estado }}</span>
+            </header>
+            <div class="director-thread">
+                {% if r.messages %}
+                    {% for message in r.messages %}
+                    <div class="director-message">
+                        <strong>
+                            {% if message.sender_type == 'guardian' %}Encarregado
+                            {% elif message.sender_type == 'director' %}Direcção
+                            {% else %}Secretaria{% endif %}
+                        </strong>
+                        <p>{{ message.body }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="director-message"><strong>Encarregado</strong><p>{{ r.mensagem }}</p></div>
+                {% if r.resposta_escola %}
+                <div class="director-message"><strong>Secretaria</strong><p>{{ r.resposta_escola }}</p></div>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% if r.history %}
+            <details>
+                <summary>Histórico de estado</summary>
+                <ul>
+                    {% for event in r.history %}
+                    <li>{{ event.old_state or 'Criada' }} para {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+            <div class="director-complaint-actions">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="rec_id" value="{{ r.id }}">
+                    <input type="hidden" name="action" value="reply">
+                    <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
+                    <label for="director-response-{{ r.id }}">Resposta da Direcção</label>
+                    <textarea id="director-response-{{ r.id }}" name="resposta" rows="3" maxlength="5000" required></textarea>
+                    <button class="btn btn-primary" type="submit">Enviar resposta</button>
+                </form>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="rec_id" value="{{ r.id }}">
+                    <input type="hidden" name="action" value="status">
+                    <label for="director-state-{{ r.id }}">Estado</label>
+                    <select id="director-state-{{ r.id }}" name="estado">
+                        {% for estado in complaint_states %}
+                        <option value="{{ estado }}" {% if r.estado == estado %}selected{% endif %}>{{ estado }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-secondary" type="submit">Actualizar estado</button>
+                </form>
+            </div>
+        </article>
+        {% else %}
+        <section class="card">
+            <h1 class="card-title">Sem reclamações encaminhadas</h1>
+            <p>As reclamações encaminhadas pela Secretaria aparecerão aqui.</p>
+        </section>
+        {% endfor %}
+    </main>
+</body>
+</html>

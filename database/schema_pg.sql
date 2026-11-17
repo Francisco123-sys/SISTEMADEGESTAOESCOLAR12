@@ -226,12 +226,59 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS reclamacoes_encarregados (
     id SERIAL PRIMARY KEY,
     student_id INTEGER NOT NULL REFERENCES students(id),
+    guardian_id INTEGER REFERENCES guardians(id),
     nome_encarregado TEXT NOT NULL,
     contacto TEXT NOT NULL,
     mensagem TEXT NOT NULL,
     status TEXT DEFAULT 'Pendente' CHECK(status IN ('Pendente', 'Respondida')),
     resposta_escola TEXT DEFAULT '',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    categoria TEXT,
+    assunto TEXT,
+    estado TEXT NOT NULL DEFAULT 'Nova',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_to INTEGER REFERENCES users(id),
+    forwarded_to_director INTEGER NOT NULL DEFAULT 0,
+    forwarded_by INTEGER REFERENCES users(id),
+    forwarded_at TIMESTAMP,
+    forward_reason TEXT,
+    submission_key TEXT
+);
+
+CREATE TABLE IF NOT EXISTS complaint_messages (
+    id SERIAL PRIMARY KEY,
+    complaint_id INTEGER NOT NULL REFERENCES reclamacoes_encarregados(id) ON DELETE CASCADE,
+    sender_type TEXT NOT NULL CHECK(sender_type IN ('guardian', 'secretary', 'director')),
+    sender_guardian_id INTEGER REFERENCES guardians(id),
+    sender_user_id INTEGER REFERENCES users(id),
+    message_key TEXT,
+    body TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS complaint_status_history (
+    id SERIAL PRIMARY KEY,
+    complaint_id INTEGER NOT NULL REFERENCES reclamacoes_encarregados(id) ON DELETE CASCADE,
+    old_state TEXT,
+    new_state TEXT NOT NULL,
+    actor_type TEXT NOT NULL CHECK(actor_type IN ('guardian', 'secretary', 'director')),
+    actor_guardian_id INTEGER REFERENCES guardians(id),
+    actor_user_id INTEGER REFERENCES users(id),
+    note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS complaint_notifications (
+    id SERIAL PRIMARY KEY,
+    event_key TEXT NOT NULL UNIQUE,
+    complaint_id INTEGER NOT NULL REFERENCES reclamacoes_encarregados(id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES complaint_messages(id) ON DELETE CASCADE,
+    recipient_guardian_id INTEGER REFERENCES guardians(id) ON DELETE CASCADE,
+    recipient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('new_complaint', 'new_message', 'status_changed', 'forwarded')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMP,
+    CHECK ((recipient_guardian_id IS NULL) <> (recipient_user_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (

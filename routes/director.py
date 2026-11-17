@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+import secrets
 from services.db import (
     active_student_condition,
     get_db,
@@ -7,11 +8,179 @@ from services.db import (
 )
 from services.student_service import gerar_codigo_unico
 from werkzeug.security import generate_password_hash
+from services.complaints import (
+    COMPLAINT_STATES,
+    add_message,
+    notify_new_message,
+    notify_state_change,
+    record_state_change,
+)
+import time
 
 director_bp = Blueprint('director', __name__, url_prefix='/director')
 
 def check_director():
     return session.get('user_role') in ['director', 'admin', 'pedagogico_1', 'pedagogico_2']
+
+
+@director_bp.route('/reclamacoes', methods=['GET', 'POST'])
+def gerenciar_reclamacoes():
+    if session.get('user_role') not in ('director', 'admin'):
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('auth.login_landing'))
+    db = get_db()
+    cursor = db.cursor()
+
+    if request.method == 'POST':
+        if request.form.get('action') == 'notifications_read' and session.get('user_id'):
+            cursor.execute('''
+                UPDATE complaint_notifications SET read_at = CURRENT_TIMESTAMP
+                WHERE recipient_user_id = ? AND read_at IS NULL
+            ''', (session['user_id'],))
+            db.commit()
+            return redirect(url_for('director.gerenciar_reclamacoes'))
+        complaint_id = request.form.get('rec_id', type=int)
+        actor_id = session.get('user_id')
+        action = request.form.get('action')
+        cursor.execute('''
+            SELECT id, student_id, guardian_id, estado
+            FROM reclamacoes_encarregados
+            WHERE id = ? AND forwarded_to_director = 1
+        ''', (complaint_id,))
+        complaint = cursor.fetchone() if complaint_id else None
+        if not complaint or not actor_id:
+            flash('A reclamação não existe ou a sessão não permite esta operação.', 'danger')
+            return redirect(url_for('director.gerenciar_reclamacoes'))
+
+        if action == 'reply':
+            body = request.form.get('resposta', '').strip()
+            message_key = request.form.get('message_key', '').strip()
+            if not body or len(body) > 5000:
+                flash('Escreva uma resposta válida (até 5000 caracteres).', 'danger')
+                return redirect(url_for('director.gerenciar_reclamacoes'))
+            if not message_key:
+                message_key = f'complaint:{complaint_id}:{secrets.token_urlsafe(24)}'
+            if (
+                len(message_key) > 128
+                or not message_key.startswith(f'complaint:{complaint_id}:')
+            ):
+                flash('A chave da mensagem é inválida. Actualize a página e tente novamente.', 'danger')
+                return redirect(url_for('director.gerenciar_reclamacoes'))
+            message_id = add_message(
+                cursor,
+                complaint_id=complaint_id,
+                sender_type='director',
+                user_id=actor_id,
+                body=body,
+                message_key=message_key,
+            )
+            old_state = complaint['estado']
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados
+                SET resposta_escola = ?, status = 'Respondida',
+                    estado = 'Respondida', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (body, complaint_id))
+            if old_state != 'Respondida':
+                record_state_change(
+                    cursor, complaint_id=complaint_id,
+                    old_state=old_state, new_state='Respondida',
+                    actor_type='director', user_id=actor_id,
+                )
+                notify_state_change(
+                    cursor, complaint,
+                    f'complaint:{complaint_id}:director-state:{message_id}',
+                )
+            notify_new_message(
+                cursor, complaint, message_id, 'director',
+                f'complaint:{complaint_id}:director-message:{message_id}',
+            )
+            flash('Resposta da Direcção enviada ao encarregado.', 'success')
+        elif action == 'status':
+            new_state = request.form.get('estado', '').strip()
+            if new_state not in COMPLAINT_STATES:
+                flash('Seleccione um estado válido.', 'danger')
+                return redirect(url_for('director.gerenciar_reclamacoes'))
+            old_state = complaint['estado']
+            legacy_status = 'Respondida' if new_state in ('Respondida', 'Resolvida') else 'Pendente'
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados
+                SET estado = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (new_state, legacy_status, complaint_id))
+            if old_state != new_state:
+                record_state_change(
+                    cursor, complaint_id=complaint_id,
+                    old_state=old_state, new_state=new_state,
+                    actor_type='director', user_id=actor_id,
+                )
+                notify_state_change(
+                    cursor, complaint,
+                    f'complaint:{complaint_id}:director-state:{time.time_ns()}',
+                )
+            flash('Estado da reclamação actualizado.', 'success')
+        else:
+            flash('Acção desconhecida.', 'danger')
+            return redirect(url_for('director.gerenciar_reclamacoes'))
+        db.commit()
+        return redirect(url_for('director.gerenciar_reclamacoes'))
+
+    cursor.execute('''
+        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code
+        FROM reclamacoes_encarregados r
+        JOIN students s ON s.id = r.student_id
+        WHERE r.forwarded_to_director = 1
+        ORDER BY r.updated_at DESC, r.id DESC
+    ''')
+    complaints = cursor.fetchall()
+    cursor.execute('''
+        SELECT id, complaint_id, kind, created_at
+        FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 20
+    ''', (session.get('user_id'),))
+    complaint_notifications = cursor.fetchall()
+    if complaints:
+        ids = [row['id'] for row in complaints]
+        placeholders = ', '.join('?' for _ in ids)
+        cursor.execute(f'''
+            SELECT complaint_id, sender_type, body, created_at
+            FROM complaint_messages
+            WHERE complaint_id IN ({placeholders})
+            ORDER BY created_at, id
+        ''', tuple(ids))
+        messages_by_complaint = {}
+        for message in cursor.fetchall():
+            messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
+        cursor.execute(f'''
+            SELECT complaint_id, old_state, new_state, note, created_at
+            FROM complaint_status_history
+            WHERE complaint_id IN ({placeholders})
+            ORDER BY created_at, id
+        ''', tuple(ids))
+        history_by_complaint = {}
+        for event in cursor.fetchall():
+            history_by_complaint.setdefault(event['complaint_id'], []).append(event)
+        complaints = [
+            {
+                **dict(row),
+                'messages': messages_by_complaint.get(row['id'], []),
+                'history': history_by_complaint.get(row['id'], []),
+            }
+            for row in complaints
+        ]
+    return render_template(
+        'director/reclamacoes.html',
+        reclamacoes=complaints,
+        complaint_states=COMPLAINT_STATES,
+        complaint_notifications=complaint_notifications,
+        complaint_message_keys={
+            row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
+            for row in complaints
+        },
+    )
+
 
 @director_bp.route('/dashboard')
 def dashboard():

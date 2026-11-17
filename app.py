@@ -13,6 +13,7 @@ from routes.admin import admin_bp
 from services.db import close_db
 from services.csrf import generate_csrf_token, validate_csrf_token
 from database.init_db import init_db
+from database.complaint_migrations import migrate_complaints
 
 secret_key = os.getenv('SECRET_KEY', '').strip()
 if not secret_key:
@@ -60,6 +61,12 @@ def teardown_db(exception):
 def init_db_command():
     """Cria ou actualiza o esquema da base de dados explicitamente."""
     init_db()
+
+
+@app.cli.command('migrate-complaints')
+def migrate_complaints_command():
+    """Aplica apenas as migrações aditivas do fluxo de reclamações."""
+    migrate_complaints()
 
 
 if __name__ == '__main__':

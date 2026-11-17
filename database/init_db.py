@@ -2,6 +2,7 @@ import os
 import sqlite3
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
+from database.complaint_migrations import migrate_complaint_schema
 
 load_dotenv()
 
@@ -122,6 +123,7 @@ def init_db():
 
         with open('database/schema_pg.sql', 'r', encoding='utf-8') as f:
             cursor.execute(f.read())
+        migrate_complaint_schema(cursor, is_postgres=True)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS code_counters (
                 counter_key TEXT PRIMARY KEY,
@@ -256,6 +258,7 @@ def init_db():
 
         with open('database/schema.sql', 'r', encoding='utf-8') as f:
             cursor.executescript(f.read())
+        migrate_complaint_schema(cursor)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS code_counters (
                 counter_key TEXT PRIMARY KEY,
