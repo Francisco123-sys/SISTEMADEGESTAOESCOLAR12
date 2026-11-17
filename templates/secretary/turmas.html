@@ -30,7 +30,7 @@
           {% endif %}
         {% endwith %}
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+        <div class="secretary-management-grid">
             <div class="card">
                 <h3 class="card-title">Criar Nova Turma & Definir Capacidade da Sala</h3>
                 <form method="POST" action="/secretary/turmas">
@@ -40,7 +40,7 @@
                         <label>Nome da Turma (Ex: 8ª A):*</label>
                         <input type="text" name="nome" required placeholder="Ex: 8ª A">
                     </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div class="secretary-form-grid">
                         <div class="form-group">
                             <label>Ano lectivo:*</label>
                             <select name="ano_lectivo_id" required>
@@ -58,12 +58,12 @@
                             <input type="number" name="capacidade_maxima" value="40" min="1" required>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                    <div class="secretary-form-grid secretary-form-grid-thirds">
                         <div class="form-group">
                             <label>Classe:*</label>
                             <select name="classe_id" required>
-                                {% for c in range(8, 13) %}
-                                <option value="{{ c }}">{{ c }}ª Classe</option>
+                                {% for c in classes %}
+                                <option value="{{ c.id }}" data-numero="{{ c.numero }}">{{ c.numero }}ª Classe</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -149,65 +149,127 @@
             </div>
         </div>
 
-        <div class="card">
-            <h3 class="card-title">Mapa de Turmas, Salas, Vagas e Listas Nominais</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Classe</th>
-                        <th>Turma</th>
-                        <th>Sala</th>
-                        <th>Área curricular</th>
-                        <th>Curso / Turno</th>
-                        <th>Capacidade</th>
-                        <th>Inscritos</th>
-                        <th>Vagas Livres</th>
-                        <th>Listas & Pautas</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for t in turmas %}
-                    <tr>
-                        <td>{{ t.classe_num }}ª Classe</td>
-                        <td><strong>{{ t.nome }}</strong></td>
-                        <td>{{ t.sala or 'Sala 01' }}</td>
-                        <td>{{ areas_curriculares.get(t.area_curricular, '—') }}</td>
-                        <td>{{ t.curso }} ({{ t.turno }})</td>
-                        <td>{{ t.capacidade_maxima }}</td>
-                        <td>{{ t.inscritos }}</td>
-                        <td>
-                            {% if t.vagas_disponiveis > 0 %}
-                                <span style="color:#027A48; font-weight:bold;">{{ t.vagas_disponiveis }} livres</span>
-                            {% else %}
-                                <span style="color:#B42318; font-weight:bold;">ESGOTADA (0)</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="/secretary/turmas/{{ t.id }}/lista-pdf/vitrine" class="btn btn-primary" style="padding:4px 8px; font-size:0.78rem;">PDF Vitrine</a>
-                            {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
-                            <a href="/secretary/turmas/{{ t.id }}/lista-pdf/oficial" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">PDF Oficial</a>
-                            {% endif %}
-                            <a href="/secretary/lista-nominal/{{ t.id }}" target="_blank" class="btn btn-primary" style="padding:4px 8px; font-size:0.78rem;">Lista Oficial</a>
-                            <a href="/secretary/lista-nominal-doc/{{ t.id }}" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Word (.DOCX)</a>
-                            <a href="/secretary/pautas/exportar-csv/{{ t.id }}/1" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Modelo CSV</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+        <section class="card secretary-turmas-section" aria-labelledby="turmas-title">
+            <div class="secretary-turmas-heading">
+                <div>
+                    <p class="secretary-eyebrow">Organização escolar</p>
+                    <h2 id="turmas-title">Turmas, capacidade e listas nominais</h2>
+                    <p>Seleccione uma turma para consultar os alunos e os indicadores individuais.</p>
+                </div>
+                <div class="secretary-turma-search">
+                    <label class="sr-only" for="turma-search">Pesquisar turma</label>
+                    <input id="turma-search" type="search" placeholder="Pesquisar turma, classe ou sala">
+                </div>
+            </div>
+            {% if turmas %}
+            <div class="secretary-turma-grid" id="secretary-turma-grid">
+                {% for t in turmas %}
+                {% set capacidade = t.capacidade_maxima or 0 %}
+                {% set inscritos = t.inscritos or 0 %}
+                {% set vagas = [capacidade - inscritos, 0]|max %}
+                {% set ocupacao = ((inscritos * 100 / capacidade)|round|int) if capacidade else 0 %}
+                <article class="secretary-turma-card"
+                         data-turma-card
+                         data-search="{{ (t.nome ~ ' ' ~ t.classe_num ~ ' ' ~ (t.sala or '') ~ ' ' ~ areas_curriculares.get(t.area_curricular, ''))|lower }}">
+                    <a class="secretary-turma-card-main"
+                       href="{{ url_for('secretary.class_detail', turma_id=t.id) }}">
+                        <div class="secretary-turma-card-top">
+                            <span class="secretary-class-badge">{{ t.classe_num }}.ª Classe</span>
+                            <span class="secretary-year-badge">{{ t.ano_lectivo }}</span>
+                        </div>
+                        <h3>{{ t.nome }}</h3>
+                        <p class="secretary-turma-area">
+                            {{ areas_curriculares.get(t.area_curricular, 'Ciclo comum') }}
+                        </p>
+                        <div class="secretary-turma-details">
+                            <span>{{ t.sala or 'Sala não indicada' }}</span>
+                            <span>{{ 'À Distância' if t.curso == 'À Distância' else t.turno }}</span>
+                        </div>
+                        <div class="secretary-turma-occupancy">
+                            <div>
+                                <span>Ocupação</span>
+                                <strong>{{ inscritos }} / {{ capacidade }}</strong>
+                            </div>
+                            <progress value="{{ [inscritos, capacidade]|min }}"
+                                      max="{{ capacidade if capacidade else 1 }}"
+                                      aria-label="Ocupação de {{ t.nome }}"></progress>
+                            <div class="secretary-turma-vacancies">
+                                <span>{{ ocupacao }}% ocupado</span>
+                                <strong class="{{ 'is-full' if vagas == 0 else 'has-vacancies' }}">
+                                    {{ vagas }} vaga(s)
+                                </strong>
+                            </div>
+                        </div>
+                        <p class="secretary-turma-director">
+                            Director de Turma: {{ t.diretor_turma or 'Não atribuído' }}
+                        </p>
+                    </a>
+                    <div class="secretary-turma-actions">
+                        <a class="btn btn-primary"
+                           href="{{ url_for('secretary.class_detail', turma_id=t.id) }}">Alunos</a>
+                        <a class="btn btn-secondary"
+                           href="{{ url_for('secretary.export_class_list_pdf', turma_id=t.id, tipo='vitrine') }}">
+                            PDF público
+                        </a>
+                        {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                        <a class="btn btn-secondary"
+                           href="{{ url_for('secretary.export_class_list_pdf', turma_id=t.id, tipo='oficial') }}">
+                            PDF oficial
+                        </a>
+                        {% endif %}
+                        <a class="btn btn-secondary"
+                           href="{{ url_for('secretary.lista_nominal_view', turma_id=t.id) }}">
+                            Lista nominal
+                        </a>
+                        <a class="btn btn-secondary"
+                           href="{{ url_for('secretary.exportar_lista_doc', turma_id=t.id) }}">
+                            Word
+                        </a>
+                        {% if disciplinas %}
+                        <a class="btn btn-secondary"
+                           href="{{ url_for('secretary.exportar_pauta_csv', turma_id=t.id, subject_id=disciplinas[0].id) }}">
+                            Pauta CSV
+                        </a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            <p class="secretary-no-turmas-found" id="secretary-no-turmas-found" hidden>
+                Nenhuma turma corresponde à pesquisa.
+            </p>
+            {% else %}
+            <p class="secretary-empty-state">Não existem turmas configuradas.</p>
+            {% endif %}
+        </section>
     </div>
     <script>
         const turmaClass = document.querySelector('select[name="classe_id"]');
         const turmaAreaGroup = document.getElementById('turma_area_group');
         const turmaArea = document.getElementById('turma_area');
         function updateTurmaArea() {
-            const requiresArea = Number(turmaClass.value) >= 10;
+            const requiresArea = Number(turmaClass.selectedOptions[0].dataset.numero) >= 10;
             turmaAreaGroup.hidden = !requiresArea;
             turmaArea.required = requiresArea;
         }
         turmaClass.addEventListener('change', updateTurmaArea);
         updateTurmaArea();
+
+        const turmaSearch = document.getElementById('turma-search');
+        const turmaCards = document.querySelectorAll('[data-turma-card]');
+        const noTurmasFound = document.getElementById('secretary-no-turmas-found');
+        if (turmaSearch && turmaCards.length && noTurmasFound) {
+            turmaSearch.addEventListener('input', () => {
+                const search = turmaSearch.value.trim().toLocaleLowerCase();
+                let visibleCount = 0;
+                turmaCards.forEach((card) => {
+                    const matches = card.dataset.search.includes(search);
+                    card.hidden = !matches;
+                    visibleCount += matches ? 1 : 0;
+                });
+                noTurmasFound.hidden = visibleCount > 0;
+            });
+        }
     </script>
 </body>
 </html>

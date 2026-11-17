@@ -173,6 +173,9 @@ def init_db():
             ('ano_lectivo_anterior', 'INTEGER'),
             ('documento_transferencia_path', 'TEXT'),
             ('observacoes_transferencia', 'TEXT'),
+            ('ativo', 'INTEGER NOT NULL DEFAULT 1'),
+            ('eliminado_em', 'TIMESTAMP'),
+            ('eliminado_por', 'INTEGER REFERENCES users(id) ON DELETE SET NULL'),
         ):
             cursor.execute(
                 f'ALTER TABLE students ADD COLUMN IF NOT EXISTS {column} {definition}'
@@ -218,6 +221,25 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (guardian_id, student_id)
             )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS student_deletion_requests (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id),
+                turma_id INTEGER NOT NULL REFERENCES turmas(id),
+                solicitado_por INTEGER NOT NULL REFERENCES users(id),
+                solicitado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                motivo TEXT,
+                estado TEXT NOT NULL DEFAULT 'Pendente'
+                    CHECK(estado IN ('Pendente', 'Aprovado', 'Rejeitado')),
+                decidido_por INTEGER REFERENCES users(id),
+                decidido_em TIMESTAMP,
+                motivo_decisao TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_student_deletion_pending
+            ON student_deletion_requests(student_id) WHERE estado = 'Pendente'
         ''')
 
         has_admin = _seed_initial_data(cursor, is_pg=True)
@@ -294,6 +316,9 @@ def init_db():
             ('ano_lectivo_anterior', 'INTEGER'),
             ('documento_transferencia_path', 'TEXT'),
             ('observacoes_transferencia', 'TEXT'),
+            ('ativo', 'INTEGER NOT NULL DEFAULT 1'),
+            ('eliminado_em', 'TIMESTAMP'),
+            ('eliminado_por', 'INTEGER REFERENCES users(id) ON DELETE SET NULL'),
         )
         for column, definition in student_columns:
             if column not in student_cols:
@@ -344,6 +369,25 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (guardian_id, student_id)
             )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS student_deletion_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL REFERENCES students(id),
+                turma_id INTEGER NOT NULL REFERENCES turmas(id),
+                solicitado_por INTEGER NOT NULL REFERENCES users(id),
+                solicitado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                motivo TEXT,
+                estado TEXT NOT NULL DEFAULT 'Pendente'
+                    CHECK(estado IN ('Pendente', 'Aprovado', 'Rejeitado')),
+                decidido_por INTEGER REFERENCES users(id),
+                decidido_em TIMESTAMP,
+                motivo_decisao TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_student_deletion_pending
+            ON student_deletion_requests(student_id) WHERE estado = 'Pendente'
         ''')
 
         has_admin = _seed_initial_data(cursor, is_pg=False)

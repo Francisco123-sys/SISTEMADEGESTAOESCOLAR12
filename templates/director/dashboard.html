@@ -68,6 +68,60 @@
             </div>
         </div>
 
+        {% if session.get('user_role') in ['director', 'admin'] %}
+        <section class="card" aria-labelledby="student-deletion-requests-title">
+            <h3 class="card-title" id="student-deletion-requests-title">
+                Pedidos de Eliminação Pendentes
+            </h3>
+            {% if pedidos_eliminacao %}
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aluno / Processo</th>
+                            <th>Classe / Turma</th>
+                            <th>Solicitante</th>
+                            <th>Data</th>
+                            <th>Motivo</th>
+                            <th>Decisão</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pedido in pedidos_eliminacao %}
+                        <tr>
+                            <td>{{ pedido.student_nome }}<br><small>{{ pedido.student_code }}</small></td>
+                            <td>{{ pedido.classe_num }}.ª / {{ pedido.turma_nome }}</td>
+                            <td>{{ pedido.solicitante_nome }}</td>
+                            <td>{{ pedido.solicitado_em }}</td>
+                            <td>{{ pedido.motivo or 'Não indicado' }}</td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('director.decide_student_deletion', request_id=pedido.id) }}"
+                                      class="deletion-decision-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <label class="sr-only" for="decision-note-{{ pedido.id }}">
+                                        Observação da decisão
+                                    </label>
+                                    <input id="decision-note-{{ pedido.id }}" type="text"
+                                           name="decision_note" maxlength="1000"
+                                           placeholder="Observação (opcional)">
+                                    <button class="btn btn-success" name="decision" value="approve"
+                                            type="submit">Aprovar</button>
+                                    <button class="btn btn-danger" name="decision" value="reject"
+                                            type="submit">Rejeitar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p>Não existem pedidos de eliminação pendentes.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+
         <div class="card">
             <h3 class="card-title">Gestão de Contas de Funcionários</h3>
             <table>

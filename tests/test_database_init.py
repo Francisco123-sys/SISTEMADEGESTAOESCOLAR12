@@ -116,8 +116,12 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.assertIn('guardian_students', guardian_tables)
         self.assertIn('guardian_password_resets', guardian_tables)
         self.assertIn('auth_rate_limits', guardian_tables)
+        self.assertIn('student_deletion_requests', guardian_tables)
         self.assertTrue(counters_exist)
         self.assertIn('encarregado_nome', student_columns)
+        self.assertIn('ativo', student_columns)
+        self.assertIn('eliminado_em', student_columns)
+        self.assertIn('eliminado_por', student_columns)
         self.assertIn('documento_transferencia_path', student_columns)
         self.assertEqual(user_count, 0)
 

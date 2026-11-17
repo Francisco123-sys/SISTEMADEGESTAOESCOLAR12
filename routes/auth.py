@@ -24,7 +24,7 @@ from services.auth_security import (
     record_recovery_attempt,
 )
 from services.csrf import generate_csrf_token, validate_csrf_token
-from services.db import get_db, log_audit
+from services.db import active_student_condition, get_db, log_audit
 from services.email import build_password_reset_url, send_password_reset_email
 from services.uploads import UPLOAD_DIRECTORY
 
@@ -140,7 +140,10 @@ def portal_encarregado():
                 flash('Seleccione um educando e escreva a mensagem.', 'danger')
                 return redirect(url_for('auth.portal_encarregado'))
             cursor.execute(
-                'SELECT 1 FROM guardian_students WHERE guardian_id = ? AND student_id = ?',
+                f'''SELECT 1 FROM guardian_students gs
+                    JOIN students s ON s.id = gs.student_id
+                    WHERE gs.guardian_id = ? AND gs.student_id = ?
+                      AND {active_student_condition(cursor, 's')}''',
                 (guardian['id'], student_id),
             )
             if not cursor.fetchone():
@@ -156,15 +159,16 @@ def portal_encarregado():
         flash('Acção desconhecida.', 'danger')
         return redirect(url_for('auth.portal_encarregado'))
 
+    active_students = active_student_condition(cursor, 's')
     cursor.execute('''
         SELECT s.id, s.nome, s.code, s.classe_ingresso, s.curso, s.turno,
                t.nome AS turma_nome, t.sala AS turma_sala
         FROM guardian_students gs
         JOIN students s ON s.id = gs.student_id
         LEFT JOIN turmas t ON t.id = s.turma_id
-        WHERE gs.guardian_id = ?
+        WHERE gs.guardian_id = ? AND {active_students}
         ORDER BY s.nome
-    ''', (guardian['id'],))
+    '''.format(active_students=active_students), (guardian['id'],))
     educandos = cursor.fetchall()
 
     aluno = None
@@ -179,8 +183,8 @@ def portal_encarregado():
             FROM guardian_students gs
             JOIN students s ON s.id = gs.student_id
             LEFT JOIN turmas t ON t.id = s.turma_id
-            WHERE gs.guardian_id = ? AND s.id = ?
-        ''', (guardian['id'], requested_student_id))
+            WHERE gs.guardian_id = ? AND s.id = ? AND {active_students}
+        '''.format(active_students=active_students), (guardian['id'], requested_student_id))
         aluno = cursor.fetchone()
         if not aluno:
             flash('O educando solicitado não está associado à sua conta.', 'danger')
@@ -223,13 +227,14 @@ def guardian_student_photo(filename):
     if not guardian_id or not re.fullmatch(r'[a-f0-9]{32}\.jpg', filename):
         return '', 404
     cursor = get_db().cursor()
+    active_students = active_student_condition(cursor, 's')
     cursor.execute('''
         SELECT 1 FROM guardian_students gs
         JOIN students s ON s.id = gs.student_id
         JOIN guardians g ON g.id = gs.guardian_id
         WHERE gs.guardian_id = ? AND s.foto_path = ?
-          AND g.ativo = 1 AND g.session_version = ?
-    ''', (
+          AND g.ativo = 1 AND g.session_version = ? AND {active_students}
+    '''.format(active_students=active_students), (
         guardian_id,
         filename,
         session.get('guardian_session_version'),

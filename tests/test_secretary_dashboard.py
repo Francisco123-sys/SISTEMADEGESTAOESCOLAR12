@@ -32,9 +32,12 @@ class SecretaryDashboardTests(unittest.TestCase):
             browser_session['user_id'] = 1
             browser_session['user_nome'] = 'Secretaria de Teste'
 
-        with patch(
-            'routes.secretary.get_db',
-            return_value=self._database_with_dashboard_counts(),
+        with (
+            patch(
+                'routes.secretary.get_db',
+                return_value=self._database_with_dashboard_counts(),
+            ),
+            patch('routes.secretary.active_student_condition', return_value='ativo = 1'),
         ):
             response = self.client.get('/secretary/dashboard')
 
@@ -74,7 +77,10 @@ class SecretaryDashboardTests(unittest.TestCase):
             browser_session['user_role'] = 'chefe_secretaria'
             browser_session['user_id'] = 1
 
-        with patch('routes.secretary.get_db', return_value=db):
+        with (
+            patch('routes.secretary.get_db', return_value=db),
+            patch('routes.secretary.active_student_condition', return_value='ativo = 1'),
+        ):
             response = self.client.get('/secretary/dashboard')
 
         self.assertEqual(response.status_code, 200)

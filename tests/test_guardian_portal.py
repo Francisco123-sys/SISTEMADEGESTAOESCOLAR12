@@ -49,7 +49,8 @@ class GuardianPortalTests(unittest.TestCase):
                 classe_ingresso INTEGER,
                 curso TEXT,
                 turno TEXT,
-                turma_id INTEGER
+                turma_id INTEGER,
+                ativo INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE turmas (id INTEGER PRIMARY KEY, nome TEXT, sala TEXT);
             CREATE TABLE grades (
@@ -69,8 +70,8 @@ class GuardianPortalTests(unittest.TestCase):
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             INSERT INTO students VALUES
-                (10, 'Educando Associado', 'ALU-10', 'BI-10', NULL, 8, 'Diurno', 'Manhã', 1),
-                (20, 'Educando Alheio', 'ALU-20', 'BI-20', NULL, 9, 'Diurno', 'Tarde', 1);
+                (10, 'Educando Associado', 'ALU-10', 'BI-10', NULL, 8, 'Diurno', 'Manhã', 1, 1),
+                (20, 'Educando Alheio', 'ALU-20', 'BI-20', NULL, 9, 'Diurno', 'Tarde', 1, 1);
             INSERT INTO turmas VALUES (1, '8ª A', 'Sala 01');
             INSERT INTO subjects VALUES (1, 'Matemática');
             INSERT INTO grades VALUES (1, 10, 1, 1, 1, 12, 13, 14, 15, 13.5, NULL, 13.5, 0, 0, 0, '', 'Submetida');
@@ -116,6 +117,35 @@ class GuardianPortalTests(unittest.TestCase):
 
         self.assertIn(b'Educando Associado', response.data)
         self.assertNotIn(b'Educando Alheio', response.data)
+
+    def test_inactive_student_is_hidden_and_cannot_receive_portal_complaints(self):
+        self.db.execute('UPDATE students SET ativo = 0 WHERE id = 10')
+        self.db.commit()
+        with patch('routes.auth.get_db', return_value=self.db):
+            self.client.get('/portal-encarregado')
+            with self.client.session_transaction() as browser_session:
+                token = browser_session['_csrf_token']
+            login_response = self.client.post('/portal-encarregado', data={
+                'acao': 'login',
+                'csrf_token': token,
+                'email': 'encarregada@example.test',
+                'password': 'guardian-password-123',
+            }, follow_redirects=True)
+            with self.client.session_transaction() as browser_session:
+                token = browser_session['_csrf_token']
+            complaint_response = self.client.post('/portal-encarregado', data={
+                'acao': 'reclamacao',
+                'csrf_token': token,
+                'student_id': '10',
+                'mensagem': 'Mensagem sobre matrícula inactiva',
+            })
+
+        self.assertNotIn(b'Educando Associado', login_response.data)
+        self.assertEqual(complaint_response.status_code, 302)
+        self.assertEqual(
+            self.db.execute('SELECT COUNT(*) FROM reclamacoes_encarregados').fetchone()[0],
+            0,
+        )
 
     def test_guardian_cannot_read_another_students_grades(self):
         with patch('routes.auth.get_db', return_value=self.db):

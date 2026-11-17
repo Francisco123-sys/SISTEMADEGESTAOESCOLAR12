@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS students (
     nee_tipo TEXT DEFAULT 'Nenhuma',
     classe_sugerida INTEGER,
     justificacao_alteracao TEXT,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    eliminado_em TIMESTAMP,
+    eliminado_por INTEGER REFERENCES users(id) ON DELETE SET NULL,
     funcionario_id INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -146,6 +149,22 @@ CREATE TABLE IF NOT EXISTS guardian_students (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (guardian_id, student_id)
 );
+
+CREATE TABLE IF NOT EXISTS student_deletion_requests (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL REFERENCES students(id),
+    turma_id INTEGER NOT NULL REFERENCES turmas(id),
+    solicitado_por INTEGER NOT NULL REFERENCES users(id),
+    solicitado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    motivo TEXT,
+    estado TEXT NOT NULL DEFAULT 'Pendente'
+        CHECK(estado IN ('Pendente', 'Aprovado', 'Rejeitado')),
+    decidido_por INTEGER REFERENCES users(id),
+    decidido_em TIMESTAMP,
+    motivo_decisao TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_student_deletion_pending
+    ON student_deletion_requests(student_id) WHERE estado = 'Pendente';
 
 CREATE TABLE IF NOT EXISTS grades (
     id SERIAL PRIMARY KEY,

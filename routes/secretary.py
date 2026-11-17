@@ -4,7 +4,13 @@ import math
 import re
 from decimal import Decimal, InvalidOperation
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
-from services.db import get_db, log_audit, DB_INTEGRITY_ERRORS
+from services.db import (
+    active_student_condition,
+    get_db,
+    log_audit,
+    DB_INTEGRITY_ERRORS,
+    student_deletion_schema_ready,
+)
 from services.student_service import (
     AREAS_CURRICULARES,
     calcular_classe_sugerida,
@@ -45,6 +51,7 @@ MESES_PAGAMENTO = {
 def check_secretary():
     return session.get('user_role') in ['secretary', 'chefe_secretaria', 'admin']
 
+
 def validar_referencia_9_digitos(ref):
     return bool(re.fullmatch(r'[0-9]{9}', ref))
 
@@ -82,20 +89,23 @@ def dashboard():
     
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT COUNT(*) as total FROM students')
+    active_students = active_student_condition(cursor)
+    cursor.execute(f'SELECT COUNT(*) as total FROM students WHERE {active_students}')
     total_alunos = cursor.fetchone()['total']
 
     cursor.execute('SELECT COUNT(*) as total FROM turmas')
     total_turmas = cursor.fetchone()['total']
     
-    cursor.execute(
-        'SELECT COUNT(*) as total FROM students WHERE COALESCE(isento_taxa, 0) = 1'
-    )
+    cursor.execute(f'''
+        SELECT COUNT(*) AS total FROM students
+        WHERE {active_students} AND COALESCE(isento_taxa, 0) = 1
+    ''')
     total_isentos = cursor.fetchone()['total']
     
-    cursor.execute('''
+    cursor.execute(f'''
         SELECT COUNT(*) AS total FROM students
-        WHERE COALESCE(NULLIF(TRIM(nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'
+        WHERE {active_students}
+          AND COALESCE(NULLIF(TRIM(nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'
     ''')
     total_nee = cursor.fetchone()['total']
 
@@ -147,13 +157,14 @@ def students_list():
     turmas_disponiveis = cursor.fetchall()
 
     params = []
-    query = '''
+    active_students = active_student_condition(cursor, 's')
+    query = f'''
         SELECT s.*, t.nome as turma_nome, t.sala as turma_sala, t.area_curricular,
                t.id as turma_db_id, c.numero as classe_num
         FROM students s 
         LEFT JOIN turmas t ON s.turma_id = t.id 
         LEFT JOIN classes c ON t.classe_id = c.id
-        WHERE 1=1
+        WHERE {active_students}
     '''
     if busca:
         query += ' AND (s.nome LIKE ? OR s.code LIKE ? OR s.bi_cedula LIKE ?)'
@@ -221,7 +232,11 @@ def manage_guardians():
                 flash('Seleccione um aluno válido.', 'danger')
                 return redirect(url_for('secretary.manage_guardians'))
 
-            cursor.execute('SELECT id FROM students WHERE id = ?', (student_id,))
+            active_student = active_student_condition(cursor)
+            cursor.execute(
+                f'SELECT id FROM students WHERE id = ? AND {active_student}',
+                (student_id,),
+            )
             if not cursor.fetchone():
                 flash('Aluno não encontrado.', 'danger')
                 return redirect(url_for('secretary.manage_guardians'))
@@ -308,7 +323,10 @@ def manage_guardians():
         flash('Acção desconhecida.', 'danger')
         return redirect(url_for('secretary.manage_guardians'))
 
-    cursor.execute('SELECT id, code, nome FROM students ORDER BY nome')
+    active_students = active_student_condition(cursor)
+    cursor.execute(
+        f'SELECT id, code, nome FROM students WHERE {active_students} ORDER BY nome'
+    )
     alunos = cursor.fetchall()
     cursor.execute('''
         SELECT g.id, g.nome, g.email, g.contacto, g.ativo,
@@ -693,7 +711,11 @@ def student_edit(student_id):
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT * FROM students WHERE id = ?', (student_id,))
+    active_student = active_student_condition(cursor)
+    cursor.execute(
+        f'SELECT * FROM students WHERE id = ? AND {active_student}',
+        (student_id,),
+    )
     aluno = cursor.fetchone()
     if not aluno:
         flash('Aluno não encontrado.', 'danger')
@@ -851,12 +873,14 @@ def export_class_list_pdf(turma_id, tipo):
         return redirect(url_for('secretary.gerenciar_turmas'))
 
     if tipo == 'vitrine':
+        active_students = active_student_condition(cursor)
         cursor.execute(
-            'SELECT nome, sexo FROM students WHERE turma_id = ? ORDER BY nome',
+            f'SELECT nome, sexo FROM students WHERE turma_id = ? AND {active_students} ORDER BY nome',
             (turma_id,),
         )
     else:
-        cursor.execute('''
+        active_students = active_student_condition(cursor, 's')
+        cursor.execute(f'''
             SELECT s.nome, s.code, s.sexo, s.data_nascimento,
                    COALESCE(
                        NULLIF((
@@ -884,7 +908,7 @@ def export_class_list_pdf(turma_id, tipo):
                        ''
                    ) AS contacto_encarregado
             FROM students s
-            WHERE s.turma_id = ?
+            WHERE s.turma_id = ? AND {active_students}
             ORDER BY s.nome
         ''', (turma_id,))
     alunos = cursor.fetchall()
@@ -958,11 +982,7 @@ def export_class_list_pdf(turma_id, tipo):
         Paragraph('ESCOLA SECUNDÁRIA DA MANGA', header_style),
         Spacer(1, 0.25 * cm),
     ])
-    list_title = (
-        f'LISTA NOMINAL OFICIAL – ANO LECTIVO {turma["ano_lectivo"]}'
-        if tipo == 'oficial'
-        else f'LISTA NOMINAL PARA VITRINE – ANO LECTIVO {turma["ano_lectivo"]}'
-    )
+    list_title = f'LISTA DE ALUNOS — ANO LECTIVO {turma["ano_lectivo"]}'
     story.append(Paragraph(list_title, title_style))
     area = {
         'A': 'Área A — Letras e Ciências Sociais',
@@ -977,6 +997,7 @@ def export_class_list_pdf(turma_id, tipo):
         f'<b>Sala:</b> {escape(turma["sala"] or "—")} &nbsp;&nbsp; '
         f'<b>Área:</b> {escape(area or "—")} &nbsp;&nbsp; '
         f'<b>Turno/Modalidade:</b> {escape(modalidade)}<br/>'
+        f'<b>Director de Turma:</b> {escape(turma["diretor_turma"] or "Não atribuído")}<br/>'
         f'<b>Total:</b> {len(alunos)} &nbsp;&nbsp; '
         f'<b>Masculino:</b> {male_count} &nbsp;&nbsp; '
         f'<b>Feminino:</b> {female_count}'
@@ -1031,11 +1052,6 @@ def export_class_list_pdf(turma_id, tipo):
     ]))
     story.extend([table, Spacer(1, 0.8 * cm)])
     if tipo == 'oficial':
-        story.append(Paragraph(
-            f'Director de Turma: {escape(turma["diretor_turma"] or "Não atribuído")} '
-            f'&nbsp;&nbsp; Data de emissão: {issue_date}',
-            cell_style,
-        ))
         story.append(Spacer(1, 1.2 * cm))
         story.append(Paragraph(
             'O Chefe da Secretaria: ____________________________________',
@@ -1096,9 +1112,9 @@ def payment_student_info(student_id):
 def payment_form():
     if not check_secretary():
         return redirect(url_for('auth.login_landing'))
-        
     db = get_db()
     cursor = db.cursor()
+    active_students = active_student_condition(cursor)
     
     if request.method == 'POST':
         student_id = request.form.get('student_id', '').strip()
@@ -1130,8 +1146,9 @@ def payment_form():
             return redirect(url_for('secretary.payment_form'))
             
         cursor.execute(
-            '''SELECT id, ano_lectivo_id FROM students
-               WHERE id = ? AND COALESCE(isento_taxa, 0) = 0''',
+            f'''SELECT id, ano_lectivo_id FROM students
+                WHERE id = ? AND {active_students}
+                  AND COALESCE(isento_taxa, 0) = 0''',
             (student_id,),
         )
         student = cursor.fetchone()
@@ -1172,7 +1189,11 @@ def payment_form():
             flash(f'ERRO: Referência {referencia} duplicada na base de dados!', 'danger')
             return redirect(url_for('secretary.payment_form'))
 
-    cursor.execute('SELECT id, code, nome, classe_ingresso FROM students WHERE isento_taxa = 0 ORDER BY classe_ingresso ASC, nome ASC')
+    cursor.execute(
+        f'''SELECT id, code, nome, classe_ingresso FROM students
+            WHERE {active_students} AND isento_taxa = 0
+            ORDER BY classe_ingresso ASC, nome ASC'''
+    )
     alunos = cursor.fetchall()
     return render_template('secretary/payment_form.html', alunos=alunos, bancos=BANCOS_PERMITIDOS, hoje=datetime.now().strftime('%Y-%m-%d'))
 
@@ -1263,10 +1284,11 @@ def exportar_lista_doc(turma_id):
         flash('Turma não encontrada.', 'danger')
         return redirect(url_for('secretary.students_list'))
         
-    cursor.execute('''
+    active_students = active_student_condition(cursor)
+    cursor.execute(f'''
         SELECT code, nome, bi_cedula, sexo, data_nascimento, encarregado_contacto_1
         FROM students
-        WHERE turma_id = ?
+        WHERE turma_id = ? AND {active_students}
         ORDER BY nome ASC
     ''', (turma_id,))
     alunos = cursor.fetchall()
@@ -1488,6 +1510,10 @@ def gerenciar_turmas():
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
+    cursor.execute(
+        'SELECT id, numero FROM classes WHERE numero BETWEEN 8 AND 12 ORDER BY numero'
+    )
+    classes = cursor.fetchall()
     
     if request.method == 'POST':
         acao = request.form.get('acao')
@@ -1581,7 +1607,11 @@ def gerenciar_turmas():
                 flash('Seleccione um aluno e uma turma válidos.', 'danger')
                 return redirect(url_for('secretary.gerenciar_turmas'))
             
-            cursor.execute('SELECT turma_id FROM students WHERE id = ?', (student_id,))
+            active_student = active_student_condition(cursor)
+            cursor.execute(
+                f'SELECT turma_id FROM students WHERE id = ? AND {active_student}',
+                (student_id,),
+            )
             atual = cursor.fetchone()
             
             cursor.execute('''
@@ -1624,17 +1654,23 @@ def gerenciar_turmas():
                 flash('Aluno atribuído à turma e controle de vagas actualizado!', 'success')
         return redirect(url_for('secretary.gerenciar_turmas'))
 
-    cursor.execute('''
+    active_students = active_student_condition(cursor, 's')
+    cursor.execute(f'''
         SELECT t.*, c.numero as classe_num, ay.ano as ano_lectivo,
-               (SELECT COUNT(*) FROM students s WHERE s.turma_id = t.id) as inscritos
+               u.nome AS diretor_turma,
+               (SELECT COUNT(*) FROM students s WHERE s.turma_id = t.id AND {active_students}) as inscritos
         FROM turmas t
         JOIN classes c ON t.classe_id = c.id
         JOIN academic_years ay ON t.ano_lectivo_id = ay.id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
         ORDER BY c.numero ASC, t.nome ASC
     ''')
     turmas = cursor.fetchall()
     
-    cursor.execute('SELECT id, code, nome, classe_ingresso FROM students ORDER BY nome ASC')
+    active_students = active_student_condition(cursor)
+    cursor.execute(
+        f'SELECT id, code, nome, classe_ingresso FROM students WHERE {active_students} ORDER BY nome ASC'
+    )
     alunos = cursor.fetchall()
     
     cursor.execute('SELECT id, nome FROM subjects ORDER BY nome ASC')
@@ -1647,9 +1683,169 @@ def gerenciar_turmas():
         turmas=turmas,
         alunos=alunos,
         disciplinas=disciplinas,
+        classes=classes,
         areas_curriculares=AREAS_CURRICULARES,
         academic_years=academic_years,
     )
+
+@secretary_bp.route('/turmas/<int:turma_id>')
+def class_detail(turma_id):
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
+
+    db = get_db()
+    cursor = db.cursor()
+    if not student_deletion_schema_ready(cursor):
+        flash(
+            'A gestão individual e os pedidos de eliminação requerem a migração de dados pendente.',
+            'warning',
+        )
+        return redirect(url_for('secretary.gerenciar_turmas'))
+
+    cursor.execute('''
+        SELECT t.id, t.nome, t.sala, t.turno, t.curso, t.capacidade_maxima,
+               t.area_curricular, c.numero AS classe_num, ay.ano AS ano_lectivo,
+               u.nome AS diretor_turma
+        FROM turmas t
+        JOIN classes c ON c.id = t.classe_id
+        JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
+        WHERE t.id = ?
+    ''', (turma_id,))
+    turma = cursor.fetchone()
+    if not turma:
+        flash('Turma não encontrada.', 'danger')
+        return redirect(url_for('secretary.gerenciar_turmas'))
+
+    busca = request.args.get('q', '').strip()
+    cursor.execute('''
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN sexo = 'M' THEN 1 ELSE 0 END) AS masculino,
+               SUM(CASE WHEN sexo = 'F' THEN 1 ELSE 0 END) AS feminino
+        FROM students
+        WHERE turma_id = ? AND ativo = 1
+    ''', (turma_id,))
+    totals = cursor.fetchone()
+    total_alunos = totals['total'] or 0
+    capacidade = turma['capacidade_maxima'] or 0
+
+    cursor.execute('''
+        SELECT s.id, s.code, s.nome, s.sexo, s.data_nascimento, s.foto_path,
+               COALESCE(
+                   NULLIF((
+                       SELECT g.nome
+                       FROM guardian_students gs
+                       JOIN guardians g ON g.id = gs.guardian_id
+                       WHERE gs.student_id = s.id AND g.ativo = 1
+                       ORDER BY gs.principal DESC, gs.created_at, gs.guardian_id
+                       LIMIT 1
+                   ), ''),
+                   NULLIF(TRIM(s.encarregado_nome), ''),
+                   ''
+               ) AS encarregado_nome,
+               COALESCE(
+                   NULLIF((
+                       SELECT g.contacto
+                       FROM guardian_students gs
+                       JOIN guardians g ON g.id = gs.guardian_id
+                       WHERE gs.student_id = s.id AND g.ativo = 1
+                       ORDER BY gs.principal DESC, gs.created_at, gs.guardian_id
+                       LIMIT 1
+                   ), ''),
+                   NULLIF(TRIM(s.encarregado_contacto_principal), ''),
+                   NULLIF(TRIM(s.encarregado_contacto_1), ''),
+                   ''
+               ) AS contacto_encarregado,
+               (SELECT dr.estado
+                FROM student_deletion_requests dr
+                WHERE dr.student_id = s.id AND dr.estado = 'Pendente'
+                LIMIT 1) AS estado_pedido_eliminacao
+        FROM students s
+        WHERE s.turma_id = ? AND s.ativo = 1
+          AND (? = '' OR s.nome LIKE ? OR s.code LIKE ?)
+        ORDER BY s.nome ASC
+    ''', (turma_id, busca, f'%{busca}%', f'%{busca}%'))
+    alunos = cursor.fetchall()
+
+    return render_template(
+        'secretary/class_detail.html',
+        turma=turma,
+        alunos=alunos,
+        busca=busca,
+        total_alunos=total_alunos,
+        capacidade=capacidade,
+        vagas_disponiveis=max(capacidade - total_alunos, 0),
+        ocupacao=round(total_alunos * 100 / capacidade) if capacidade else 0,
+        total_masculino=totals['masculino'] or 0,
+        total_feminino=totals['feminino'] or 0,
+        areas_curriculares=AREAS_CURRICULARES,
+        pode_ver_contactos=session.get('user_role') in ('secretary', 'chefe_secretaria', 'admin'),
+    )
+
+
+@secretary_bp.route('/students/<int:student_id>/deletion-request', methods=['POST'])
+def request_student_deletion(student_id):
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
+
+    motivo = request.form.get('motivo', '').strip()
+    if len(motivo) > 1000:
+        flash('O motivo não pode exceder 1000 caracteres.', 'danger')
+        return redirect(url_for('secretary.students_list'))
+
+    db = get_db()
+    cursor = db.cursor()
+    if not student_deletion_schema_ready(cursor):
+        flash(
+            'Os pedidos de eliminação ainda não estão disponíveis; é necessária uma migração.',
+            'warning',
+        )
+        return redirect(url_for('secretary.students_list'))
+
+    cursor.execute('''
+        SELECT id, code, nome, turma_id
+        FROM students
+        WHERE id = ? AND ativo = 1
+    ''', (student_id,))
+    aluno = cursor.fetchone()
+    if not aluno:
+        flash('Aluno activo não encontrado.', 'danger')
+        return redirect(url_for('secretary.students_list'))
+
+    cursor.execute('''
+        SELECT id FROM student_deletion_requests
+        WHERE student_id = ? AND estado = 'Pendente'
+    ''', (student_id,))
+    if cursor.fetchone():
+        flash('Já existe um pedido de eliminação pendente para este aluno.', 'info')
+        return redirect(url_for('secretary.class_detail', turma_id=aluno['turma_id']))
+
+    try:
+        cursor.execute('''
+            INSERT INTO student_deletion_requests (
+                student_id, turma_id, solicitado_por, motivo
+            )
+            VALUES (?, ?, ?, ?)
+        ''', (student_id, aluno['turma_id'], session['user_id'], motivo or None))
+    except DB_INTEGRITY_ERRORS as error:
+        db.rollback()
+        if (
+            getattr(error, 'pgcode', None) == '23505'
+            or 'UNIQUE constraint failed' in str(error)
+        ):
+            flash('Já existe um pedido de eliminação pendente para este aluno.', 'info')
+            return redirect(url_for('secretary.class_detail', turma_id=aluno['turma_id']))
+        raise
+
+    log_audit(
+        session['user_id'],
+        'SOLICITAR_ELIMINACAO_ALUNO',
+        f"Pedido de eliminação do aluno {aluno['code']} ({aluno['nome']}) "
+        f"na turma {aluno['turma_id']}; motivo: {motivo or 'Não indicado'}.",
+    )
+    flash('Pedido enviado à Direcção para aprovação.', 'success')
+    return redirect(url_for('secretary.class_detail', turma_id=aluno['turma_id']))
+
 
 @secretary_bp.route('/lista-nominal/<int:turma_id>')
 def lista_nominal_view(turma_id):
@@ -1668,8 +1864,12 @@ def lista_nominal_view(turma_id):
     if not turma:
         flash('Turma não encontrada.', 'danger')
         return redirect(url_for('secretary.students_list'))
-        
-    cursor.execute('SELECT id, code, nome FROM students WHERE turma_id = ? ORDER BY nome ASC', (turma_id,))
+
+    active_students = active_student_condition(cursor)
+    cursor.execute(
+        f'SELECT id, code, nome FROM students WHERE turma_id = ? AND {active_students} ORDER BY nome ASC',
+        (turma_id,),
+    )
     alunos = cursor.fetchall()
     return render_template('secretary/lista_nominal.html', turma=turma, alunos=alunos)
 
@@ -1679,12 +1879,13 @@ def exportar_pauta_csv(turma_id, subject_id):
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
+    active_students = active_student_condition(cursor, 's')
     cursor.execute('''
         SELECT s.code, s.nome, g.av1, g.av2, g.av3, g.av4, g.exame, g.faltas_justificadas, g.faltas_nao_justificadas
         FROM students s
         LEFT JOIN grades g ON s.id = g.student_id AND g.subject_id = ? AND g.turma_id = ?
-        WHERE s.turma_id = ? ORDER BY s.nome ASC
-    ''', (subject_id, turma_id, turma_id))
+        WHERE s.turma_id = ? AND {active_students} ORDER BY s.nome ASC
+    '''.format(active_students=active_students), (subject_id, turma_id, turma_id))
     rows = cursor.fetchall()
 
     si = io.StringIO()
@@ -1712,10 +1913,14 @@ def importar_pauta_csv():
     db = get_db()
     cursor = db.cursor()
     importados = 0
+    active_student = active_student_condition(cursor)
 
     for row in reader:
         code = row.get('Codigo_Aluno', '').strip()
-        cursor.execute('SELECT id FROM students WHERE code = ? AND turma_id = ?', (code, turma_id))
+        cursor.execute(
+            f'SELECT id FROM students WHERE code = ? AND turma_id = ? AND {active_student}',
+            (code, turma_id),
+        )
         st = cursor.fetchone()
         if not st:
             continue

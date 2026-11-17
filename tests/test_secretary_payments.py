@@ -115,6 +115,24 @@ class SecretaryPaymentWorkflowTests(unittest.TestCase):
             0,
         )
 
+    def test_inactive_students_cannot_be_selected_or_charged(self):
+        self.db.execute('UPDATE students SET ativo = 0 WHERE id = 1')
+        self.db.commit()
+        with patch('routes.secretary.get_db', return_value=self.db):
+            page = self.client.get('/secretary/payments/new')
+            response = self.client.post(
+                '/secretary/payments/new',
+                data=self._payment_form(),
+            )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(b'ALU-1', page.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            self.db.execute('SELECT COUNT(*) FROM payments').fetchone()[0],
+            0,
+        )
+
     def test_duplicate_reference_is_rejected(self):
         with (
             patch('routes.secretary.get_db', return_value=self.db),

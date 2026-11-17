@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from services.db import get_db, log_audit
+from services.db import active_student_condition, get_db, log_audit
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -18,9 +18,10 @@ def dashboard():
         
     db = get_db()
     cursor = db.cursor()
+    active_students = active_student_condition(cursor, 'st')
     cursor.execute('''
         SELECT ta.id, t.nome as turma_nome, s.nome as disciplina_nome, t.id as turma_id, s.id as subject_id, c.numero as classe_num,
-               (SELECT COUNT(*) FROM students st WHERE st.turma_id = t.id) as total_alunos,
+               (SELECT COUNT(*) FROM students st WHERE st.turma_id = t.id AND {active_students}) as total_alunos,
                (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.status IN ('Submetida', 'Fechada')) as submetida_count,
                (SELECT AVG(g.media_final) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id) as media_turma,
                (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.media_final >= 9.5) as aprovados_count,
@@ -32,7 +33,7 @@ def dashboard():
         JOIN subjects s ON ta.subject_id = s.id
         JOIN classes c ON t.classe_id = c.id
         WHERE ta.teacher_id = ?
-    ''', (LIMITE_FALTAS_INJUSTIFICADAS, session['user_id']))
+    '''.format(active_students=active_students), (LIMITE_FALTAS_INJUSTIFICADAS, session['user_id']))
     atribuicoes = cursor.fetchall()
     return render_template('teacher/dashboard.html', atribuicoes=atribuicoes)
 
@@ -50,6 +51,7 @@ def pauta_oficial_impressao(turma_id, subject_id):
         if not cursor.fetchone():
             flash('Acesso negado à pauta desta turma ou disciplina.', 'danger')
             return redirect(url_for('teacher.dashboard'))
+    active_students = active_student_condition(cursor, 's')
     cursor.execute('''
         SELECT t.nome as turma_nome, t.sala as sala, t.curso as curso, t.turno as turno,
                c.numero as classe_num, s.nome as disciplina_nome 
@@ -62,9 +64,9 @@ def pauta_oficial_impressao(turma_id, subject_id):
                g.faltas_justificadas, g.faltas_nao_justificadas, g.total_faltas, g.comentario_professor
         FROM students s
         LEFT JOIN grades g ON s.id = g.student_id AND g.subject_id = ? AND g.turma_id = ?
-        WHERE s.turma_id = ?
+        WHERE s.turma_id = ? AND {active_students}
         ORDER BY s.nome ASC
-    ''', (subject_id, turma_id, turma_id))
+    '''.format(active_students=active_students), (subject_id, turma_id, turma_id))
     alunos_notas = cursor.fetchall()
     is_exame_class = info['classe_num'] in [9, 12]
     return render_template('teacher/pauta_oficial.html', info=info, alunos=alunos_notas,
@@ -82,6 +84,8 @@ def launch_grades(turma_id, subject_id):
     if not cursor.fetchone() and session.get('user_role') != 'admin':
         flash('Acesso Negado.', 'danger')
         return redirect(url_for('teacher.dashboard'))
+    active_students = active_student_condition(cursor, 's')
+    active_students_unaliased = active_student_condition(cursor)
         
     cursor.execute('''
         SELECT t.nome as turma_nome, t.sala as sala, t.curso as curso, t.turno as turno,
@@ -104,7 +108,7 @@ def launch_grades(turma_id, subject_id):
 
         aluno_ids = request.form.getlist('student_id')
         cursor.execute(
-            'SELECT id FROM students WHERE turma_id = ? ORDER BY id',
+            f'SELECT id FROM students WHERE turma_id = ? AND {active_students_unaliased} ORDER BY id',
             (turma_id,),
         )
         expected_student_ids = {str(row['id']) for row in cursor.fetchall()}
@@ -176,8 +180,8 @@ def launch_grades(turma_id, subject_id):
                g.faltas_justificadas, g.faltas_nao_justificadas, g.total_faltas, g.comentario_professor, g.status
         FROM students s
         LEFT JOIN grades g ON s.id = g.student_id AND g.subject_id = ? AND g.turma_id = ?
-        WHERE s.turma_id = ? ORDER BY s.nome ASC
-    ''', (subject_id, turma_id, turma_id))
+        WHERE s.turma_id = ? AND {active_students} ORDER BY s.nome ASC
+    '''.format(active_students=active_students), (subject_id, turma_id, turma_id))
     alunos = cursor.fetchall()
     return render_template('teacher/grades.html', info=info, alunos=alunos, is_exame_class=is_exame_class,
                            turma_id=turma_id, subject_id=subject_id, ja_submetida=ja_submetida,

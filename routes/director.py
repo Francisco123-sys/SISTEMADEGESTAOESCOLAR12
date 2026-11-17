@@ -1,5 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from services.db import get_db, log_audit
+from services.db import (
+    active_student_condition,
+    get_db,
+    log_audit,
+    student_deletion_schema_ready,
+)
 from services.student_service import gerar_codigo_unico
 from werkzeug.security import generate_password_hash
 
@@ -16,7 +21,8 @@ def dashboard():
         
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT COUNT(*) as total FROM students')
+    active_students = active_student_condition(cursor)
+    cursor.execute(f'SELECT COUNT(*) as total FROM students WHERE {active_students}')
     total_alunos = cursor.fetchone()['total']
     
     cursor.execute('SELECT COUNT(*) as total FROM users WHERE role = "teacher"')
@@ -32,13 +38,34 @@ def dashboard():
     
     cursor.execute('SELECT * FROM users ORDER BY role ASC, nome ASC')
     funcionarios = cursor.fetchall()
+
+    pedidos_eliminacao = []
+    if (
+        session.get('user_role') in ('director', 'admin')
+        and student_deletion_schema_ready(cursor)
+    ):
+        cursor.execute('''
+            SELECT dr.id, dr.student_id, dr.solicitado_por, dr.solicitado_em,
+                   dr.motivo, s.code AS student_code, s.nome AS student_nome,
+                   c.numero AS classe_num, t.nome AS turma_nome,
+                   u.nome AS solicitante_nome
+            FROM student_deletion_requests dr
+            JOIN students s ON s.id = dr.student_id
+            JOIN turmas t ON t.id = dr.turma_id
+            JOIN classes c ON c.id = t.classe_id
+            JOIN users u ON u.id = dr.solicitado_por
+            WHERE dr.estado = 'Pendente'
+            ORDER BY dr.solicitado_em, dr.id
+        ''')
+        pedidos_eliminacao = cursor.fetchall()
     
     return render_template('director/dashboard.html', 
                            total_alunos=total_alunos, 
                            total_professores=total_professores, 
                            total_turmas=total_turmas, 
                            total_receita=total_receita,
-                           funcionarios=funcionarios)
+                           funcionarios=funcionarios,
+                           pedidos_eliminacao=pedidos_eliminacao)
 
 
 @director_bp.route('/turmas')
@@ -51,6 +78,8 @@ def manage_classes():
     cursor = db.cursor()
     cursor.execute('SELECT id, ano, ativo FROM academic_years ORDER BY ano DESC')
     academic_years = cursor.fetchall()
+    active_students = active_student_condition(cursor, 'sx')
+    active_students_alias = active_student_condition(cursor, 's')
     requested_year = request.args.get('ano_lectivo_id', type=int)
     year_ids = {row['id'] for row in academic_years}
     selected_year = requested_year if requested_year in year_ids else None
@@ -83,9 +112,9 @@ def manage_classes():
         conditions.append('t.area_curricular = ?')
         params.append(area_filter)
     if state_filter == 'com_vagas':
-        conditions.append('COALESCE(t.capacidade_maxima, 0) > COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id), 0)')
+        conditions.append(f'COALESCE(t.capacidade_maxima, 0) > COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id AND {active_students}), 0)')
     elif state_filter == 'completa':
-        conditions.append('COALESCE(t.capacidade_maxima, 0) <= COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id), 0)')
+        conditions.append(f'COALESCE(t.capacidade_maxima, 0) <= COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id AND {active_students}), 0)')
     if director_filter.isdigit():
         conditions.append('t.diretor_turma_id = ?')
         params.append(int(director_filter))
@@ -95,7 +124,7 @@ def manage_classes():
                t.area_curricular, t.diretor_turma_id,
                c.numero AS classe_num, ay.ano AS ano_lectivo,
                u.nome AS diretor_turma,
-               (SELECT COUNT(*) FROM students s WHERE s.turma_id = t.id) AS inscritos
+               (SELECT COUNT(*) FROM students s WHERE s.turma_id = t.id AND {active_students_alias}) AS inscritos
         FROM turmas t
         JOIN classes c ON c.id = t.classe_id
         JOIN academic_years ay ON ay.id = t.ano_lectivo_id
@@ -176,7 +205,11 @@ def configure_class(turma_id):
         flash('Turma não encontrada.', 'danger')
         return redirect(url_for('director.manage_classes'))
 
-    cursor.execute('SELECT COUNT(*) AS total FROM students WHERE turma_id = ?', (turma_id,))
+    active_students = active_student_condition(cursor)
+    cursor.execute(
+        f'SELECT COUNT(*) AS total FROM students WHERE turma_id = ? AND {active_students}',
+        (turma_id,),
+    )
     inscritos = cursor.fetchone()['total']
     if capacidade < inscritos:
         db.rollback()
@@ -210,6 +243,124 @@ def configure_class(turma_id):
     )
     flash('Capacidade e Director de Turma actualizados.', 'success')
     return redirect(url_for('director.manage_classes'))
+
+
+@director_bp.route('/student-deletion/<int:request_id>/decision', methods=['POST'])
+def decide_student_deletion(request_id):
+    if session.get('user_role') not in ('director', 'admin'):
+        flash('Apenas o Director pode decidir pedidos de eliminação.', 'danger')
+        return redirect(url_for('auth.login_landing'))
+
+    db = get_db()
+    cursor = db.cursor()
+    if not student_deletion_schema_ready(cursor):
+        flash('A aprovação de pedidos requer a migração de dados pendente.', 'warning')
+        return redirect(url_for('director.dashboard'))
+
+    decision = request.form.get('decision', '')
+    if decision not in ('approve', 'reject'):
+        flash('Decisão inválida.', 'danger')
+        return redirect(url_for('director.dashboard'))
+
+    decision_note = request.form.get('decision_note', '').strip()
+    if len(decision_note) > 1000:
+        flash('A observação da decisão não pode exceder 1000 caracteres.', 'danger')
+        return redirect(url_for('director.dashboard'))
+
+    cursor.execute('''
+        SELECT id, student_id, solicitado_por, estado
+        FROM student_deletion_requests
+        WHERE id = ?
+    ''', (request_id,))
+    pedido = cursor.fetchone()
+    if not pedido or pedido['estado'] != 'Pendente':
+        flash('O pedido não existe ou já foi decidido.', 'warning')
+        return redirect(url_for('director.dashboard'))
+
+    if pedido['solicitado_por'] == session.get('user_id'):
+        flash('Não pode decidir um pedido de eliminação que solicitou.', 'danger')
+        return redirect(url_for('director.dashboard'))
+
+    turma_id = None
+    if decision == 'approve':
+        cursor.execute(
+            'UPDATE students SET ativo = ativo WHERE id = ? AND ativo = 1',
+            (pedido['student_id'],),
+        )
+        if cursor.rowcount != 1:
+            db.rollback()
+            flash('O aluno já não está activo; o pedido não foi aplicado.', 'warning')
+            return redirect(url_for('director.dashboard'))
+
+        cursor.execute(
+            'SELECT turma_id FROM students WHERE id = ? AND ativo = 1',
+            (pedido['student_id'],),
+        )
+        aluno = cursor.fetchone()
+        turma_id = aluno['turma_id']
+        cursor.execute(
+            'UPDATE turmas SET vagas_disponiveis = vagas_disponiveis WHERE id = ?',
+            (turma_id,),
+        )
+        if cursor.rowcount != 1:
+            db.rollback()
+            flash('A turma actual do aluno não foi encontrada.', 'danger')
+            return redirect(url_for('director.dashboard'))
+
+    estado = 'Aprovado' if decision == 'approve' else 'Rejeitado'
+    cursor.execute('''
+        UPDATE student_deletion_requests
+        SET estado = ?, decidido_por = ?, decidido_em = CURRENT_TIMESTAMP,
+            motivo_decisao = ?
+        WHERE id = ? AND estado = 'Pendente'
+    ''', (estado, session['user_id'], decision_note or None, request_id))
+    if cursor.rowcount != 1:
+        db.rollback()
+        flash('O pedido foi actualizado por outro utilizador; actualize a página.', 'warning')
+        return redirect(url_for('director.dashboard'))
+
+    if decision == 'approve':
+        cursor.execute('''
+            UPDATE students
+            SET ativo = 0, eliminado_em = CURRENT_TIMESTAMP, eliminado_por = ?
+            WHERE id = ? AND ativo = 1
+        ''', (session['user_id'], pedido['student_id']))
+        if cursor.rowcount != 1:
+            db.rollback()
+            flash('Não foi possível aplicar a eliminação lógica do aluno.', 'danger')
+            return redirect(url_for('director.dashboard'))
+
+        cursor.execute(
+            'SELECT COUNT(*) AS total FROM students WHERE turma_id = ? AND ativo = 1',
+            (turma_id,),
+        )
+        inscritos = cursor.fetchone()['total']
+        cursor.execute(
+            'SELECT capacidade_maxima FROM turmas WHERE id = ?',
+            (turma_id,),
+        )
+        capacidade = cursor.fetchone()['capacidade_maxima'] or 0
+        cursor.execute(
+            'UPDATE turmas SET vagas_disponiveis = ? WHERE id = ?',
+            (max(capacidade - inscritos, 0), turma_id),
+        )
+
+    log_audit(
+        session['user_id'],
+        'DECIDIR_ELIMINACAO_ALUNO',
+        f"Pedido {request_id}; aluno {pedido['student_id']}; solicitante "
+        f"{pedido['solicitado_por']}; Director {session['user_id']}; "
+        f"decisão {estado}; estado da matrícula "
+        f"{'activo → eliminado logicamente' if decision == 'approve' else 'activo → activo'}; "
+        f"motivo da decisão: {decision_note or 'Não indicado'}.",
+    )
+    flash(
+        'Pedido aprovado; a matrícula foi desactivada e o histórico preservado.'
+        if decision == 'approve'
+        else 'Pedido rejeitado; a matrícula permanece activa.',
+        'success' if decision == 'approve' else 'info',
+    )
+    return redirect(url_for('director.dashboard'))
 
 
 @director_bp.route('/assign-teacher', methods=['GET', 'POST'])

@@ -123,7 +123,27 @@ class TeacherGradeWorkflowTests(unittest.TestCase):
             browser_session['user_id'] = 8
         with patch('routes.teacher.get_db', return_value=self.db):
             response = self.client.get('/teacher/grades/1/1')
+
         self.assertEqual(response.status_code, 302)
+
+    def test_inactive_students_are_not_available_for_grading(self):
+        self.db.execute('UPDATE students SET ativo = 0 WHERE id = 2')
+        self.db.commit()
+        with (
+            patch('routes.teacher.get_db', return_value=self.db),
+            patch('routes.teacher.log_audit'),
+        ):
+            page = self.client.get('/teacher/grades/1/1')
+            response = self.client.post(
+                '/teacher/grades/1/1',
+                data=self._grade_form(),
+            )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'Aluno da Turma', page.data)
+        self.assertNotIn(b'Segundo Aluno', page.data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM grades').fetchone()[0], 0)
 
     def test_unassigned_teacher_cannot_read_official_grade_sheet(self):
         with self.client.session_transaction() as browser_session:

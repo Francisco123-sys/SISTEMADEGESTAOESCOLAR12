@@ -33,7 +33,9 @@ class DirectorClassManagementTests(unittest.TestCase):
                 classe_id INTEGER,
                 ano_lectivo_id INTEGER
             );
-            CREATE TABLE students (id INTEGER PRIMARY KEY, turma_id INTEGER);
+            CREATE TABLE students (
+                id INTEGER PRIMARY KEY, turma_id INTEGER, ativo INTEGER NOT NULL DEFAULT 1
+            );
             INSERT INTO academic_years VALUES (1, 2026, 1);
             INSERT INTO classes VALUES (8, 8), (10, 10);
             INSERT INTO users VALUES (9, 'Professor de Teste', 'teacher', 1);
@@ -44,7 +46,7 @@ class DirectorClassManagementTests(unittest.TestCase):
                 (4, '10ª A01', 'Sala 04', 'Manhã', 'Diurno', 30, 29, 'A', NULL, 10, 1),
                 (5, '10ª B01', 'Sala 05', 'Tarde', 'Diurno', 30, 30, 'B', NULL, 10, 1),
                 (6, '10ª C01', 'Sala 06', 'Manhã', 'Diurno', 30, 0, 'C', NULL, 10, 1);
-            INSERT INTO students VALUES (1, 1), (2, 1);
+            INSERT INTO students (id, turma_id) VALUES (1, 1), (2, 1);
         ''')
         with self.client.session_transaction() as browser_session:
             browser_session['user_role'] = 'director'

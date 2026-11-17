@@ -49,6 +49,57 @@ TABLES_WITHOUT_ID = {
     'guardian_password_resets',
     'guardian_students',
 }
+SCHEMA_TABLES = {'students', 'student_deletion_requests'}
+
+
+def has_table(cursor, table_name):
+    if table_name not in SCHEMA_TABLES:
+        raise ValueError('Tabela fora da lista permitida.')
+    if isinstance(cursor, sqlite3.Cursor):
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+
+    cursor.execute('''
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = current_schema() AND table_name = ?
+        ) AS present
+    ''', (table_name,))
+    return bool(cursor.fetchone()['present'])
+
+
+def has_column(cursor, table_name, column_name):
+    if table_name not in SCHEMA_TABLES or not re.fullmatch(r'[a-z_]+', column_name):
+        raise ValueError('Tabela ou coluna fora da lista permitida.')
+    if isinstance(cursor, sqlite3.Cursor):
+        cursor.execute(f'PRAGMA table_info({table_name})')
+        return any(row[1] == column_name for row in cursor.fetchall())
+
+    cursor.execute('''
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = ? AND column_name = ?
+        ) AS present
+    ''', (table_name, column_name))
+    return bool(cursor.fetchone()['present'])
+
+
+def active_student_condition(cursor, alias=''):
+    if alias and not re.fullmatch(r'[a-z_]+', alias):
+        raise ValueError('Alias de tabela inválido.')
+    column = f'{alias}.ativo' if alias else 'ativo'
+    return f'{column} = 1' if has_column(cursor, 'students', 'ativo') else '1 = 1'
+
+
+def student_deletion_schema_ready(cursor):
+    return (
+        has_column(cursor, 'students', 'ativo')
+        and has_table(cursor, 'student_deletion_requests')
+    )
 
 
 class PgCursorWrapper:

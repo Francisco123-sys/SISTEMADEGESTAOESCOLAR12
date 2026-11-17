@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | {{ turma.nome }} | Gestão da Turma</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header class="navbar secretary-navbar class-detail-navbar">
+        <div class="secretary-brand">
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                 alt="Emblema da República de Moçambique">
+            <div>
+                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
+                <div class="brand">Escola Secundária da Manga</div>
+                <div class="secretary-brand-section">Gestão individual de turma</div>
+            </div>
+        </div>
+        <div class="secretary-user-nav">
+            <a href="{{ url_for('secretary.gerenciar_turmas') }}">Gestão de Turmas</a>
+            <a href="{{ url_for('secretary.dashboard') }}">Painel da Secretaria</a>
+        </div>
+    </header>
+
+    <main class="container secretary-dashboard class-detail-page">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <section class="class-detail-heading">
+            <div>
+                <a class="class-back-link" href="{{ url_for('secretary.gerenciar_turmas') }}">
+                    ← Regressar à Gestão de Turmas
+                </a>
+                <p class="secretary-eyebrow">Gestão individual</p>
+                <h1>{{ turma.nome }}</h1>
+                <div class="class-detail-meta">
+                    <span>{{ turma.classe_num }}.ª Classe</span>
+                    <span>Ano lectivo {{ turma.ano_lectivo }}</span>
+                    {% if turma.area_curricular %}
+                    <span>{{ areas_curriculares.get(turma.area_curricular, turma.area_curricular) }}</span>
+                    {% endif %}
+                    <span>{{ 'À Distância' if turma.curso == 'À Distância' else turma.turno }}</span>
+                    <span>{{ turma.sala or 'Sala não indicada' }}</span>
+                    <span>Director de Turma: {{ turma.diretor_turma or 'Não atribuído' }}</span>
+                </div>
+            </div>
+            <div class="class-detail-header-actions">
+                <a class="btn btn-primary"
+                   href="{{ url_for('secretary.export_class_list_pdf', turma_id=turma.id, tipo='vitrine') }}">
+                    Lista para afixação
+                </a>
+                {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                <a class="btn btn-secondary"
+                   href="{{ url_for('secretary.export_class_list_pdf', turma_id=turma.id, tipo='oficial') }}">
+                    Lista administrativa
+                </a>
+                {% endif %}
+                <button class="btn btn-secondary no-print" type="button" onclick="window.print()">
+                    Imprimir lista
+                </button>
+            </div>
+        </section>
+
+        <section class="stats-grid class-detail-stats" aria-label="Indicadores da turma">
+            <article class="stat-card">
+                <span class="stat-value">{{ total_alunos }}</span>
+                <span class="stat-label">Alunos matriculados</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-value">{{ capacidade }}</span>
+                <span class="stat-label">Capacidade máxima</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-value">{{ vagas_disponiveis }}</span>
+                <span class="stat-label">Vagas disponíveis</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-value">{{ ocupacao }}%</span>
+                <span class="stat-label">Ocupação</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-value">{{ total_masculino }}</span>
+                <span class="stat-label">Sexo masculino</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-value">{{ total_feminino }}</span>
+                <span class="stat-label">Sexo feminino</span>
+            </article>
+        </section>
+
+        <section class="card class-capacity-card" aria-labelledby="capacity-section-title">
+            <div class="class-capacity-heading">
+                <div>
+                    <p class="secretary-eyebrow">Planeamento da turma</p>
+                    <h2 id="capacity-section-title">Gestão de Capacidade e Vagas</h2>
+                </div>
+                <span class="class-capacity-summary">
+                    {{ total_alunos }} de {{ capacidade }} lugares ocupados
+                </span>
+            </div>
+            <progress value="{{ [total_alunos, capacidade]|min }}"
+                      max="{{ capacidade if capacidade else 1 }}"
+                      aria-label="Ocupação da turma {{ turma.nome }}"></progress>
+            <p>
+                Vagas disponíveis: <strong>{{ vagas_disponiveis }}</strong>
+                <span class="class-capacity-note">
+                    A capacidade é configurada pela Direcção e não pode ser reduzida abaixo
+                    do número de alunos activos.
+                </span>
+            </p>
+            {% if session.get('user_role') == 'admin' %}
+            <a class="btn btn-secondary" href="{{ url_for('director.manage_classes') }}">
+                Definir capacidade máxima
+            </a>
+            {% endif %}
+        </section>
+
+        <section class="card class-students-section" aria-labelledby="class-students-title">
+            <div class="class-students-heading">
+                <div>
+                    <p class="secretary-eyebrow">Matrículas activas</p>
+                    <h2 id="class-students-title">Alunos da {{ turma.nome }}</h2>
+                </div>
+                <form method="GET" class="class-student-search">
+                    <label class="sr-only" for="student-search">Pesquisar aluno</label>
+                    <input id="student-search" type="search" name="q" value="{{ busca }}"
+                           placeholder="Pesquisar nome ou processo">
+                    <button class="btn btn-primary" type="submit">Pesquisar</button>
+                    {% if busca %}
+                    <a class="btn btn-secondary" href="{{ url_for('secretary.class_detail', turma_id=turma.id) }}">
+                        Limpar
+                    </a>
+                    {% endif %}
+                </form>
+            </div>
+
+            <div class="secretary-table-wrap">
+                <table class="class-students-table">
+                    <thead>
+                        <tr>
+                            <th>N.º</th>
+                            <th>Fotografia</th>
+                            <th>Nome completo</th>
+                            <th>Processo</th>
+                            <th>Sexo</th>
+                            <th>Data de nascimento</th>
+                            <th>Encarregado</th>
+                            {% if pode_ver_contactos %}<th>Contacto</th>{% endif %}
+                            <th>Estado</th>
+                            <th class="no-print">Acções</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for aluno in alunos %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                {% if aluno.foto_path %}
+                                <img class="class-student-photo"
+                                     src="{{ url_for('secretary.student_private_file', filename=aluno.foto_path) }}"
+                                     alt="Fotografia de {{ aluno.nome }}">
+                                {% else %}
+                                <span class="class-student-no-photo">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ aluno.nome }}</td>
+                            <td>{{ aluno.code }}</td>
+                            <td>{{ aluno.sexo or '—' }}</td>
+                            <td>{{ aluno.data_nascimento or '—' }}</td>
+                            <td>{{ aluno.encarregado_nome or '—' }}</td>
+                            {% if pode_ver_contactos %}
+                            <td>{{ aluno.contacto_encarregado or '—' }}</td>
+                            {% endif %}
+                            <td><span class="class-enrollment-status">Matriculado</span></td>
+                            <td class="class-student-actions no-print">
+                                <a class="btn btn-secondary"
+                                   href="{{ url_for('secretary.student_edit', student_id=aluno.id) }}">
+                                    Consultar / editar
+                                </a>
+                                <a class="btn btn-secondary"
+                                   href="{{ url_for('secretary.manage_guardians') }}">
+                                    Encarregados
+                                </a>
+                                {% if aluno.estado_pedido_eliminacao == 'Pendente' %}
+                                <span class="class-deletion-pending">Pendente de aprovação</span>
+                                {% else %}
+                                <form method="POST"
+                                      action="{{ url_for('secretary.request_student_deletion', student_id=aluno.id) }}"
+                                      data-confirmation="Tem a certeza de que pretende solicitar a eliminação do aluno {{ aluno.nome }}? Esta operação ficará pendente da aprovação do Director."
+                                      onsubmit="return confirm(this.dataset.confirmation)">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <label class="sr-only" for="deletion-reason-{{ aluno.id }}">
+                                        Motivo do pedido de eliminação de {{ aluno.nome }}
+                                    </label>
+                                    <input id="deletion-reason-{{ aluno.id }}" type="text"
+                                           name="motivo" maxlength="1000"
+                                           placeholder="Motivo (opcional)">
+                                    <button class="btn btn-danger" type="submit">
+                                        Solicitar eliminação
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ 10 if pode_ver_contactos else 9 }}"
+                                class="secretary-empty-state">
+                                {% if busca %}
+                                Nenhum aluno desta turma corresponde à pesquisa.
+                                {% else %}
+                                Não existem alunos activos nesta turma.
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

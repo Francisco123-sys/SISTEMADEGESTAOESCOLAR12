@@ -29,7 +29,7 @@ class ClassListPdfTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY, turma_id INTEGER, nome TEXT, code TEXT,
                 bi_cedula TEXT, sexo TEXT, data_nascimento TEXT,
                 encarregado_nome TEXT, encarregado_contacto_principal TEXT,
-                encarregado_contacto_1 TEXT
+                encarregado_contacto_1 TEXT, ativo INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE guardians (
                 id INTEGER PRIMARY KEY, nome TEXT, contacto TEXT, ativo INTEGER
