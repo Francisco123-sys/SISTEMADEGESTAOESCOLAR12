@@ -2,72 +2,108 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Editar Aluno</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="navbar">
-        <div class="brand">SIGE | Editar Dados do Aluno {{ aluno.code }}</div>
+        <div class="brand">SIGE | Editar Aluno {{ aluno.code }}</div>
         <a href="/secretary/students">Voltar à Lista</a>
     </div>
-    <div class="container">
-        <div class="card">
-            <h3 class="card-title">Atualizar Cadastro de {{ aluno.nome }}</h3>
-            <form method="POST">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <section class="card">
+            <h1 class="card-title">Actualizar cadastro de {{ aluno.nome }}</h1>
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <h3>Dados do aluno</h3>
+                <div class="responsive-form-grid">
+                    <div class="form-group"><label>Nome completo</label><input name="nome" value="{{ aluno.nome }}" maxlength="160" required></div>
+                    <div class="form-group"><label>Data de nascimento</label><input type="date" name="data_nascimento" value="{{ aluno.data_nascimento }}" required></div>
+                    <div class="form-group"><label>BI / Cédula</label><input name="bi_cedula" value="{{ aluno.bi_cedula }}" maxlength="80" required></div>
                     <div class="form-group">
-                        <label>Nome Completo:*</label>
-                        <input type="text" name="nome" value="{{ aluno.nome }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Data de Nascimento:*</label>
-                        <input type="date" name="data_nascimento" value="{{ aluno.data_nascimento }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Nome do Pai:</label>
-                        <input type="text" name="nome_pai" value="{{ aluno.nome_pai or '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label>Nome da Mãe:</label>
-                        <input type="text" name="nome_mae" value="{{ aluno.nome_mae or '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label>Nº BI / Cédula Pessoal:*</label>
-                        <input type="text" name="bi_cedula" value="{{ aluno.bi_cedula }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Sexo:</label>
-                        <select name="sexo">
+                        <label>Sexo</label>
+                        <select name="sexo" required>
                             <option value="M" {% if aluno.sexo == 'M' %}selected{% endif %}>Masculino</option>
                             <option value="F" {% if aluno.sexo == 'F' %}selected{% endif %}>Feminino</option>
                         </select>
                     </div>
+                    <div class="form-group"><label>Naturalidade</label><input name="naturalidade" value="{{ aluno.naturalidade or '' }}"></div>
+                    <div class="form-group"><label>Província de nascimento</label><input name="provincia_nascimento" value="{{ aluno.provincia_nascimento or '' }}"></div>
+                    <div class="form-group"><label>Nacionalidade</label><input name="nacionalidade" value="{{ aluno.nacionalidade or 'Moçambicana' }}"></div>
+                    <div class="form-group"><label>Morada</label><input name="morada" value="{{ aluno.morada or '' }}"></div>
+                    <div class="form-group"><label>Contacto 1</label><input name="contacto_1" value="{{ aluno.encarregado_contacto_1 or '' }}"></div>
+                    <div class="form-group"><label>Contacto 2</label><input name="contacto_2" value="{{ aluno.encarregado_contacto_2 or '' }}"></div>
                     <div class="form-group">
-                        <label>Contacto Encarregado 1:*</label>
-                        <input type="text" name="contacto_1" value="{{ aluno.encarregado_contacto_1 }}" required>
+                        <label>Fotografia (JPG, JPEG, PNG; até 5 MB)</label>
+                        <input type="file" name="fotografia" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+                        {% if aluno.foto_path %}
+                        <p><img src="/secretary/students/file/{{ aluno.foto_path }}" alt="Fotografia de {{ aluno.nome }}" style="width:100px;height:120px;object-fit:cover;"></p>
+                        {% endif %}
                     </div>
+                </div>
+                <h3>Dados do Pai e da Mãe</h3>
+                <div class="responsive-form-grid">
+                    <div class="form-group"><label>Nome do Pai</label><input name="nome_pai" value="{{ aluno.nome_pai or '' }}"></div>
+                    <div class="form-group"><label>Naturalidade do Pai</label><input name="pai_naturalidade" value="{{ aluno.pai_naturalidade or '' }}"></div>
+                    <div class="form-group"><label>Profissão do Pai</label><input name="pai_profissao" value="{{ aluno.pai_profissao or '' }}"></div>
+                    <div class="form-group"><label>Contacto do Pai</label><input name="pai_contacto" value="{{ aluno.pai_contacto or '' }}"></div>
+                    <div class="form-group"><label>Nome da Mãe</label><input name="nome_mae" value="{{ aluno.nome_mae or '' }}"></div>
+                    <div class="form-group"><label>Naturalidade da Mãe</label><input name="mae_naturalidade" value="{{ aluno.mae_naturalidade or '' }}"></div>
+                    <div class="form-group"><label>Profissão da Mãe</label><input name="mae_profissao" value="{{ aluno.mae_profissao or '' }}"></div>
+                    <div class="form-group"><label>Contacto da Mãe</label><input name="mae_contacto" value="{{ aluno.mae_contacto or '' }}"></div>
+                </div>
+                <h3>Encarregado de Educação</h3>
+                <div class="responsive-form-grid">
+                    <div class="form-group"><label>Nome</label><input name="encarregado_nome" value="{{ aluno.encarregado_nome or '' }}"></div>
+                    <div class="form-group"><label>Parentesco</label><input name="encarregado_parentesco" value="{{ aluno.encarregado_parentesco or '' }}"></div>
+                    <div class="form-group"><label>Naturalidade</label><input name="encarregado_naturalidade" value="{{ aluno.encarregado_naturalidade or '' }}"></div>
+                    <div class="form-group"><label>Profissão</label><input name="encarregado_profissao" value="{{ aluno.encarregado_profissao or '' }}"></div>
+                    <div class="form-group"><label>Contacto principal</label><input name="encarregado_contacto_principal" value="{{ aluno.encarregado_contacto_principal or '' }}"></div>
+                    <div class="form-group"><label>Contacto alternativo</label><input name="encarregado_contacto_alternativo" value="{{ aluno.encarregado_contacto_alternativo or '' }}"></div>
+                    <div class="form-group"><label>E-mail</label><input type="email" name="encarregado_email" value="{{ aluno.encarregado_email or '' }}"></div>
+                    <div class="form-group"><label>Morada</label><input name="encarregado_morada" value="{{ aluno.encarregado_morada or '' }}"></div>
+                </div>
+                <h3>Ingresso / transferência</h3>
+                <div class="responsive-form-grid">
                     <div class="form-group">
-                        <label>Contacto Encarregado 2:</label>
-                        <input type="text" name="contacto_2" value="{{ aluno.encarregado_contacto_2 or '' }}">
+                        <label>Situação de ingresso</label>
+                        <select name="ingresso_situacao" id="ingresso_situacao">
+                            <option value="Interno" {% if aluno.ingresso_situacao != 'Transferido' %}selected{% endif %}>Aluno interno</option>
+                            <option value="Transferido" {% if aluno.ingresso_situacao == 'Transferido' %}selected{% endif %}>Aluno transferido</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Escola de origem</label><input name="escola_origem" value="{{ aluno.escola_origem or '' }}"></div>
+                    <div class="form-group"><label>Província de origem</label><input name="provincia_origem" value="{{ aluno.provincia_origem or '' }}"></div>
+                    <div class="form-group"><label>Distrito de origem</label><input name="distrito_origem" value="{{ aluno.distrito_origem or '' }}"></div>
+                    <div class="form-group"><label>Classe anterior</label><input type="number" min="1" max="12" name="classe_anterior" value="{{ aluno.classe_anterior or '' }}"></div>
+                    <div class="form-group"><label>Ano lectivo anterior</label><input type="number" min="2000" max="2100" name="ano_lectivo_anterior" value="{{ aluno.ano_lectivo_anterior or '' }}"></div>
+                    <div class="form-group">
+                        <label>Documento de transferência (PDF)</label>
+                        <input type="file" name="documento_transferencia" accept=".pdf,application/pdf">
+                        {% if aluno.documento_transferencia_path %}
+                        <p><a href="/secretary/students/file/{{ aluno.documento_transferencia_path }}">Ver documento guardado</a></p>
+                        {% endif %}
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Morada:</label>
-                    <input type="text" name="morada" value="{{ aluno.morada or '' }}">
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:15px;">
-                    <div>
-                        <label><input type="checkbox" name="isento_taxa" value="1" {% if aluno.isento_taxa %}checked{% endif %}> <strong>Aluno Isento de Propinas</strong></label>
-                        <input type="text" name="justificacao_isencao" value="{{ aluno.justificacao_isencao or '' }}" placeholder="Motivo da isenção">
+                <div class="form-group"><label>Observações de transferência</label><textarea name="observacoes_transferencia" rows="3">{{ aluno.observacoes_transferencia or '' }}</textarea></div>
+                <div class="responsive-form-grid">
+                    <div class="form-group">
+                        <label><input type="checkbox" name="isento_taxa" value="1" {% if aluno.isento_taxa %}checked{% endif %}> Aluno isento de propinas</label>
+                        <input name="justificacao_isencao" value="{{ aluno.justificacao_isencao or '' }}" placeholder="Motivo da isenção">
                     </div>
-                    <div>
-                        <label>Necessidade Educativa Especial (NEE):</label>
-                        <input type="text" name="nee_tipo" value="{{ aluno.nee_tipo }}">
-                    </div>
+                    <div class="form-group"><label>Necessidade Educativa Especial</label><input name="nee_tipo" value="{{ aluno.nee_tipo or 'Nenhuma' }}"></div>
                 </div>
-                <button type="submit" class="btn btn-success" style="width:100%;">Guardar Alterações</button>
+                <button type="submit" class="btn btn-success">Guardar alterações</button>
             </form>
-        </div>
-    </div>
+        </section>
+    </main>
 </body>
 </html>

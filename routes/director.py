@@ -40,6 +40,178 @@ def dashboard():
                            total_receita=total_receita,
                            funcionarios=funcionarios)
 
+
+@director_bp.route('/turmas')
+def manage_classes():
+    if not check_director():
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('auth.login_landing'))
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT id, ano, ativo FROM academic_years ORDER BY ano DESC')
+    academic_years = cursor.fetchall()
+    requested_year = request.args.get('ano_lectivo_id', type=int)
+    year_ids = {row['id'] for row in academic_years}
+    selected_year = requested_year if requested_year in year_ids else None
+    search = request.args.get('q', '').strip()
+    class_filter = request.args.get('classe', '').strip()
+    shift_filter = request.args.get('turno', '').strip()
+    mode_filter = request.args.get('modalidade', '').strip()
+    area_filter = request.args.get('area', '').strip()
+    state_filter = request.args.get('estado', '').strip()
+    director_filter = request.args.get('diretor_turma_id', '').strip()
+
+    conditions = ['(? IS NULL OR t.ano_lectivo_id = ?)']
+    params = [selected_year, selected_year]
+    if search:
+        conditions.append('''
+            (t.nome LIKE ? OR CAST(c.numero AS TEXT) LIKE ? OR COALESCE(u.nome, '') LIKE ?)
+        ''')
+        search_pattern = f'%{search}%'
+        params.extend((search_pattern, search_pattern, search_pattern))
+    if class_filter.isdigit() and int(class_filter) in range(1, 13):
+        conditions.append('c.numero = ?')
+        params.append(int(class_filter))
+    if shift_filter in ('Manhã', 'Tarde', 'Noite'):
+        conditions.append('t.turno = ?')
+        params.append(shift_filter)
+    if mode_filter in ('Diurno', 'Nocturno', 'À Distância'):
+        conditions.append('t.curso = ?')
+        params.append(mode_filter)
+    if area_filter in ('A', 'B', 'C'):
+        conditions.append('t.area_curricular = ?')
+        params.append(area_filter)
+    if state_filter == 'com_vagas':
+        conditions.append('COALESCE(t.capacidade_maxima, 0) > COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id), 0)')
+    elif state_filter == 'completa':
+        conditions.append('COALESCE(t.capacidade_maxima, 0) <= COALESCE((SELECT COUNT(*) FROM students sx WHERE sx.turma_id = t.id), 0)')
+    if director_filter.isdigit():
+        conditions.append('t.diretor_turma_id = ?')
+        params.append(int(director_filter))
+
+    cursor.execute(f'''
+        SELECT t.id, t.nome, t.sala, t.turno, t.curso, t.capacidade_maxima,
+               t.area_curricular, t.diretor_turma_id,
+               c.numero AS classe_num, ay.ano AS ano_lectivo,
+               u.nome AS diretor_turma,
+               (SELECT COUNT(*) FROM students s WHERE s.turma_id = t.id) AS inscritos
+        FROM turmas t
+        JOIN classes c ON c.id = t.classe_id
+        JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
+        WHERE {' AND '.join(conditions)}
+        ORDER BY ay.ano DESC, c.numero, t.nome
+    ''', params)
+    turmas = cursor.fetchall()
+
+    cursor.execute("SELECT id, nome FROM users WHERE role = 'teacher' AND ativo = 1 ORDER BY nome")
+    professores = cursor.fetchall()
+
+    total_capacidade = sum(t['capacidade_maxima'] or 0 for t in turmas)
+    total_manha = sum(1 for t in turmas if t['turno'] == 'Manhã' and t['curso'] != 'À Distância')
+    total_tarde = sum(1 for t in turmas if t['turno'] == 'Tarde' and t['curso'] != 'À Distância')
+    total_distancia = sum(1 for t in turmas if t['curso'] == 'À Distância')
+
+    return render_template(
+        'director/turmas.html',
+        turmas=turmas,
+        professores=professores,
+        academic_years=academic_years,
+        selected_year=selected_year,
+        filters={
+            'q': search,
+            'classe': class_filter,
+            'turno': shift_filter,
+            'modalidade': mode_filter,
+            'area': area_filter,
+            'estado': state_filter,
+            'diretor_turma_id': director_filter,
+        },
+        areas_curriculares={
+            'A': 'Letras e Ciências Sociais',
+            'B': 'Ciências Naturais e Exactas',
+            'C': 'Artes Visuais e Cénicas / Ciências com Desenho',
+        },
+        total_turmas=len(turmas),
+        total_capacidade=total_capacidade,
+        total_manha=total_manha,
+        total_tarde=total_tarde,
+        total_distancia=total_distancia,
+    )
+
+
+@director_bp.route('/turmas/<int:turma_id>/configurar', methods=['POST'])
+def configure_class(turma_id):
+    if session.get('user_role') not in ('director', 'admin'):
+        flash('Apenas a Direcção pode alterar a capacidade ou o Director de Turma.', 'danger')
+        return redirect(url_for('director.manage_classes'))
+
+    try:
+        capacidade = int(request.form.get('capacidade_maxima', ''))
+    except ValueError:
+        flash('Informe uma capacidade válida.', 'danger')
+        return redirect(url_for('director.manage_classes'))
+    if capacidade < 1:
+        flash('A capacidade deve ser maior que zero.', 'danger')
+        return redirect(url_for('director.manage_classes'))
+
+    diretor_turma_raw = request.form.get('diretor_turma_id', '').strip()
+    if diretor_turma_raw:
+        try:
+            diretor_turma_id = int(diretor_turma_raw)
+        except ValueError:
+            flash('Seleccione um professor válido como Director de Turma.', 'danger')
+            return redirect(url_for('director.manage_classes'))
+    else:
+        diretor_turma_id = None
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        'UPDATE turmas SET capacidade_maxima = capacidade_maxima WHERE id = ?',
+        (turma_id,),
+    )
+    if cursor.rowcount != 1:
+        flash('Turma não encontrada.', 'danger')
+        return redirect(url_for('director.manage_classes'))
+
+    cursor.execute('SELECT COUNT(*) AS total FROM students WHERE turma_id = ?', (turma_id,))
+    inscritos = cursor.fetchone()['total']
+    if capacidade < inscritos:
+        db.rollback()
+        flash(
+            f'A capacidade não pode ser inferior aos {inscritos} alunos já inscritos.',
+            'danger',
+        )
+        return redirect(url_for('director.manage_classes'))
+
+    if diretor_turma_id is not None:
+        cursor.execute(
+            "SELECT id FROM users WHERE id = ? AND role = 'teacher' AND ativo = 1",
+            (diretor_turma_id,),
+        )
+        if not cursor.fetchone():
+            db.rollback()
+            flash('O Director de Turma seleccionado não é um professor activo.', 'danger')
+            return redirect(url_for('director.manage_classes'))
+
+    vagas = capacidade - inscritos
+    cursor.execute('''
+        UPDATE turmas
+        SET capacidade_maxima = ?, vagas_disponiveis = ?, diretor_turma_id = ?
+        WHERE id = ?
+    ''', (capacidade, vagas, diretor_turma_id, turma_id))
+    db.commit()
+    log_audit(
+        session['user_id'],
+        'CONFIGURAR_TURMA',
+        f'Turma ID {turma_id}: capacidade {capacidade}; Director de Turma ID {diretor_turma_id}.',
+    )
+    flash('Capacidade e Director de Turma actualizados.', 'success')
+    return redirect(url_for('director.manage_classes'))
+
+
 @director_bp.route('/assign-teacher', methods=['GET', 'POST'])
 def assign_teacher():
     if not check_director():
@@ -105,7 +277,7 @@ def edit_user(user_id):
         return redirect(url_for('director.dashboard'))
     return render_template('director/staff_edit.html', staff=target)
 
-@director_bp.route('/user/toggle/<int:user_id>')
+@director_bp.route('/user/toggle/<int:user_id>', methods=['POST'])
 def toggle_user(user_id):
     if not check_director():
         return redirect(url_for('auth.login_landing'))
@@ -113,6 +285,9 @@ def toggle_user(user_id):
     cursor = db.cursor()
     cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
     target = cursor.fetchone()
+    if not target:
+        flash('Utilizador não encontrado.', 'danger')
+        return redirect(url_for('director.dashboard'))
     
     if session.get('user_role') in ['pedagogico_1', 'pedagogico_2'] and target['role'] in ['chefe_secretaria', 'director', 'admin']:
         flash('PERMISSÃO NEGADA: O Pedagógico não pode bloquear o Director ou o Chefe da Secretaria.', 'danger')
@@ -123,7 +298,7 @@ def toggle_user(user_id):
     flash('Estado do utilizador alterado!', 'info')
     return redirect(url_for('director.dashboard'))
 
-@director_bp.route('/user/delete/<int:user_id>')
+@director_bp.route('/user/delete/<int:user_id>', methods=['POST'])
 def delete_user(user_id):
     if not check_director():
         return redirect(url_for('auth.login_landing'))
@@ -131,6 +306,9 @@ def delete_user(user_id):
     cursor = db.cursor()
     cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
     target = cursor.fetchone()
+    if not target:
+        flash('Utilizador não encontrado.', 'danger')
+        return redirect(url_for('director.dashboard'))
     
     if session.get('user_role') in ['pedagogico_1', 'pedagogico_2'] and target['role'] in ['chefe_secretaria', 'director', 'admin']:
         flash('PERMISSÃO NEGADA: O Pedagógico não pode apagar a conta do Director ou do Chefe da Secretaria.', 'danger')

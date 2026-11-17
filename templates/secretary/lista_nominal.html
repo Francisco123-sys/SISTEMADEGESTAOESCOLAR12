@@ -24,6 +24,10 @@
 <body>
     <div class="no-print" style="text-align:right; margin-bottom:12px;">
         <button onclick="window.print()" style="padding:6px 14px; cursor:pointer;">🖨️ Imprimir Lista Nominal (A4)</button>
+        <a href="/secretary/turmas/{{ turma.id }}/lista-pdf/vitrine" style="padding:6px 14px; background:#245B8F; color:#fff; text-decoration:none; border-radius:4px; margin-left:6px;">PDF para Vitrine</a>
+        {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+        <a href="/secretary/turmas/{{ turma.id }}/lista-pdf/oficial" style="padding:6px 14px; background:#142B4A; color:#fff; text-decoration:none; border-radius:4px; margin-left:6px;">PDF Oficial</a>
+        {% endif %}
         <a href="/secretary/lista-nominal-doc/{{ turma.id }}" style="padding:6px 14px; background:#0F172A; color:#fff; text-decoration:none; border-radius:4px; margin-left:6px;">📄 Baixar em Word (.DOCX)</a>
     </div>
 

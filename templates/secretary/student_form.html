@@ -20,7 +20,8 @@
         {% endwith %}
         <div class="card">
             <h3 class="card-title">Etapa 1 de 2: Dados do Estudante (Obrigatório Pagamento na Etapa Seguinte)</h3>
-            <form action="/secretary/students/new" method="POST">
+            <form action="/secretary/students/new" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div class="form-group">
                         <label>Nome Completo do Aluno:*</label>
@@ -28,7 +29,7 @@
                     </div>
                     <div class="form-group">
                         <label>Data de Nascimento:*</label>
-                        <input type="date" name="data_nascimento" id="dob" onchange="autoSuggestClass()" required>
+                        <input type="date" name="data_nascimento" id="dob" onchange="updateRegistrationHints()" required>
                     </div>
                     <div class="form-group">
                         <label>Nome do Pai:</label>
@@ -44,10 +45,28 @@
                     </div>
                     <div class="form-group">
                         <label>Sexo:*</label>
-                        <select name="sexo">
+                        <select name="sexo" required>
                             <option value="M">Masculino</option>
                             <option value="F">Feminino</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="naturalidade">Naturalidade</label>
+                        <input id="naturalidade" type="text" name="naturalidade" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="provincia_nascimento">Província de nascimento</label>
+                        <input id="provincia_nascimento" type="text" name="provincia_nascimento" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="nacionalidade">Nacionalidade</label>
+                        <input id="nacionalidade" type="text" name="nacionalidade" value="Moçambicana" maxlength="80">
+                    </div>
+                    <div class="form-group">
+                        <label for="fotografia">Fotografia (JPG, JPEG ou PNG; máximo 5 MB)</label>
+                        <input id="fotografia" type="file" name="fotografia" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+                        <img id="photo_preview" alt="Pré-visualização da fotografia" hidden
+                             style="margin-top:8px; width:110px; height:130px; object-fit:cover; border-radius:6px;">
                     </div>
                 </div>
 
@@ -64,28 +83,84 @@
 
                 <hr style="border:0; border-top:1px solid #EEE; margin:20px 0;">
 
+                <h4>Dados familiares</h4>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
+                    <div class="form-group"><label>Naturalidade do Pai</label><input name="pai_naturalidade" maxlength="120"></div>
+                    <div class="form-group"><label>Profissão do Pai</label><input name="pai_profissao" maxlength="120"></div>
+                    <div class="form-group"><label>Contacto do Pai</label><input name="pai_contacto" maxlength="40"></div>
+                    <div class="form-group"><label>Naturalidade da Mãe</label><input name="mae_naturalidade" maxlength="120"></div>
+                    <div class="form-group"><label>Profissão da Mãe</label><input name="mae_profissao" maxlength="120"></div>
+                    <div class="form-group"><label>Contacto da Mãe</label><input name="mae_contacto" maxlength="40"></div>
+                </div>
+                <div class="form-group">
+                    <label for="encarregado_parentesco">Encarregado de Educação</label>
+                    <select id="encarregado_parentesco" name="encarregado_parentesco" required>
+                        <option value="">Seleccione</option>
+                        <option value="Pai">Pai</option>
+                        <option value="Mãe">Mãe</option>
+                        <option value="Outro">Outro responsável</option>
+                    </select>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
+                    <div class="form-group"><label>Nome do Encarregado</label><input name="encarregado_nome" maxlength="160" required></div>
+                    <div class="form-group"><label>Naturalidade do Encarregado</label><input name="encarregado_naturalidade" maxlength="120"></div>
+                    <div class="form-group"><label>Profissão do Encarregado</label><input name="encarregado_profissao" maxlength="120"></div>
+                    <div class="form-group"><label>Contacto principal</label><input name="encarregado_contacto_principal" maxlength="40" required></div>
+                    <div class="form-group"><label>Contacto alternativo</label><input name="encarregado_contacto_alternativo" maxlength="40"></div>
+                    <div class="form-group"><label>E-mail</label><input type="email" name="encarregado_email" maxlength="254"></div>
+                    <div class="form-group"><label>Morada</label><input name="encarregado_morada" maxlength="240"></div>
+                </div>
+                <div class="form-group">
+                    <label for="ingresso_situacao">Situação de ingresso</label>
+                    <select id="ingresso_situacao" name="ingresso_situacao" required>
+                        <option value="Interno">Aluno interno</option>
+                        <option value="Transferido">Aluno transferido</option>
+                    </select>
+                </div>
+                <section id="transfer_section" hidden>
+                    <h4>Dados da escola de origem e transferência</h4>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
+                        <div class="form-group"><label>Escola de origem</label><input name="escola_origem" maxlength="180"></div>
+                        <div class="form-group"><label>Província</label><input name="provincia_origem" maxlength="120"></div>
+                        <div class="form-group"><label>Distrito</label><input name="distrito_origem" maxlength="120"></div>
+                        <div class="form-group"><label>Classe anterior</label><input type="number" name="classe_anterior" min="1" max="12"></div>
+                        <div class="form-group"><label>Ano lectivo anterior</label><input type="number" name="ano_lectivo_anterior" min="2000" max="2100"></div>
+                        <div class="form-group">
+                            <label>Documento de transferência (PDF; máximo 5 MB)</label>
+                            <input type="file" name="documento_transferencia" accept=".pdf,application/pdf">
+                        </div>
+                    </div>
+                    <div class="form-group"><label>Observações</label><textarea name="observacoes_transferencia" rows="3" maxlength="2000"></textarea></div>
+                </section>
+
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px;">
                     <div class="form-group">
-                        <label>Classe (1.ª à 12.ª):*</label>
-                        <select name="classe" id="classe_select">
-                            {% for c in range(1, 13) %}
+                        <label for="ano_lectivo_id">Ano lectivo:*</label>
+                        <select id="ano_lectivo_id" name="ano_lectivo_id" required>
+                            {% for year in academic_years %}
+                            <option value="{{ year.id }}">{{ year.ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Classe (8.ª à 12.ª):*</label>
+                        <select name="classe" id="classe_select" onchange="updateRegistrationHints()" required>
+                            {% for c in range(8, 13) %}
                                 <option value="{{ c }}">{{ c }}ª Classe</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Período (Turno):*</label>
-                        <select name="turno">
+                        <select name="turno" required>
                             <option value="Manhã">Manhã</option>
                             <option value="Tarde">Tarde</option>
-                            <option value="Noite">Noite</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Modalidade / Curso:*</label>
-                        <select name="curso">
+                        <select name="curso" required>
                             <option value="Diurno">Diurno</option>
-                            <option value="Nocturno">Nocturno</option>
                             <option value="À Distância">À Distância</option>
                         </select>
                     </div>
@@ -94,6 +169,16 @@
                         <input type="text" name="morada">
                     </div>
                 </div>
+                <div class="form-group" id="area_curricular_group" hidden>
+                    <label for="area_curricular">Área curricular (10.ª à 12.ª Classe):*</label>
+                    <select name="area_curricular" id="area_curricular">
+                        <option value="">Seleccione a área</option>
+                        <option value="A">Área A — Letras e Ciências Sociais</option>
+                        <option value="B">Área B — Ciências Naturais e Exactas</option>
+                        <option value="C">Área C — Artes Visuais e Cénicas / Ciências com Desenho</option>
+                    </select>
+                </div>
+                <p id="age_notice" class="alert alert-info" aria-live="polite" hidden></p>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:15px;">
                     <div>
@@ -121,18 +206,89 @@
         </div>
     </div>
     <script>
-        function autoSuggestClass() {
+        function updateRegistrationHints() {
+            var classSelect = document.getElementById('classe_select');
+            var classNumber = parseInt(classSelect.value, 10);
+            var areaGroup = document.getElementById('area_curricular_group');
+            var areaSelect = document.getElementById('area_curricular');
+            var ageNotice = document.getElementById('age_notice');
+            var requiresArea = classNumber >= 10;
+
+            areaGroup.hidden = !requiresArea;
+            areaSelect.required = requiresArea;
+
             var dob = document.getElementById('dob').value;
-            if(dob) {
-                var year = parseInt(dob.split('-')[0]);
-                var currentYear = new Date().getFullYear();
-                var idade = currentYear - year;
-                var sug = idade - 5;
-                if(sug < 1) sug = 1;
-                if(sug > 12) sug = 12;
-                document.getElementById('classe_select').value = sug;
+            if (!dob) {
+                ageNotice.hidden = true;
+                return;
+            }
+
+            var birthDate = new Date(dob + 'T00:00:00');
+            var today = new Date();
+            var age = today.getFullYear() - birthDate.getFullYear();
+            if (today.getMonth() < birthDate.getMonth() ||
+                (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            var suggestedClass = Math.max(1, Math.min(12, age - 5));
+            if (classNumber !== suggestedClass) {
+                ageNotice.textContent = 'A idade corresponde à classe de referência ' +
+                    suggestedClass + '.ª. A classe seleccionada mantém-se; pode prosseguir com a matrícula.';
+                ageNotice.hidden = false;
+            } else {
+                ageNotice.hidden = true;
             }
         }
+
+        updateRegistrationHints();
+
+        const ingressSelect = document.getElementById('ingresso_situacao');
+        const transferSection = document.getElementById('transfer_section');
+        function updateTransferFields() {
+            const isTransfer = ingressSelect.value === 'Transferido';
+            transferSection.hidden = !isTransfer;
+            transferSection.querySelectorAll('input').forEach(function (field) {
+                field.required = isTransfer && field.name !== 'observacoes_transferencia' &&
+                    field.name !== 'fotografia';
+            });
+        }
+        ingressSelect.addEventListener('change', updateTransferFields);
+        updateTransferFields();
+
+        document.getElementById('encarregado_parentesco').addEventListener('change', function (event) {
+            const relation = event.target.value;
+            const name = document.querySelector('[name="encarregado_nome"]');
+            const contact = document.querySelector('[name="encarregado_contacto_principal"]');
+            const legacyContact = document.querySelector('[name="contacto_1"]');
+            if (relation === 'Pai') {
+                name.value = document.querySelector('[name="nome_pai"]').value;
+                contact.value = document.querySelector('[name="pai_contacto"]').value;
+            } else if (relation === 'Mãe') {
+                name.value = document.querySelector('[name="nome_mae"]').value;
+                contact.value = document.querySelector('[name="mae_contacto"]').value;
+            }
+            if (relation === 'Pai' || relation === 'Mãe') {
+                legacyContact.value = contact.value;
+            }
+        });
+
+        document.getElementById('fotografia').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            const preview = document.getElementById('photo_preview');
+            if (!file) {
+                preview.hidden = true;
+                preview.removeAttribute('src');
+                return;
+            }
+            if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                event.target.value = '';
+                preview.hidden = true;
+                alert('Seleccione uma imagem JPG ou PNG com até 5 MB.');
+                return;
+            }
+            preview.src = URL.createObjectURL(file);
+            preview.hidden = false;
+        });
     </script>
 </body>
 </html>

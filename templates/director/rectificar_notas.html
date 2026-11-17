@@ -48,6 +48,7 @@
                     {% for n in notas %}
                     <tr>
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="grade_id" value="{{ n.id }}">
                             <td>{{ n.turma_nome }}</td>
                             <td>{{ n.aluno_nome }} ({{ n.aluno_code }})</td>

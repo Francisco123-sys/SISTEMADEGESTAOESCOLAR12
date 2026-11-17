@@ -32,7 +32,27 @@ def _is_pg():
     return url.startswith('postgresql://')
 
 
+def _initial_admin_config():
+    email = os.getenv('SIGE_INITIAL_ADMIN_EMAIL', '').strip()
+    password = os.getenv('SIGE_INITIAL_ADMIN_PASSWORD', '')
+    if not email and not password:
+        return None
+    if not email or not password:
+        raise ValueError(
+            'Defina SIGE_INITIAL_ADMIN_EMAIL e SIGE_INITIAL_ADMIN_PASSWORD em conjunto.'
+        )
+    if len(password) < 12:
+        raise ValueError('SIGE_INITIAL_ADMIN_PASSWORD deve ter pelo menos 12 caracteres.')
+    return {
+        'email': email,
+        'password': password,
+        'nome': os.getenv('SIGE_INITIAL_ADMIN_NAME', '').strip() or 'Administrador Geral',
+        'contacto': os.getenv('SIGE_INITIAL_ADMIN_CONTACT', '').strip(),
+    }
+
+
 def _seed_initial_data(cursor, is_pg=False):
+    admin_config = _initial_admin_config()
     if is_pg:
         cursor.execute("INSERT INTO academic_years (id, ano, ativo) VALUES (1, 2026, 1) ON CONFLICT DO NOTHING")
         cursor.execute("SELECT setval(pg_get_serial_sequence('academic_years', 'id'), COALESCE((SELECT MAX(id) FROM academic_years), 1))")
@@ -68,46 +88,31 @@ def _seed_initial_data(cursor, is_pg=False):
             cursor.execute("INSERT OR IGNORE INTO subjects (nome, codigo) VALUES (?, ?)", (disc, cod))
 
     cursor.execute("SELECT id FROM users WHERE role = 'admin'")
-    if not cursor.fetchone():
-        pwd_hash = generate_password_hash("AdminSIGE2026!")
+    if not cursor.fetchone() and admin_config:
+        cursor.execute("SELECT code FROM users WHERE code LIKE 'ADM-%'")
+        existing_codes = {row[0] for row in cursor.fetchall()}
+        code_number = 1
+        while f'ADM-{code_number:06d}' in existing_codes:
+            code_number += 1
+        code = f'ADM-{code_number:06d}'
+        pwd_hash = generate_password_hash(admin_config['password'])
         if is_pg:
             cursor.execute('''
                 INSERT INTO users (code, nome, email, password_hash, role, contacto)
-                VALUES ('ADM-000001', 'Administrador Geral', 'admin@sige.co.mz', %s, 'admin', '840000000')
-                ON CONFLICT (email) DO NOTHING
-            ''', (pwd_hash,))
+                VALUES (%s, %s, %s, %s, 'admin', %s)
+            ''', (code, admin_config['nome'], admin_config['email'], pwd_hash, admin_config['contacto']))
         else:
             cursor.execute('''
                 INSERT INTO users (code, nome, email, password_hash, role, contacto)
-                VALUES ('ADM-000001', 'Administrador Geral', 'admin@sige.co.mz', ?, 'admin', '840000000')
-            ''', (pwd_hash,))
+                VALUES (?, ?, ?, ?, 'admin', ?)
+            ''', (code, admin_config['nome'], admin_config['email'], pwd_hash, admin_config['contacto']))
 
-    profiles = [
-        ('SEC-000001', 'Maria Catarina Carlos Penicela', 'secretaria@sige.co.mz', 'chefe_secretaria', 'Secretaria123!'),
-        ('DIR-000001', 'Director Escolar', 'director@sige.co.mz', 'director', 'Director123!'),
-        ('PED1-000001', 'Director Pedagógico 1º Ciclo', 'pedagogico1@sige.co.mz', 'pedagogico_1', 'Pedagogico123!'),
-        ('PED2-000001', 'Director Pedagógico 2º Ciclo', 'pedagogico2@sige.co.mz', 'pedagogico_2', 'Pedagogico123!'),
-        ('PROF-000001', 'Professor Silva', 'professor@sige.co.mz', 'teacher', 'Professor123!')
-    ]
-    for code, nome, email, role, pwd in profiles:
-        if is_pg:
-            cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-            if not cursor.fetchone():
-                cursor.execute('''
-                    INSERT INTO users (code, nome, email, password_hash, role, contacto)
-                    VALUES (%s, %s, %s, %s, %s, '841234567')
-                    ON CONFLICT (email) DO NOTHING
-                ''', (code, nome, email, generate_password_hash(pwd), role))
-        else:
-            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-            if not cursor.fetchone():
-                cursor.execute('''
-                    INSERT INTO users (code, nome, email, password_hash, role, contacto)
-                    VALUES (?, ?, ?, ?, ?, '841234567')
-                ''', (code, nome, email, generate_password_hash(pwd), role))
+    cursor.execute("SELECT 1 FROM users WHERE role = 'admin'")
+    return cursor.fetchone() is not None
 
 
 def init_db():
+    _initial_admin_config()
     if _is_pg():
         if not HAS_PSYCOPG2:
             raise RuntimeError("psycopg2-binary não encontrado. Instale com: pip install -r requirements.txt")
@@ -117,6 +122,12 @@ def init_db():
 
         with open('database/schema_pg.sql', 'r', encoding='utf-8') as f:
             cursor.execute(f.read())
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS code_counters (
+                counter_key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            )
+        ''')
 
         # Migrações seguras caso tabelas já existam no Neon
         for col, col_def in [
@@ -128,12 +139,77 @@ def init_db():
             cursor.execute(f"ALTER TABLE grades ADD COLUMN IF NOT EXISTS {col} {col_def}")
 
         cursor.execute("ALTER TABLE turmas ADD COLUMN IF NOT EXISTS sala TEXT DEFAULT 'Sala 01'")
+        cursor.execute("""
+            ALTER TABLE turmas ADD COLUMN IF NOT EXISTS area_curricular TEXT
+            CHECK(area_curricular IN ('A', 'B', 'C') OR area_curricular IS NULL)
+        """)
+        cursor.execute("""
+            ALTER TABLE turmas ADD COLUMN IF NOT EXISTS diretor_turma_id INTEGER
+            REFERENCES users(id)
+        """)
+        for column, definition in (
+            ('provincia_nascimento', 'TEXT'),
+            ('nacionalidade', "TEXT DEFAULT 'Moçambicana'"),
+            ('foto_path', 'TEXT'),
+            ('pai_naturalidade', 'TEXT'),
+            ('pai_profissao', 'TEXT'),
+            ('pai_contacto', 'TEXT'),
+            ('mae_naturalidade', 'TEXT'),
+            ('mae_profissao', 'TEXT'),
+            ('mae_contacto', 'TEXT'),
+            ('encarregado_nome', 'TEXT'),
+            ('encarregado_parentesco', 'TEXT'),
+            ('encarregado_naturalidade', 'TEXT'),
+            ('encarregado_profissao', 'TEXT'),
+            ('encarregado_contacto_principal', 'TEXT'),
+            ('encarregado_contacto_alternativo', 'TEXT'),
+            ('encarregado_morada', 'TEXT'),
+            ('encarregado_email', 'TEXT'),
+            ('ingresso_situacao', "TEXT NOT NULL DEFAULT 'Interno' CHECK(ingresso_situacao IN ('Interno', 'Transferido'))"),
+            ('escola_origem', 'TEXT'),
+            ('provincia_origem', 'TEXT'),
+            ('distrito_origem', 'TEXT'),
+            ('classe_anterior', 'INTEGER'),
+            ('ano_lectivo_anterior', 'INTEGER'),
+            ('documento_transferencia_path', 'TEXT'),
+            ('observacoes_transferencia', 'TEXT'),
+        ):
+            cursor.execute(
+                f'ALTER TABLE students ADD COLUMN IF NOT EXISTS {column} {definition}'
+            )
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardians (
+                id SERIAL PRIMARY KEY,
+                nome TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                contacto TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                session_version INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            ALTER TABLE guardians ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardian_students (
+                guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                parentesco TEXT,
+                principal INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guardian_id, student_id)
+            )
+        ''')
 
-        _seed_initial_data(cursor, is_pg=True)
+        has_admin = _seed_initial_data(cursor, is_pg=True)
         conn.commit()
         cursor.close()
         conn.close()
         print("Base de dados PostgreSQL (Neon) SIGE inicializada e sincronizada com sucesso!")
+        if not has_admin:
+            print("Nenhum administrador foi criado. Configure SIGE_INITIAL_ADMIN_EMAIL e SIGE_INITIAL_ADMIN_PASSWORD e execute init-db novamente.")
     else:
         os.makedirs('database', exist_ok=True)
         conn = sqlite3.connect(SQLITE_DATABASE_PATH)
@@ -141,6 +217,12 @@ def init_db():
 
         with open('database/schema.sql', 'r', encoding='utf-8') as f:
             cursor.executescript(f.read())
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS code_counters (
+                counter_key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            )
+        ''')
 
         cursor.execute("PRAGMA table_info(grades)")
         existing_cols = [row[1] for row in cursor.fetchall()]
@@ -157,11 +239,85 @@ def init_db():
         turma_cols = [row[1] for row in cursor.fetchall()]
         if 'sala' not in turma_cols:
             cursor.execute("ALTER TABLE turmas ADD COLUMN sala TEXT DEFAULT 'Sala 01'")
+        if 'area_curricular' not in turma_cols:
+            cursor.execute("""
+                ALTER TABLE turmas ADD COLUMN area_curricular TEXT
+                CHECK(area_curricular IN ('A', 'B', 'C') OR area_curricular IS NULL)
+            """)
+        if 'diretor_turma_id' not in turma_cols:
+            cursor.execute("""
+                ALTER TABLE turmas ADD COLUMN diretor_turma_id INTEGER
+                REFERENCES users(id)
+            """)
+        cursor.execute("PRAGMA table_info(students)")
+        student_cols = {row[1] for row in cursor.fetchall()}
+        student_columns = (
+            ('provincia_nascimento', 'TEXT'),
+            ('nacionalidade', "TEXT DEFAULT 'Moçambicana'"),
+            ('foto_path', 'TEXT'),
+            ('pai_naturalidade', 'TEXT'),
+            ('pai_profissao', 'TEXT'),
+            ('pai_contacto', 'TEXT'),
+            ('mae_naturalidade', 'TEXT'),
+            ('mae_profissao', 'TEXT'),
+            ('mae_contacto', 'TEXT'),
+            ('encarregado_nome', 'TEXT'),
+            ('encarregado_parentesco', 'TEXT'),
+            ('encarregado_naturalidade', 'TEXT'),
+            ('encarregado_profissao', 'TEXT'),
+            ('encarregado_contacto_principal', 'TEXT'),
+            ('encarregado_contacto_alternativo', 'TEXT'),
+            ('encarregado_morada', 'TEXT'),
+            ('encarregado_email', 'TEXT'),
+            ('ingresso_situacao', "TEXT NOT NULL DEFAULT 'Interno' CHECK(ingresso_situacao IN ('Interno', 'Transferido'))"),
+            ('escola_origem', 'TEXT'),
+            ('provincia_origem', 'TEXT'),
+            ('distrito_origem', 'TEXT'),
+            ('classe_anterior', 'INTEGER'),
+            ('ano_lectivo_anterior', 'INTEGER'),
+            ('documento_transferencia_path', 'TEXT'),
+            ('observacoes_transferencia', 'TEXT'),
+        )
+        for column, definition in student_columns:
+            if column not in student_cols:
+                cursor.execute(
+                    f'ALTER TABLE students ADD COLUMN {column} {definition}'
+                )
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardians (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                contacto TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                session_version INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('PRAGMA table_info(guardians)')
+        guardian_cols = {row[1] for row in cursor.fetchall()}
+        if 'session_version' not in guardian_cols:
+            cursor.execute('''
+                ALTER TABLE guardians ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0
+            ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS guardian_students (
+                guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                parentesco TEXT,
+                principal INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guardian_id, student_id)
+            )
+        ''')
 
-        _seed_initial_data(cursor, is_pg=False)
+        has_admin = _seed_initial_data(cursor, is_pg=False)
         conn.commit()
         conn.close()
         print("Base de dados SQLite local SIGE inicializada com sucesso!")
+        if not has_admin:
+            print("Nenhum administrador foi criado. Configure SIGE_INITIAL_ADMIN_EMAIL e SIGE_INITIAL_ADMIN_PASSWORD e execute init-db novamente.")
 
 
 if __name__ == '__main__':

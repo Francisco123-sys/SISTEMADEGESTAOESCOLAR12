@@ -27,6 +27,7 @@
         <div class="card">
             <h3 class="card-title">Lançamento de Pagamento de Mensalidade / Propina</h3>
             <form action="/secretary/payments/new" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label>Selecionar Aluno:*</label>
                     <select name="student_id" id="student_select" onchange="carregarDadosMatricula(this.value)" required>

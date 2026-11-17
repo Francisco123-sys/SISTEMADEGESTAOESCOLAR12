@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE - Contas de Encarregados</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Contas de Encarregados</div>
+        <div class="nav-links">
+            <a href="/secretary/dashboard">Painel da Secretaria</a>
+            <a href="/secretary/students">Alunos</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
+            </form>
+        </div>
+    </div>
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <section class="card">
+            <h1 class="card-title">Criar ou associar um encarregado</h1>
+            <p>Uma conta existente pode ser associada a vários educandos. Uma palavra-passe só é necessária para criar uma conta nova.</p>
+            <form method="POST" action="/secretary/encarregados">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="acao" value="associar">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:15px;">
+                    <div class="form-group">
+                        <label for="student_id">Educando</label>
+                        <select id="student_id" name="student_id" required>
+                            <option value="">Seleccione um aluno</option>
+                            {% for aluno in alunos %}
+                            <option value="{{ aluno.id }}">{{ aluno.code }} — {{ aluno.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">E-mail da conta</label>
+                        <input id="email" type="email" name="email" required maxlength="254">
+                    </div>
+                    <div class="form-group">
+                        <label for="nome">Nome (apenas para conta nova)</label>
+                        <input id="nome" type="text" name="nome" maxlength="160">
+                    </div>
+                    <div class="form-group">
+                        <label for="contacto">Contacto (conta nova)</label>
+                        <input id="contacto" type="text" name="contacto" maxlength="40">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Palavra-passe inicial (conta nova, mínimo 12 caracteres)</label>
+                        <input id="password" type="password" name="password" minlength="12" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="parentesco">Grau de parentesco</label>
+                        <input id="parentesco" type="text" name="parentesco" maxlength="80">
+                    </div>
+                </div>
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:15px;">
+                    <input type="checkbox" name="principal" value="1"> Encarregado principal deste educando
+                </label>
+                <button type="submit" class="btn btn-primary">Criar / associar conta</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Redefinir acesso</h2>
+            <p>Esta operação altera a palavra-passe da conta. Entregue a nova credencial directamente ao encarregado por um canal seguro.</p>
+            <form method="POST" action="/secretary/encarregados"
+                  style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; align-items:end;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="acao" value="redefinir_password">
+                <div class="form-group">
+                    <label for="reset-email">E-mail da conta</label>
+                    <input id="reset-email" type="email" name="email" required maxlength="254">
+                </div>
+                <div class="form-group">
+                    <label for="reset-password">Nova palavra-passe (mínimo 12 caracteres)</label>
+                    <input id="reset-password" type="password" name="password" required minlength="12" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn btn-warning">Redefinir palavra-passe</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Contas registadas</h2>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead><tr><th>Nome</th><th>E-mail</th><th>Contacto</th><th>Educandos associados</th><th>Estado</th></tr></thead>
+                    <tbody>
+                    {% for encarregado in encarregados %}
+                    <tr>
+                        <td>{{ encarregado.nome }}</td>
+                        <td>{{ encarregado.email }}</td>
+                        <td>{{ encarregado.contacto or '—' }}</td>
+                        <td>{{ encarregado.total_educandos }}</td>
+                        <td>{{ 'Activo' if encarregado.ativo else 'Inactivo' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5">Ainda não existem contas de encarregados.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

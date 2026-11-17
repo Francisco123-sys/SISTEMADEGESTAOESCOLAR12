@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS academic_years (
     ativo INTEGER DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS code_counters (
+    counter_key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     numero INTEGER NOT NULL CHECK(numero BETWEEN 1 AND 12),
@@ -36,8 +41,11 @@ CREATE TABLE IF NOT EXISTS turmas (
     curso TEXT NOT NULL DEFAULT 'Diurno' CHECK(curso IN ('Diurno', 'Nocturno', 'À Distância')),
     capacidade_maxima INTEGER DEFAULT 40,
     vagas_disponiveis INTEGER DEFAULT 40,
+    area_curricular TEXT CHECK(area_curricular IN ('A', 'B', 'C') OR area_curricular IS NULL),
+    diretor_turma_id INTEGER,
     FOREIGN KEY(classe_id) REFERENCES classes(id),
-    FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id)
+    FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id),
+    FOREIGN KEY(diretor_turma_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS subjects (
@@ -67,6 +75,31 @@ CREATE TABLE IF NOT EXISTS students (
     sexo TEXT CHECK(sexo IN ('M', 'F')),
     morada TEXT,
     naturalidade TEXT,
+    provincia_nascimento TEXT,
+    nacionalidade TEXT DEFAULT 'Moçambicana',
+    foto_path TEXT,
+    pai_naturalidade TEXT,
+    pai_profissao TEXT,
+    pai_contacto TEXT,
+    mae_naturalidade TEXT,
+    mae_profissao TEXT,
+    mae_contacto TEXT,
+    encarregado_nome TEXT,
+    encarregado_parentesco TEXT,
+    encarregado_naturalidade TEXT,
+    encarregado_profissao TEXT,
+    encarregado_contacto_principal TEXT,
+    encarregado_contacto_alternativo TEXT,
+    encarregado_morada TEXT,
+    encarregado_email TEXT,
+    ingresso_situacao TEXT NOT NULL DEFAULT 'Interno' CHECK(ingresso_situacao IN ('Interno', 'Transferido')),
+    escola_origem TEXT,
+    provincia_origem TEXT,
+    distrito_origem TEXT,
+    classe_anterior INTEGER,
+    ano_lectivo_anterior INTEGER,
+    documento_transferencia_path TEXT,
+    observacoes_transferencia TEXT,
     encarregado_contacto_1 TEXT NOT NULL,
     encarregado_contacto_2 TEXT,
     encarregado_contacto_3 TEXT,
@@ -87,6 +120,28 @@ CREATE TABLE IF NOT EXISTS students (
     FOREIGN KEY(turma_id) REFERENCES turmas(id),
     FOREIGN KEY(ano_lectivo_id) REFERENCES academic_years(id),
     FOREIGN KEY(funcionario_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS guardians (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    contacto TEXT,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    session_version INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS guardian_students (
+    guardian_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    parentesco TEXT,
+    principal INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guardian_id, student_id),
+    FOREIGN KEY(guardian_id) REFERENCES guardians(id) ON DELETE CASCADE,
+    FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS grades (

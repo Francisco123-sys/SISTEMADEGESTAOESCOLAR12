@@ -29,6 +29,7 @@
         <div class="card">
             <h3 class="card-title">Registar Novo Sumário — {{ info.classe_num }}ª Classe ({{ info.turma_nome }}) • {{ info.disciplina_nome }}</h3>
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
                     <div class="form-group">
                         <label>Número da Aula:*</label>

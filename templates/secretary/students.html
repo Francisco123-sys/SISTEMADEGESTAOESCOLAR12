@@ -75,7 +75,10 @@
                                 <tr>
                                     <th>Código</th>
                                     <th>Nome Completo do Aluno</th>
+                                    <th>Foto</th>
                                     <th>Nº BI / Cédula</th>
+                                    <th>Ingresso</th>
+                                    <th>Área curricular</th>
                                     <th>Curso / Período</th>
                                     <th>Isento</th>
                                     <th>Documentos Oficiais</th>
@@ -86,7 +89,14 @@
                                 <tr>
                                     <td><strong>{{ a.code }}</strong></td>
                                     <td>{{ a.nome }}</td>
+                                    <td>
+                                        {% if a.foto_path %}
+                                        <img src="/secretary/students/file/{{ a.foto_path }}" alt="Fotografia de {{ a.nome }}" width="36" height="44" style="object-fit:cover;">
+                                        {% else %}—{% endif %}
+                                    </td>
                                     <td>{{ a.bi_cedula }}</td>
+                                    <td>{{ a.ingresso_situacao or 'Interno' }}</td>
+                                    <td>{{ areas_curriculares.get(a.area_curricular, '—') }}</td>
                                     <td>{{ a.curso }} ({{ a.turno }})</td>
                                     <td>{{ 'SIM' if a.isento_taxa else 'NÃO' }}</td>
                                     <td>

@@ -14,7 +14,10 @@
             <a href="/secretary/turmas">Turmas & Vagas</a>
             <a href="/secretary/reclamacoes" style="font-weight:bold; text-decoration:underline;">Reclamações</a>
             <a href="/secretary/colaboradores">Colaboradores</a>
-            <a href="/logout" style="color:#FFB4AB;">Sair</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
+            </form>
         </div>
     </div>
 
@@ -58,6 +61,7 @@
                         </td>
                         <td style="text-align:left;">
                             <form method="POST" action="/secretary/reclamacoes" style="display:flex; gap:6px;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="rec_id" value="{{ r.id }}">
                                 <input type="text" name="resposta_escola" value="{{ r.resposta_escola or '' }}" placeholder="Escreva a resposta..." required style="padding:5px; font-size:0.82rem;">
                                 <button type="submit" class="btn btn-primary" style="padding:5px 10px; font-size:0.8rem;">Enviar</button>

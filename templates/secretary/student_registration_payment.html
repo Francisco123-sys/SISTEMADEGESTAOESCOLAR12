@@ -24,11 +24,13 @@
                 <strong>Estudante em Processo de Inscrição:</strong> {{ aluno.nome }}<br>
                 <strong>BI / Cédula:</strong> {{ aluno.bi_cedula }} &nbsp;|&nbsp;
                 <strong>Classe:</strong> {{ aluno.classe }}ª Classe &nbsp;|&nbsp;
+                {% if aluno.area_curricular %}<strong>Área:</strong> {{ areas_curriculares.get(aluno.area_curricular, aluno.area_curricular) }} &nbsp;|&nbsp;{% endif %}
                 <strong>Curso:</strong> {{ aluno.curso }} ({{ aluno.turno }})<br>
                 <span style="color:#B42318; font-size:0.85rem;">* Nota: Sem o registo válido do pagamento bancário/móvel, o sistema não concluirá a inscrição do estudante.</span>
             </div>
 
             <form action="/secretary/students/new/payment" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label>Banco ou Carteira Móvel onde o Depósito foi Efectuado:*</label>
                     <select name="banco_plataforma" required>

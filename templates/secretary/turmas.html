@@ -14,7 +14,10 @@
             <a href="/secretary/turmas" style="font-weight:bold; text-decoration:underline;">Turmas & Vagas</a>
             <a href="/secretary/reclamacoes">Reclamações</a>
             <a href="/secretary/colaboradores">Colaboradores</a>
-            <a href="/logout" style="color:#FFB4AB;">Sair</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
+            </form>
         </div>
     </div>
 
@@ -31,6 +34,7 @@
             <div class="card">
                 <h3 class="card-title">Criar Nova Turma & Definir Capacidade da Sala</h3>
                 <form method="POST" action="/secretary/turmas">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="acao" value="criar_turma">
                     <div class="form-group">
                         <label>Nome da Turma (Ex: 8ª A):*</label>
@@ -38,28 +42,35 @@
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <div class="form-group">
+                            <label>Ano lectivo:*</label>
+                            <select name="ano_lectivo_id" required>
+                                {% for year in academic_years %}
+                                <option value="{{ year.id }}">{{ year.ano }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Sala de Aula:*</label>
                             <input type="text" name="sala" required placeholder="Ex: Sala 04">
                         </div>
                         <div class="form-group">
                             <label>Capacidade / Vagas:*</label>
-                            <input type="number" name="capacidade_maxima" value="40" min="1" max="100" required>
+                            <input type="number" name="capacidade_maxima" value="40" min="1" required>
                         </div>
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
                         <div class="form-group">
                             <label>Classe:*</label>
                             <select name="classe_id" required>
-                                {% for c in range(1, 13) %}
+                                {% for c in range(8, 13) %}
                                 <option value="{{ c }}">{{ c }}ª Classe</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Curso:*</label>
+                            <label>Modalidade:*</label>
                             <select name="curso" required>
                                 <option value="Diurno">Diurno</option>
-                                <option value="Nocturno">Nocturno</option>
                                 <option value="À Distância">À Distância</option>
                             </select>
                         </div>
@@ -68,9 +79,17 @@
                             <select name="turno" required>
                                 <option value="Manhã">Manhã</option>
                                 <option value="Tarde">Tarde</option>
-                                <option value="Noite">Noite</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="form-group" id="turma_area_group" hidden>
+                        <label for="turma_area">Área curricular (10.ª à 12.ª Classe):*</label>
+                        <select name="area_curricular" id="turma_area">
+                            <option value="">Seleccione a área</option>
+                            <option value="A">Área A — Letras e Ciências Sociais</option>
+                            <option value="B">Área B — Ciências Naturais e Exactas</option>
+                            <option value="C">Área C — Artes Visuais e Cénicas / Ciências com Desenho</option>
+                        </select>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Registar Turma e Vagas</button>
                 </form>
@@ -79,6 +98,7 @@
             <div class="card">
                 <h3 class="card-title">Atribuir / Transferir Aluno de Turma (Com Controle de Vagas)</h3>
                 <form method="POST" action="/secretary/turmas">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="acao" value="transferir_aluno">
                     <div class="form-group">
                         <label>Selecionar Aluno:*</label>
@@ -102,6 +122,7 @@
                 <hr style="margin:18px 0; border:0; border-top:1px solid #EAECF0;">
                 <h4>Importar Pauta Oficial via CSV (Delimitador ;)</h4>
                 <form method="POST" action="/secretary/pautas/importar-csv" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <div class="form-group">
                             <label>Turma:</label>
@@ -136,6 +157,7 @@
                         <th>Classe</th>
                         <th>Turma</th>
                         <th>Sala</th>
+                        <th>Área curricular</th>
                         <th>Curso / Turno</th>
                         <th>Capacidade</th>
                         <th>Inscritos</th>
@@ -149,6 +171,7 @@
                         <td>{{ t.classe_num }}ª Classe</td>
                         <td><strong>{{ t.nome }}</strong></td>
                         <td>{{ t.sala or 'Sala 01' }}</td>
+                        <td>{{ areas_curriculares.get(t.area_curricular, '—') }}</td>
                         <td>{{ t.curso }} ({{ t.turno }})</td>
                         <td>{{ t.capacidade_maxima }}</td>
                         <td>{{ t.inscritos }}</td>
@@ -160,6 +183,10 @@
                             {% endif %}
                         </td>
                         <td>
+                            <a href="/secretary/turmas/{{ t.id }}/lista-pdf/vitrine" class="btn btn-primary" style="padding:4px 8px; font-size:0.78rem;">PDF Vitrine</a>
+                            {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                            <a href="/secretary/turmas/{{ t.id }}/lista-pdf/oficial" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">PDF Oficial</a>
+                            {% endif %}
                             <a href="/secretary/lista-nominal/{{ t.id }}" target="_blank" class="btn btn-primary" style="padding:4px 8px; font-size:0.78rem;">Lista Oficial</a>
                             <a href="/secretary/lista-nominal-doc/{{ t.id }}" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Word (.DOCX)</a>
                             <a href="/secretary/pautas/exportar-csv/{{ t.id }}/1" class="btn btn-secondary" style="padding:4px 8px; font-size:0.78rem;">Modelo CSV</a>
@@ -170,5 +197,17 @@
             </table>
         </div>
     </div>
+    <script>
+        const turmaClass = document.querySelector('select[name="classe_id"]');
+        const turmaAreaGroup = document.getElementById('turma_area_group');
+        const turmaArea = document.getElementById('turma_area');
+        function updateTurmaArea() {
+            const requiresArea = Number(turmaClass.value) >= 10;
+            turmaAreaGroup.hidden = !requiresArea;
+            turmaArea.required = requiresArea;
+        }
+        turmaClass.addEventListener('change', updateTurmaArea);
+        updateTurmaArea();
+    </script>
 </body>
 </html>

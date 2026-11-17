@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE - Gestão de Turmas</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="navbar">
+        <div class="brand">SIGE | Gestão de Turmas</div>
+        <div class="nav-links">
+            <a href="/director/dashboard">Painel da Direcção</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
+            </form>
+        </div>
+    </div>
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card">
+            <form method="GET" action="/director/turmas">
+                <div class="responsive-form-grid">
+                    <div class="form-group">
+                        <label for="ano_lectivo_id">Ano lectivo</label>
+                        <select id="ano_lectivo_id" name="ano_lectivo_id">
+                    <option value="">Todos os anos</option>
+                    {% for ano in academic_years %}
+                    <option value="{{ ano.id }}" {% if selected_year == ano.id %}selected{% endif %}>
+                        {{ ano.ano }}{% if ano.ativo %} — activo{% endif %}
+                    </option>
+                    {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="class-search">Turma ou Director de Turma</label>
+                        <input id="class-search" type="search" name="q" value="{{ filters.q }}" placeholder="Pesquisar">
+                    </div>
+                    <div class="form-group">
+                        <label for="class-filter">Classe</label>
+                        <select id="class-filter" name="classe">
+                            <option value="">Todas</option>
+                            {% for classe in range(1, 13) %}
+                            <option value="{{ classe }}" {% if filters.classe == classe|string %}selected{% endif %}>{{ classe }}.ª</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="shift-filter">Turno</label>
+                        <select id="shift-filter" name="turno">
+                            <option value="">Todos</option>
+                            <option value="Manhã" {% if filters.turno == 'Manhã' %}selected{% endif %}>Manhã</option>
+                            <option value="Tarde" {% if filters.turno == 'Tarde' %}selected{% endif %}>Tarde</option>
+                            <option value="Noite" {% if filters.turno == 'Noite' %}selected{% endif %}>Noite (histórico)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="mode-filter">Modalidade</label>
+                        <select id="mode-filter" name="modalidade">
+                            <option value="">Todas</option>
+                            <option value="Diurno" {% if filters.modalidade == 'Diurno' %}selected{% endif %}>Presencial</option>
+                            <option value="À Distância" {% if filters.modalidade == 'À Distância' %}selected{% endif %}>À Distância</option>
+                            <option value="Nocturno" {% if filters.modalidade == 'Nocturno' %}selected{% endif %}>Nocturno (histórico)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="area-filter">Área</label>
+                        <select id="area-filter" name="area">
+                            <option value="">Todas</option>
+                            <option value="A" {% if filters.area == 'A' %}selected{% endif %}>Área A</option>
+                            <option value="B" {% if filters.area == 'B' %}selected{% endif %}>Área B</option>
+                            <option value="C" {% if filters.area == 'C' %}selected{% endif %}>Área C</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="teacher-filter">Director de Turma</label>
+                        <select id="teacher-filter" name="diretor_turma_id">
+                            <option value="">Todos</option>
+                            {% for professor in professores %}
+                            <option value="{{ professor.id }}" {% if filters.diretor_turma_id == professor.id|string %}selected{% endif %}>{{ professor.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="state-filter">Estado</label>
+                        <select id="state-filter" name="estado">
+                            <option value="">Todos</option>
+                            <option value="com_vagas" {% if filters.estado == 'com_vagas' %}selected{% endif %}>Com vagas</option>
+                            <option value="completa" {% if filters.estado == 'completa' %}selected{% endif %}>Completa</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">Aplicar filtros</button>
+                <a class="btn btn-secondary" href="/director/turmas">Limpar</a>
+            </form>
+        </div>
+
+        <section class="stats-grid" aria-label="Indicadores das turmas">
+            <div class="stat-card"><div class="stat-value">{{ total_turmas }}</div><div class="stat-label">Total de Turmas</div></div>
+            <div class="stat-card"><div class="stat-value">{{ total_capacidade }}</div><div class="stat-label">Capacidade Total</div></div>
+            <div class="stat-card"><div class="stat-value">{{ total_manha }}</div><div class="stat-label">Manhã</div></div>
+            <div class="stat-card"><div class="stat-value">{{ total_tarde }}</div><div class="stat-label">Tarde</div></div>
+            <div class="stat-card"><div class="stat-value">{{ total_distancia }}</div><div class="stat-label">À Distância</div></div>
+        </section>
+
+        <div class="card">
+            <h1 class="card-title">Turmas, ocupação e responsáveis</h1>
+            {% if turmas %}
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ano / Classe</th>
+                            <th>Turma / Área</th>
+                            <th>Sala</th>
+                            <th>Turno / Modalidade</th>
+                            <th>Director de Turma</th>
+                            <th>Ocupação</th>
+                            {% if session.get('user_role') in ['director', 'admin'] %}<th>Configurar</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for turma in turmas %}
+                        {% set capacidade = turma.capacidade_maxima or 0 %}
+                        {% set inscritos = turma.inscritos or 0 %}
+                        {% set ocupacao = ((inscritos * 100 / capacidade)|round|int) if capacidade else 0 %}
+                        <tr>
+                            <td>{{ turma.ano_lectivo }} / {{ turma.classe_num }}.ª</td>
+                            <td>
+                                <strong>{{ turma.nome }}</strong>
+                                {% if turma.area_curricular %}
+                                <br><small>{{ areas_curriculares.get(turma.area_curricular, turma.area_curricular) }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ turma.sala or '—' }}</td>
+                            <td>
+                                {% if turma.curso == 'À Distância' %}À Distância
+                                {% else %}{{ turma.turno }}{% endif %}
+                            </td>
+                            <td>{{ turma.diretor_turma or 'Não atribuído' }}</td>
+                            <td>
+                                <span>{{ inscritos }} / {{ capacidade }} ({{ ocupacao }}%)</span>
+                                <progress value="{{ [inscritos, capacidade]|min }}" max="{{ capacidade if capacidade else 1 }}"
+                                          aria-label="Ocupação de {{ turma.nome }}"></progress>
+                            </td>
+                            {% if session.get('user_role') in ['director', 'admin'] %}
+                            <td>
+                                <form method="POST" action="/director/turmas/{{ turma.id }}/configurar"
+                                      style="display:grid; grid-template-columns:minmax(90px, 1fr) minmax(150px, 1.5fr) auto; gap:6px; min-width:360px;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <label class="sr-only" for="capacity-{{ turma.id }}">Capacidade máxima</label>
+                                    <input id="capacity-{{ turma.id }}" type="number" name="capacidade_maxima"
+                                           min="{{ inscritos if inscritos else 1 }}" value="{{ capacidade }}" required>
+                                    <label class="sr-only" for="teacher-{{ turma.id }}">Director de Turma</label>
+                                    <select id="teacher-{{ turma.id }}" name="diretor_turma_id">
+                                        <option value="">Sem Director</option>
+                                        {% for professor in professores %}
+                                        <option value="{{ professor.id }}"
+                                            {% if turma.diretor_turma_id == professor.id %}selected{% endif %}>
+                                            {{ professor.nome }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
+                                </form>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p>Não existem turmas para o ano lectivo seleccionado.</p>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

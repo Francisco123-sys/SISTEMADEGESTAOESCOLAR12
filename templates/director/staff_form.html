@@ -14,6 +14,7 @@
         <div class="card">
             <h3 class="card-title">Novo Colaborador / Cargo Pedagógico</h3>
             <form action="/director/new-staff" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label>Nome Completo:*</label>
                     <input type="text" name="nome" required>

@@ -21,6 +21,7 @@
         <div class="card">
             <h3 class="card-title">Corrigir Dados do Recibo {{ p.receipt_number }} ({{ p.aluno_nome }})</h3>
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label>Banco / Carteira Móvel:*</label>
                     <select name="banco_plataforma" required>

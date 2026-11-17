@@ -43,6 +43,9 @@ def _adapt_sql_for_postgres(sql):
     return adapted
 
 
+TABLES_WITHOUT_ID = {'guardian_students', 'code_counters'}
+
+
 class PgCursorWrapper:
     def __init__(self, cursor):
         self._cursor = cursor
@@ -53,24 +56,29 @@ class PgCursorWrapper:
         return self._lastrowid
 
     def execute(self, sql, params=None):
+        self._lastrowid = None
         sql_clean = _adapt_sql_for_postgres(sql)
-        is_insert = bool(re.match(r'^\s*INSERT\s+INTO\b', sql_clean, re.IGNORECASE))
+        insert_match = re.match(
+            r'^\s*INSERT\s+INTO\s+([a-zA-Z_][a-zA-Z0-9_]*)\b',
+            sql_clean,
+            re.IGNORECASE,
+        )
         has_returning = bool(re.search(r'\bRETURNING\b', sql_clean, re.IGNORECASE))
 
-        if is_insert and not has_returning:
+        if (
+            insert_match
+            and not has_returning
+            and insert_match.group(1).lower() not in TABLES_WITHOUT_ID
+        ):
             sql_exec = sql_clean.rstrip().rstrip(';') + ' RETURNING id'
-            try:
-                if params is not None:
-                    self._cursor.execute(sql_exec, params)
-                else:
-                    self._cursor.execute(sql_exec)
-                row = self._cursor.fetchone()
-                if row is not None:
-                    self._lastrowid = row['id'] if isinstance(row, dict) else row[0]
-                return self
-            except Exception:
-                # Fallback if table has no 'id' column
-                self._cursor.connection.rollback()
+            if params is not None:
+                self._cursor.execute(sql_exec, params)
+            else:
+                self._cursor.execute(sql_exec)
+            row = self._cursor.fetchone()
+            if row is not None:
+                self._lastrowid = row['id'] if isinstance(row, dict) else row[0]
+            return self
 
         if params is not None:
             self._cursor.execute(sql_clean, params)

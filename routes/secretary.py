@@ -1,14 +1,36 @@
 import csv
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file
+from html import escape
+import re
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from services.db import get_db, log_audit, DB_INTEGRITY_ERRORS
-from services.student_service import calcular_classe_sugerida, gerar_codigo_unico, atribuir_turma_automatica
+from services.student_service import (
+    AREAS_CURRICULARES,
+    calcular_classe_sugerida,
+    gerar_codigo_unico,
+    atribuir_turma_automatica,
+)
 from datetime import datetime
+from werkzeug.security import generate_password_hash
+from services.uploads import UPLOAD_DIRECTORY, save_student_photo, save_transfer_document
 import io
 import os
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    Image as ReportImage,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 secretary_bp = Blueprint('secretary', __name__, url_prefix='/secretary')
 
@@ -19,6 +41,7 @@ def check_secretary():
 
 def validar_referencia_9_digitos(ref):
     return ref.isdigit() and len(ref) == 9
+
 
 @secretary_bp.route('/dashboard')
 def dashboard():
@@ -74,7 +97,8 @@ def students_list():
 
     params = []
     query = '''
-        SELECT s.*, t.nome as turma_nome, t.sala as turma_sala, t.id as turma_db_id, c.numero as classe_num 
+        SELECT s.*, t.nome as turma_nome, t.sala as turma_sala, t.area_curricular,
+               t.id as turma_db_id, c.numero as classe_num
         FROM students s 
         LEFT JOIN turmas t ON s.turma_id = t.id 
         LEFT JOIN classes c ON t.classe_id = c.id
@@ -119,7 +143,135 @@ def students_list():
     return render_template('secretary/students.html', 
                            estrutura_escola=estrutura_escola, 
                            turmas_disponiveis=turmas_disponiveis,
+                           areas_curriculares=AREAS_CURRICULARES,
                            busca=busca, classe_filtro=classe_filtro, turma_filtro=turma_filtro, filtro_especial=filtro_especial)
+
+
+@secretary_bp.route('/encarregados', methods=['GET', 'POST'])
+def manage_guardians():
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
+
+    db = get_db()
+    cursor = db.cursor()
+    if request.method == 'POST':
+        action = request.form.get('acao')
+        email = request.form.get('email', '').strip().lower()
+        if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+            flash('Informe um endereço de e-mail válido.', 'danger')
+            return redirect(url_for('secretary.manage_guardians'))
+
+        if action == 'associar':
+            try:
+                student_id = int(request.form.get('student_id', ''))
+            except ValueError:
+                flash('Seleccione um aluno válido.', 'danger')
+                return redirect(url_for('secretary.manage_guardians'))
+
+            cursor.execute('SELECT id FROM students WHERE id = ?', (student_id,))
+            if not cursor.fetchone():
+                flash('Aluno não encontrado.', 'danger')
+                return redirect(url_for('secretary.manage_guardians'))
+
+            cursor.execute(
+                'SELECT id, ativo FROM guardians WHERE LOWER(email) = ?',
+                (email,),
+            )
+            guardian = cursor.fetchone()
+            if guardian:
+                if not guardian['ativo']:
+                    flash('A conta está inactiva. Contacte a Direcção antes de associar educandos.', 'danger')
+                    return redirect(url_for('secretary.manage_guardians'))
+                guardian_id = guardian['id']
+            else:
+                nome = request.form.get('nome', '').strip()
+                password = request.form.get('password', '')
+                contacto = request.form.get('contacto', '').strip()
+                if not nome or len(password) < 12:
+                    flash(
+                        'Para uma nova conta, informe o nome e uma palavra-passe com pelo menos 12 caracteres.',
+                        'danger',
+                    )
+                    return redirect(url_for('secretary.manage_guardians'))
+                cursor.execute('''
+                    INSERT INTO guardians (nome, email, password_hash, contacto)
+                    VALUES (?, ?, ?, ?)
+                ''', (nome, email, generate_password_hash(password), contacto or None))
+                guardian_id = cursor.lastrowid
+
+            cursor.execute('''
+                SELECT 1 FROM guardian_students WHERE guardian_id = ? AND student_id = ?
+            ''', (guardian_id, student_id))
+            if cursor.fetchone():
+                flash('Esta conta já está associada ao aluno seleccionado.', 'info')
+                return redirect(url_for('secretary.manage_guardians'))
+
+            principal = 1 if request.form.get('principal') else 0
+            if principal:
+                cursor.execute(
+                    'UPDATE guardian_students SET principal = 0 WHERE student_id = ?',
+                    (student_id,),
+                )
+            cursor.execute('''
+                INSERT INTO guardian_students (guardian_id, student_id, parentesco, principal)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                guardian_id,
+                student_id,
+                request.form.get('parentesco', '').strip() or None,
+                principal,
+            ))
+            db.commit()
+            log_audit(
+                session['user_id'],
+                'ASSOCIAR_ENCARREGADO',
+                f'Conta de encarregado {guardian_id} associada ao aluno {student_id}.',
+            )
+            flash('Conta de encarregado associada ao aluno.', 'success')
+            return redirect(url_for('secretary.manage_guardians'))
+
+        if action == 'redefinir_password':
+            password = request.form.get('password', '')
+            if len(password) < 12:
+                flash('A nova palavra-passe deve ter pelo menos 12 caracteres.', 'danger')
+                return redirect(url_for('secretary.manage_guardians'))
+            cursor.execute(
+                'UPDATE guardians SET password_hash = ?, session_version = session_version + 1 WHERE LOWER(email) = ?',
+                (generate_password_hash(password), email),
+            )
+            if cursor.rowcount != 1:
+                db.rollback()
+                flash('Conta de encarregado não encontrada.', 'danger')
+                return redirect(url_for('secretary.manage_guardians'))
+            db.commit()
+            log_audit(
+                session['user_id'],
+                'REDEFINIR_PASSWORD_ENCARREGADO',
+                f'Palavra-passe da conta {email} redefinida pela Secretaria.',
+            )
+            flash('Palavra-passe redefinida. Entregue-a ao encarregado por um canal seguro.', 'success')
+            return redirect(url_for('secretary.manage_guardians'))
+
+        flash('Acção desconhecida.', 'danger')
+        return redirect(url_for('secretary.manage_guardians'))
+
+    cursor.execute('SELECT id, code, nome FROM students ORDER BY nome')
+    alunos = cursor.fetchall()
+    cursor.execute('''
+        SELECT g.id, g.nome, g.email, g.contacto, g.ativo,
+               COUNT(gs.student_id) AS total_educandos
+        FROM guardians g
+        LEFT JOIN guardian_students gs ON gs.guardian_id = g.id
+        GROUP BY g.id, g.nome, g.email, g.contacto, g.ativo
+        ORDER BY g.nome
+    ''')
+    encarregados = cursor.fetchall()
+    return render_template(
+        'secretary/guardians.html',
+        alunos=alunos,
+        encarregados=encarregados,
+    )
+
 
 # FLUXO DE MATRÍCULA EM 2 ETAPAS (PASSO 1: DADOS DO ALUNO -> PASSO 2: PAGAMENTO OBRIGATÓRIO ANTES DE GRAVAR NO BANCO)
 @secretary_bp.route('/students/new', methods=['GET', 'POST'])
@@ -134,6 +286,26 @@ def student_form():
         data_nasc = request.form.get('data_nascimento')
         
         cursor = db.cursor()
+        selected_year = request.form.get('ano_lectivo_id', '').strip()
+        if selected_year:
+            try:
+                selected_year = int(selected_year)
+            except ValueError:
+                flash('Seleccione um ano lectivo válido.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            cursor.execute(
+                'SELECT id FROM academic_years WHERE id = ? AND ativo = 1',
+                (selected_year,),
+            )
+        else:
+            cursor.execute(
+                'SELECT id FROM academic_years WHERE ativo = 1 ORDER BY ano DESC LIMIT 1'
+            )
+        active_year = cursor.fetchone()
+        if not active_year:
+            flash('Não existe um ano lectivo activo configurado.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        selected_year = active_year['id']
         
         # VALIDAÇÃO 1: VERIFICAR DUPLICAÇÃO DE BI
         cursor.execute('SELECT id, nome, classe_ingresso FROM students WHERE bi_cedula = ?', (bi_cedula,))
@@ -150,7 +322,122 @@ def student_form():
 
         isento = 1 if request.form.get('isento_taxa') else 0
         classe_sugerida = calcular_classe_sugerida(data_nasc)
-        classe_atribuida = int(request.form.get('classe'))
+        try:
+            classe_atribuida = int(request.form.get('classe', ''))
+        except ValueError:
+            flash('Seleccione uma classe válida entre a 8.ª e a 12.ª.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+
+        area_curricular = request.form.get('area_curricular') or None
+        turno = request.form.get('turno', 'Manhã')
+        curso = request.form.get('curso', 'Diurno')
+        if classe_atribuida not in range(8, 13):
+            flash('As novas matrículas devem ser para a 8.ª à 12.ª Classe.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if turno not in ('Manhã', 'Tarde') or curso not in ('Diurno', 'À Distância'):
+            flash('Seleccione um turno e uma modalidade válidos.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if classe_atribuida >= 10 and area_curricular not in AREAS_CURRICULARES:
+            flash('Seleccione a área curricular para a classe escolhida.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if classe_atribuida <= 9:
+            area_curricular = None
+
+        if not nome or not bi_cedula or not data_nasc:
+            flash('Nome, documento de identificação e data de nascimento são obrigatórios.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        try:
+            datetime.strptime(data_nasc, '%Y-%m-%d')
+        except (TypeError, ValueError):
+            flash('A data de nascimento é inválida.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if request.form.get('sexo') not in ('M', 'F'):
+            flash('Seleccione um sexo válido.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if data_nasc > datetime.now().strftime('%Y-%m-%d'):
+            flash('A data de nascimento não pode estar no futuro.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+
+        encarregado_parentesco = request.form.get('encarregado_parentesco', '').strip()
+        if encarregado_parentesco not in ('Pai', 'Mãe', 'Outro'):
+            flash('Seleccione o grau de parentesco do encarregado.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if encarregado_parentesco == 'Pai':
+            encarregado_nome = request.form.get('encarregado_nome', '').strip() or request.form.get('nome_pai', '').strip()
+            encarregado_contacto = (
+                request.form.get('encarregado_contacto_principal', '').strip()
+                or request.form.get('pai_contacto', '').strip()
+            )
+        elif encarregado_parentesco == 'Mãe':
+            encarregado_nome = request.form.get('encarregado_nome', '').strip() or request.form.get('nome_mae', '').strip()
+            encarregado_contacto = (
+                request.form.get('encarregado_contacto_principal', '').strip()
+                or request.form.get('mae_contacto', '').strip()
+            )
+        else:
+            encarregado_nome = request.form.get('encarregado_nome', '').strip()
+            encarregado_contacto = request.form.get('encarregado_contacto_principal', '').strip()
+        if not encarregado_nome:
+            flash('Informe o nome do Encarregado de Educação.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        encarregado_email = request.form.get('encarregado_email', '').strip()
+        if encarregado_email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', encarregado_email):
+            flash('O e-mail do encarregado não é válido.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+
+        ingresso_situacao = request.form.get('ingresso_situacao', 'Interno')
+        if ingresso_situacao not in ('Interno', 'Transferido'):
+            flash('Seleccione uma situação de ingresso válida.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+
+        transfer_data = {
+            'escola_origem': request.form.get('escola_origem', '').strip(),
+            'provincia_origem': request.form.get('provincia_origem', '').strip(),
+            'distrito_origem': request.form.get('distrito_origem', '').strip(),
+            'classe_anterior': request.form.get('classe_anterior', '').strip(),
+            'ano_lectivo_anterior': request.form.get('ano_lectivo_anterior', '').strip(),
+            'observacoes_transferencia': request.form.get('observacoes_transferencia', '').strip(),
+        }
+        if ingresso_situacao == 'Transferido':
+            if not all(transfer_data[key] for key in (
+                'escola_origem', 'provincia_origem', 'distrito_origem',
+                'classe_anterior', 'ano_lectivo_anterior',
+            )):
+                flash('Preencha os dados da escola e classe anterior do aluno transferido.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            try:
+                transfer_data['classe_anterior'] = int(transfer_data['classe_anterior'])
+                transfer_data['ano_lectivo_anterior'] = int(transfer_data['ano_lectivo_anterior'])
+            except ValueError:
+                flash('A classe e o ano lectivo anteriores devem ser valores numéricos.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            if transfer_data['classe_anterior'] not in range(1, 13):
+                flash('A classe anterior indicada não é válida.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            if (
+                transfer_data['ano_lectivo_anterior'] < 2000
+                or transfer_data['ano_lectivo_anterior'] > datetime.now().year
+            ):
+                flash('O ano lectivo anterior indicado não é válido.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            document = request.files.get('documento_transferencia')
+            if not document or not document.filename:
+                flash('Anexe o documento de transferência em PDF.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+
+        try:
+            photo = request.files.get('fotografia')
+            photo_path = save_student_photo(photo) if photo and photo.filename else None
+            transfer_file = request.files.get('documento_transferencia')
+            transfer_path = (
+                save_transfer_document(transfer_file)
+                if ingresso_situacao == 'Transferido' and transfer_file and transfer_file.filename
+                else None
+            )
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return redirect(url_for('secretary.student_form'))
+
         justificacao = request.form.get('justificacao_alteracao') if classe_atribuida != classe_sugerida else ""
         justificacao_isencao = request.form.get('justificacao_isencao') if isento else ""
         
@@ -164,11 +451,34 @@ def student_form():
             'sexo': request.form.get('sexo'),
             'morada': request.form.get('morada', '').strip(),
             'naturalidade': request.form.get('naturalidade', '').strip(),
-            'contacto_1': request.form.get('contacto_1', '').strip(),
+            'provincia_nascimento': request.form.get('provincia_nascimento', '').strip(),
+            'nacionalidade': request.form.get('nacionalidade', '').strip() or 'Moçambicana',
+            'foto_path': photo_path,
+            'pai_naturalidade': request.form.get('pai_naturalidade', '').strip(),
+            'pai_profissao': request.form.get('pai_profissao', '').strip(),
+            'pai_contacto': request.form.get('pai_contacto', '').strip(),
+            'mae_naturalidade': request.form.get('mae_naturalidade', '').strip(),
+            'mae_profissao': request.form.get('mae_profissao', '').strip(),
+            'mae_contacto': request.form.get('mae_contacto', '').strip(),
+            'encarregado_nome': request.form.get('encarregado_nome', '').strip(),
+            'encarregado_parentesco': encarregado_parentesco,
+            'encarregado_naturalidade': request.form.get('encarregado_naturalidade', '').strip(),
+            'encarregado_profissao': request.form.get('encarregado_profissao', '').strip(),
+            'encarregado_contacto_principal': encarregado_contacto,
+            'encarregado_contacto_alternativo': request.form.get('encarregado_contacto_alternativo', '').strip(),
+            'encarregado_morada': request.form.get('encarregado_morada', '').strip(),
+            'encarregado_email': encarregado_email,
+            'ingresso_situacao': ingresso_situacao,
+            **transfer_data,
+            'documento_transferencia_path': transfer_path,
+            'contacto_1': request.form.get('contacto_1', '').strip()
+                or request.form.get('encarregado_contacto_principal', '').strip(),
             'contacto_2': request.form.get('contacto_2', '').strip(),
             'classe': classe_atribuida,
-            'turno': request.form.get('turno', 'Manhã'),
-            'curso': request.form.get('curso', 'Diurno'),
+            'ano_lectivo_id': selected_year,
+            'area_curricular': area_curricular,
+            'turno': turno,
+            'curso': curso,
             'isento': isento,
             'justificacao_isencao': justificacao_isencao,
             'nee_tipo': request.form.get('nee_tipo', 'Nenhuma'),
@@ -185,7 +495,10 @@ def student_form():
         flash('Dados do aluno validados! Agora preencha os dados do pagamento/talão bancário para finalizar a inscrição.', 'info')
         return redirect(url_for('secretary.student_registration_payment'))
         
-    return render_template('secretary/student_form.html')
+    cursor = db.cursor()
+    cursor.execute('SELECT id, ano FROM academic_years WHERE ativo = 1 ORDER BY ano DESC')
+    academic_years = cursor.fetchall()
+    return render_template('secretary/student_form.html', academic_years=academic_years)
 
 @secretary_bp.route('/students/new/payment', methods=['GET', 'POST'])
 def student_registration_payment():
@@ -239,29 +552,60 @@ def student_registration_payment():
         session.pop('pending_matricula', None)
         return _concluir_matricula_no_banco(db, dados_matricula, dados_pagamento)
         
-    return render_template('secretary/student_registration_payment.html', aluno=dados_matricula, bancos=BANCOS_PERMITIDOS, hoje=datetime.now().strftime('%Y-%m-%d'))
+    return render_template(
+        'secretary/student_registration_payment.html',
+        aluno=dados_matricula,
+        bancos=BANCOS_PERMITIDOS,
+        hoje=datetime.now().strftime('%Y-%m-%d'),
+        areas_curriculares=AREAS_CURRICULARES,
+    )
 
 def _concluir_matricula_no_banco(db, m, pag):
     cursor = db.cursor()
     codigo_aluno = gerar_codigo_unico("ALU", "students")
-    ano_lectivo_id = 1
+    ano_lectivo_id = m['ano_lectivo_id']
     data_hoje = datetime.now().strftime('%Y-%m-%d')
     
-    turma_id = atribuir_turma_automatica(db, m['classe'], ano_lectivo_id, m['turno'], m['curso'])
+    turma_id = atribuir_turma_automatica(
+        db,
+        m['classe'],
+        ano_lectivo_id,
+        m['turno'],
+        m['curso'],
+        m.get('area_curricular'),
+    )
     
     cursor.execute('''
         INSERT INTO students (
             code, nome, nome_pai, nome_mae, bi_cedula, data_nascimento, sexo, morada, naturalidade,
             encarregado_contacto_1, encarregado_contacto_2,
             classe_ingresso, turma_id, ano_lectivo_id, turno, curso, data_matricula, isento_taxa, justificacao_isencao, nee_tipo,
-            classe_sugerida, justificacao_alteracao, funcionario_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
+            classe_sugerida, justificacao_alteracao, funcionario_id,
+            provincia_nascimento, nacionalidade, foto_path,
+            pai_naturalidade, pai_profissao, pai_contacto,
+            mae_naturalidade, mae_profissao, mae_contacto,
+            encarregado_nome, encarregado_parentesco, encarregado_naturalidade,
+            encarregado_profissao, encarregado_contacto_principal,
+            encarregado_contacto_alternativo, encarregado_morada, encarregado_email,
+            ingresso_situacao, escola_origem, provincia_origem, distrito_origem,
+            classe_anterior, ano_lectivo_anterior, documento_transferencia_path,
+            observacoes_transferencia
+        ) VALUES ({})
+    '''.format(', '.join('?' for _ in range(48))), (
         codigo_aluno, m['nome'], m['nome_pai'], m['nome_mae'],
         m['bi_cedula'], m['data_nascimento'], m['sexo'], m['morada'], m['naturalidade'],
         m['contacto_1'], m['contacto_2'],
         m['classe'], turma_id, ano_lectivo_id, m['turno'], m['curso'], data_hoje, m['isento'], m['justificacao_isencao'], m['nee_tipo'],
-        m['classe_sugerida'], m['justificacao'], session['user_id']
+        m['classe_sugerida'], m['justificacao'], session['user_id'],
+        m['provincia_nascimento'], m['nacionalidade'], m['foto_path'],
+        m['pai_naturalidade'], m['pai_profissao'], m['pai_contacto'],
+        m['mae_naturalidade'], m['mae_profissao'], m['mae_contacto'],
+        m['encarregado_nome'], m['encarregado_parentesco'], m['encarregado_naturalidade'],
+        m['encarregado_profissao'], m['encarregado_contacto_principal'],
+        m['encarregado_contacto_alternativo'], m['encarregado_morada'], m['encarregado_email'],
+        m['ingresso_situacao'], m['escola_origem'], m['provincia_origem'], m['distrito_origem'],
+        m['classe_anterior'] or None, m['ano_lectivo_anterior'] or None,
+        m['documento_transferencia_path'], m['observacoes_transferencia']
     ))
     student_id = cursor.lastrowid
     
@@ -291,6 +635,12 @@ def student_edit(student_id):
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
+    cursor.execute('SELECT * FROM students WHERE id = ?', (student_id,))
+    aluno = cursor.fetchone()
+    if not aluno:
+        flash('Aluno não encontrado.', 'danger')
+        return redirect(url_for('secretary.students_list'))
+
     if request.method == 'POST':
         nome = request.form.get('nome', '').strip()
         bi_cedula = request.form.get('bi_cedula', '').strip()
@@ -299,24 +649,296 @@ def student_edit(student_id):
             flash(f'ERRO: O BI {bi_cedula} já pertence a outro aluno.', 'danger')
             return redirect(url_for('secretary.student_edit', student_id=student_id))
             
-        cursor.execute('''
-            UPDATE students SET nome=?, nome_pai=?, nome_mae=?, bi_cedula=?, data_nascimento=?, sexo=?,
-            morada=?, encarregado_contacto_1=?, encarregado_contacto_2=?, isento_taxa=?, justificacao_isencao=?, nee_tipo=?
-            WHERE id=?
-        ''', (
-            nome, request.form.get('nome_pai'), request.form.get('nome_mae'), bi_cedula,
-            request.form.get('data_nascimento'), request.form.get('sexo'), request.form.get('morada'),
-            request.form.get('contacto_1'), request.form.get('contacto_2'),
-            1 if request.form.get('isento_taxa') else 0, request.form.get('justificacao_isencao', ''),
-            request.form.get('nee_tipo', 'Nenhuma'), student_id
-        ))
+        fields = (
+            'nome', 'nome_pai', 'nome_mae', 'bi_cedula', 'data_nascimento', 'sexo',
+            'morada', 'naturalidade', 'provincia_nascimento', 'nacionalidade',
+            'encarregado_contacto_1', 'encarregado_contacto_2', 'pai_naturalidade',
+            'pai_profissao', 'pai_contacto', 'mae_naturalidade', 'mae_profissao',
+            'mae_contacto', 'encarregado_nome', 'encarregado_parentesco',
+            'encarregado_naturalidade', 'encarregado_profissao',
+            'encarregado_contacto_principal', 'encarregado_contacto_alternativo',
+            'encarregado_morada', 'encarregado_email', 'ingresso_situacao',
+            'escola_origem', 'provincia_origem', 'distrito_origem',
+            'observacoes_transferencia',
+        )
+        values = {field: request.form.get(field, '').strip() or None for field in fields}
+        values['encarregado_contacto_1'] = (
+            request.form.get('contacto_1', '').strip()
+            or aluno['encarregado_contacto_1']
+            or ''
+        )
+        values['encarregado_contacto_2'] = request.form.get('contacto_2', '').strip() or None
+        values['isento_taxa'] = 1 if request.form.get('isento_taxa') else 0
+        values['justificacao_isencao'] = request.form.get('justificacao_isencao', '').strip()
+        values['nee_tipo'] = request.form.get('nee_tipo', 'Nenhuma').strip()
+
+        if values['ingresso_situacao'] not in ('Interno', 'Transferido'):
+            flash('Situação de ingresso inválida.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+        if not values['nome'] or not values['bi_cedula'] or not values['data_nascimento']:
+            flash('Nome, identificação e data de nascimento são obrigatórios.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+        try:
+            datetime.strptime(values['data_nascimento'], '%Y-%m-%d')
+        except ValueError:
+            flash('A data de nascimento é inválida.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+        if values['sexo'] not in ('M', 'F'):
+            flash('Seleccione um sexo válido.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+        if values['encarregado_email'] and not re.fullmatch(
+            r'[^@\s]+@[^@\s]+\.[^@\s]+',
+            values['encarregado_email'],
+        ):
+            flash('O e-mail do encarregado não é válido.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+        if values['ingresso_situacao'] == 'Transferido':
+            if not all(values.get(field) for field in (
+                'escola_origem', 'provincia_origem', 'distrito_origem',
+            )):
+                flash('Preencha os dados da escola de origem do aluno transferido.', 'danger')
+                return redirect(url_for('secretary.student_edit', student_id=student_id))
+            try:
+                values['classe_anterior'] = int(request.form.get('classe_anterior', ''))
+                values['ano_lectivo_anterior'] = int(request.form.get('ano_lectivo_anterior', ''))
+            except ValueError:
+                flash('A classe e o ano lectivo anteriores devem ser numéricos.', 'danger')
+                return redirect(url_for('secretary.student_edit', student_id=student_id))
+            if values['classe_anterior'] not in range(1, 13):
+                flash('Classe anterior inválida.', 'danger')
+                return redirect(url_for('secretary.student_edit', student_id=student_id))
+            if values['ano_lectivo_anterior'] < 2000 or values['ano_lectivo_anterior'] > datetime.now().year:
+                flash('Ano lectivo anterior inválido.', 'danger')
+                return redirect(url_for('secretary.student_edit', student_id=student_id))
+        else:
+            values['classe_anterior'] = aluno['classe_anterior']
+            values['ano_lectivo_anterior'] = aluno['ano_lectivo_anterior']
+
+        try:
+            photo = request.files.get('fotografia')
+            values['foto_path'] = (
+                save_student_photo(photo) if photo and photo.filename else aluno['foto_path']
+            )
+            transfer_file = request.files.get('documento_transferencia')
+            values['documento_transferencia_path'] = (
+                save_transfer_document(transfer_file)
+                if transfer_file and transfer_file.filename
+                else aluno['documento_transferencia_path']
+            )
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+
+        if (
+            values['ingresso_situacao'] == 'Transferido'
+            and not values['documento_transferencia_path']
+        ):
+            flash('Anexe o documento de transferência em PDF.', 'danger')
+            return redirect(url_for('secretary.student_edit', student_id=student_id))
+
+        update_fields = fields + (
+            'isento_taxa', 'justificacao_isencao', 'nee_tipo',
+            'classe_anterior', 'ano_lectivo_anterior', 'foto_path',
+            'documento_transferencia_path',
+        )
+        assignments = ', '.join(f'{field} = ?' for field in update_fields)
+        cursor.execute(
+            f'UPDATE students SET {assignments} WHERE id = ?',
+            tuple(values.get(field) for field in update_fields) + (student_id,),
+        )
         db.commit()
         flash('Dados do aluno atualizados com sucesso!', 'success')
         return redirect(url_for('secretary.students_list'))
-        
-    cursor.execute('SELECT * FROM students WHERE id = ?', (student_id,))
-    aluno = cursor.fetchone()
+
     return render_template('secretary/student_edit.html', aluno=aluno)
+
+
+@secretary_bp.route('/students/file/<filename>')
+def student_private_file(filename):
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
+    if not re.fullmatch(r'[a-f0-9]{32}\.(?:jpg|pdf)', filename):
+        return '', 404
+    return send_from_directory(
+        UPLOAD_DIRECTORY,
+        filename,
+        as_attachment=filename.endswith('.pdf'),
+    )
+
+
+@secretary_bp.route('/turmas/<int:turma_id>/lista-pdf/<tipo>')
+def export_class_list_pdf(turma_id, tipo):
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
+    if tipo not in ('vitrine', 'oficial'):
+        return '', 404
+    if tipo == 'oficial' and session.get('user_role') not in ('chefe_secretaria', 'admin'):
+        flash('A lista oficial completa requer perfil de Chefe da Secretaria ou Administrador.', 'danger')
+        return redirect(url_for('secretary.gerenciar_turmas'))
+
+    cursor = get_db().cursor()
+    cursor.execute('''
+        SELECT t.id, t.nome, t.sala, t.turno, t.curso, t.area_curricular,
+               c.numero AS classe_num, ay.ano AS ano_lectivo,
+               u.nome AS diretor_turma
+        FROM turmas t
+        JOIN classes c ON c.id = t.classe_id
+        JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
+        WHERE t.id = ?
+    ''', (turma_id,))
+    turma = cursor.fetchone()
+    if not turma:
+        flash('Turma não encontrada.', 'danger')
+        return redirect(url_for('secretary.gerenciar_turmas'))
+
+    if tipo == 'vitrine':
+        cursor.execute(
+            'SELECT nome FROM students WHERE turma_id = ? ORDER BY nome',
+            (turma_id,),
+        )
+    else:
+        cursor.execute('''
+            SELECT nome, code, bi_cedula, sexo, data_nascimento,
+                   COALESCE(encarregado_contacto_principal, encarregado_contacto_1) AS contacto_encarregado
+            FROM students WHERE turma_id = ? ORDER BY nome
+        ''', (turma_id,))
+    alunos = cursor.fetchall()
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'SchoolTitle', parent=styles['Title'], fontName='Helvetica-Bold',
+        fontSize=13, leading=16, alignment=TA_CENTER, spaceAfter=2,
+    )
+    header_style = ParagraphStyle(
+        'InstitutionHeader', parent=styles['Normal'], fontName='Helvetica',
+        fontSize=9, leading=12, alignment=TA_CENTER,
+    )
+    cell_style = ParagraphStyle(
+        'TableCell', parent=styles['BodyText'], fontName='Helvetica',
+        fontSize=8, leading=10, alignment=TA_LEFT, spaceAfter=0, spaceBefore=0,
+    )
+    table_header_style = ParagraphStyle(
+        'TableHeader', parent=cell_style, fontName='Helvetica-Bold',
+        textColor=colors.white, alignment=TA_CENTER,
+    )
+
+    output = io.BytesIO()
+    page_size = A4 if tipo == 'vitrine' else landscape(A4)
+    document = SimpleDocTemplate(
+        output,
+        pagesize=page_size,
+        rightMargin=1.5 * cm,
+        leftMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.8 * cm,
+        title=f'Lista {tipo} - {turma["nome"]}',
+        author='Escola Secundária da Manga',
+    )
+    story = []
+    emblem_path = os.path.join('static', 'img', 'emblema_moz.png')
+    emblem = ReportImage(emblem_path, width=1.5 * cm, height=1.5 * cm) if os.path.isfile(emblem_path) else ''
+    institution = Paragraph(
+        '<b>REPÚBLICA DE MOÇAMBIQUE</b><br/>'
+        'Província de Sofala — Distrito da Beira<br/>'
+        '<b>ESCOLA SECUNDÁRIA DA MANGA</b>',
+        header_style,
+    )
+    heading = Table([[emblem, institution]], colWidths=[2 * cm, page_size[0] - 5 * cm])
+    heading.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.6, colors.HexColor('#245B8F')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.extend([heading, Spacer(1, 0.35 * cm)])
+    list_title = 'LISTA NOMINAL PARA VITRINE' if tipo == 'vitrine' else 'LISTA NOMINAL OFICIAL'
+    story.append(Paragraph(list_title, title_style))
+    area = {
+        'A': 'Área A — Letras e Ciências Sociais',
+        'B': 'Área B — Ciências Naturais e Exactas',
+        'C': 'Área C — Artes Visuais e Cénicas / Ciências com Desenho',
+    }.get(turma['area_curricular'], '')
+    modalidade = 'À Distância' if turma['curso'] == 'À Distância' else turma['turno']
+    metadata = (
+        f'Ano lectivo: {turma["ano_lectivo"]} &nbsp;&nbsp; '
+        f'Classe: {turma["classe_num"]}.ª &nbsp;&nbsp; Turma: {escape(turma["nome"])}<br/>'
+        f'Sala: {escape(turma["sala"] or "—")} &nbsp;&nbsp; '
+        f'Área: {escape(area or "—")} &nbsp;&nbsp; '
+        f'Turno/Modalidade: {escape(modalidade)}'
+    )
+    story.append(Paragraph(metadata, header_style))
+    story.append(Spacer(1, 0.35 * cm))
+
+    if tipo == 'vitrine':
+        headers = ('N.º', 'Nome do Aluno')
+        data = [[Paragraph(value, table_header_style) for value in headers]]
+        data.extend([
+            [str(index), Paragraph(escape(aluno['nome'] or ''), cell_style)]
+            for index, aluno in enumerate(alunos, 1)
+        ])
+        widths = [1.4 * cm, page_size[0] - 4.4 * cm]
+    else:
+        headers = ('N.º', 'Processo', 'Nome completo', 'BI/Cédula', 'Sexo', 'Nascimento', 'Contacto do encarregado')
+        data = [[Paragraph(value, table_header_style) for value in headers]]
+        data.extend([
+            [
+                str(index),
+                Paragraph(escape(aluno['code'] or ''), cell_style),
+                Paragraph(escape(aluno['nome'] or ''), cell_style),
+                Paragraph(escape(aluno['bi_cedula'] or ''), cell_style),
+                Paragraph(escape(aluno['sexo'] or ''), cell_style),
+                Paragraph(escape(aluno['data_nascimento'] or ''), cell_style),
+                Paragraph(escape(aluno['contacto_encarregado'] or ''), cell_style),
+            ]
+            for index, aluno in enumerate(alunos, 1)
+        ])
+        widths = [1 * cm, 2.2 * cm, 6.4 * cm, 3 * cm, 1.2 * cm, 2.4 * cm, 3.6 * cm]
+    table = Table(data, colWidths=widths, repeatRows=1, splitByRow=1, hAlign='LEFT')
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#142B4A')),
+        ('GRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#98A2B3')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F5F8')]),
+    ]))
+    story.extend([table, Spacer(1, 0.8 * cm)])
+    if tipo == 'oficial':
+        story.append(Paragraph(
+            f'Director de Turma: {escape(turma["diretor_turma"] or "Não atribuído")} '
+            f'&nbsp;&nbsp; Data de emissão: {datetime.now().strftime("%d/%m/%Y")}',
+            cell_style,
+        ))
+        story.append(Spacer(1, 1.2 * cm))
+        story.append(Paragraph(
+            'O Chefe da Secretaria: ____________________________________',
+            header_style,
+        ))
+    else:
+        story.append(Paragraph(
+            f'Beira, _____ de _______________ de {turma["ano_lectivo"]} '
+            '&nbsp;&nbsp;&nbsp; O Director: __________________________',
+            header_style,
+        ))
+
+    def draw_footer(canvas, _doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.HexColor('#667085'))
+        canvas.drawRightString(page_size[0] - 1.5 * cm, 0.8 * cm, f'Página {canvas.getPageNumber()}')
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'Lista_{tipo}_{turma["classe_num"]}_{turma_id}.pdf',
+    )
 
 
 @secretary_bp.route('/payments/student-info/<int:student_id>')
@@ -673,7 +1295,7 @@ def edit_colega(user_id):
     colega = cursor.fetchone()
     return render_template('secretary/colaborador_edit.html', colega=colega)
 
-@secretary_bp.route('/colaboradores/toggle/<int:user_id>')
+@secretary_bp.route('/colaboradores/toggle/<int:user_id>', methods=['POST'])
 def toggle_colega(user_id):
     if session.get('user_role') not in ['chefe_secretaria', 'admin']:
         return redirect(url_for('secretary.dashboard'))
@@ -684,7 +1306,7 @@ def toggle_colega(user_id):
     flash('Estado do colega alterado!', 'info')
     return redirect(url_for('secretary.gerenciar_colaboradores'))
 
-@secretary_bp.route('/colaboradores/delete/<int:user_id>')
+@secretary_bp.route('/colaboradores/delete/<int:user_id>', methods=['POST'])
 def delete_colega(user_id):
     if session.get('user_role') not in ['chefe_secretaria', 'admin']:
         return redirect(url_for('secretary.dashboard'))
@@ -710,41 +1332,134 @@ def gerenciar_turmas():
         if acao == 'criar_turma':
             nome = request.form.get('nome', '').strip()
             sala = request.form.get('sala', '').strip()
-            classe_id = int(request.form.get('classe_id'))
+            try:
+                classe_id = int(request.form.get('classe_id', ''))
+                capacidade = int(request.form.get('capacidade_maxima', 40))
+            except ValueError:
+                flash('Classe ou capacidade inválida.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
             turno = request.form.get('turno')
             curso = request.form.get('curso')
-            capacidade = int(request.form.get('capacidade_maxima', 40))
+            area_curricular = request.form.get('area_curricular') or None
+            ano_lectivo_raw = request.form.get('ano_lectivo_id', '').strip()
+            try:
+                ano_lectivo_id = int(ano_lectivo_raw) if ano_lectivo_raw else None
+            except ValueError:
+                flash('Seleccione um ano lectivo válido.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
+            if ano_lectivo_id:
+                cursor.execute(
+                    'SELECT id FROM academic_years WHERE id = ? AND ativo = 1',
+                    (ano_lectivo_id,),
+                )
+            else:
+                cursor.execute(
+                    'SELECT id FROM academic_years WHERE ativo = 1 ORDER BY ano DESC LIMIT 1'
+                )
+            active_year = cursor.fetchone()
+            if not active_year:
+                flash('Não existe um ano lectivo activo configurado.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
+            ano_lectivo_id = active_year['id']
+
+            cursor.execute('SELECT numero FROM classes WHERE id = ?', (classe_id,))
+            classe_row = cursor.fetchone()
+            if not nome or not sala or not classe_row or capacidade < 1:
+                flash('Informe turma, sala, classe válida e capacidade maior que zero.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
+            classe_num = classe_row['numero']
+            if (
+                classe_num not in range(8, 13)
+                or turno not in ('Manhã', 'Tarde')
+                or curso not in ('Diurno', 'À Distância')
+                or (classe_num >= 10 and area_curricular not in AREAS_CURRICULARES)
+                or (classe_num <= 9 and area_curricular)
+            ):
+                flash('A classe, área, turno ou modalidade não é válida para uma nova turma.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
+
+            if classe_num <= 9:
+                valid_name = re.fullmatch(rf'{classe_num}ª [A-Z]+', nome)
+            else:
+                valid_name = re.fullmatch(rf'{classe_num}ª {area_curricular}\d{{2,}}', nome)
+            if not valid_name:
+                flash('O código da turma não corresponde à classe e à área seleccionadas.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
+
+            cursor.execute('UPDATE classes SET numero = numero WHERE id = ?', (classe_id,))
+            cursor.execute('''
+                SELECT id FROM turmas
+                WHERE nome = ? AND classe_id = ? AND ano_lectivo_id = ?
+                  AND turno = ? AND curso = ?
+                  AND ((area_curricular = ?) OR (area_curricular IS NULL AND ? IS NULL))
+            ''', (
+                nome, classe_id, ano_lectivo_id, turno, curso,
+                area_curricular, area_curricular,
+            ))
+            if cursor.fetchone():
+                flash('Já existe uma turma com este código no contexto seleccionado.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
             
             cursor.execute('''
-                INSERT INTO turmas (nome, sala, classe_id, ano_lectivo_id, turno, curso, capacidade_maxima, vagas_disponiveis)
-                VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-            ''', (nome, sala, classe_id, turno, curso, capacidade, capacidade))
+                INSERT INTO turmas (
+                    nome, sala, classe_id, ano_lectivo_id, turno, curso,
+                    capacidade_maxima, vagas_disponiveis, area_curricular
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (nome, sala, classe_id, ano_lectivo_id, turno, curso, capacidade, capacidade, area_curricular))
             db.commit()
             log_audit(session['user_id'], 'CRIAR_TURMA', f"Turma {nome} ({sala}) criada com {capacidade} vagas.")
             flash(f'Turma {nome} ({sala}) criada com {capacidade} vagas!', 'success')
             
         elif acao == 'transferir_aluno':
-            student_id = int(request.form.get('student_id'))
-            nova_turma_id = int(request.form.get('nova_turma_id'))
+            try:
+                student_id = int(request.form.get('student_id', ''))
+                nova_turma_id = int(request.form.get('nova_turma_id', ''))
+            except ValueError:
+                flash('Seleccione um aluno e uma turma válidos.', 'danger')
+                return redirect(url_for('secretary.gerenciar_turmas'))
             
             cursor.execute('SELECT turma_id FROM students WHERE id = ?', (student_id,))
             atual = cursor.fetchone()
             
-            cursor.execute('SELECT vagas_disponiveis, turno, curso, classe_id FROM turmas WHERE id = ?', (nova_turma_id,))
+            cursor.execute('''
+                SELECT t.vagas_disponiveis, t.turno, t.curso, t.classe_id, c.numero AS classe_num
+                FROM turmas t JOIN classes c ON c.id = t.classe_id
+                WHERE t.id = ?
+            ''', (nova_turma_id,))
             destino = cursor.fetchone()
             
-            if not destino or destino['vagas_disponiveis'] <= 0:
-                flash('ERRO: A turma/sala selecionada já não possui vagas disponíveis!', 'danger')
+            if not atual or not destino:
+                flash('Aluno ou turma de destino não encontrados.', 'danger')
+            elif atual['turma_id'] == nova_turma_id:
+                flash('O aluno já está atribuído a esta turma.', 'info')
             else:
-                if atual and atual['turma_id']:
-                    cursor.execute('UPDATE turmas SET vagas_disponiveis = vagas_disponiveis + 1 WHERE id = ?', (atual['turma_id'],))
-                cursor.execute('UPDATE turmas SET vagas_disponiveis = vagas_disponiveis - 1 WHERE id = ?', (nova_turma_id,))
                 cursor.execute('''
-                    UPDATE students SET turma_id = ?, turno = ?, curso = ?, classe_ingresso = ? WHERE id = ?
-                ''', (nova_turma_id, destino['turno'], destino['curso'], destino['classe_id'], student_id))
+                    UPDATE turmas SET vagas_disponiveis = vagas_disponiveis - 1
+                    WHERE id = ? AND vagas_disponiveis > 0
+                ''', (nova_turma_id,))
+                if cursor.rowcount != 1:
+                    db.rollback()
+                    flash('ERRO: A turma/sala seleccionada já não possui vagas disponíveis!', 'danger')
+                    return redirect(url_for('secretary.gerenciar_turmas'))
+
+                if atual['turma_id']:
+                    cursor.execute('''
+                        UPDATE turmas
+                        SET vagas_disponiveis = CASE
+                            WHEN COALESCE(vagas_disponiveis, 0) + 1 > COALESCE(capacidade_maxima, 0)
+                            THEN capacidade_maxima
+                            ELSE COALESCE(vagas_disponiveis, 0) + 1
+                        END
+                        WHERE id = ?
+                    ''', (atual['turma_id'],))
+                cursor.execute('''
+                    UPDATE students SET turma_id = ?, turno = ?, curso = ?, classe_ingresso = ?
+                    WHERE id = ?
+                ''', (nova_turma_id, destino['turno'], destino['curso'], destino['classe_num'], student_id))
                 db.commit()
                 log_audit(session['user_id'], 'ATRIBUIR_TURMA', f"Aluno ID {student_id} atribuído à Turma ID {nova_turma_id}.")
-                flash('Aluno atribuído à turma e controle de vagas atualizado!', 'success')
+                flash('Aluno atribuído à turma e controle de vagas actualizado!', 'success')
         return redirect(url_for('secretary.gerenciar_turmas'))
 
     cursor.execute('''
@@ -762,8 +1477,17 @@ def gerenciar_turmas():
     
     cursor.execute('SELECT id, nome FROM subjects ORDER BY nome ASC')
     disciplinas = cursor.fetchall()
+    cursor.execute('SELECT id, ano FROM academic_years WHERE ativo = 1 ORDER BY ano DESC')
+    academic_years = cursor.fetchall()
     
-    return render_template('secretary/turmas.html', turmas=turmas, alunos=alunos, disciplinas=disciplinas)
+    return render_template(
+        'secretary/turmas.html',
+        turmas=turmas,
+        alunos=alunos,
+        disciplinas=disciplinas,
+        areas_curriculares=AREAS_CURRICULARES,
+        academic_years=academic_years,
+    )
 
 @secretary_bp.route('/lista-nominal/<int:turma_id>')
 def lista_nominal_view(turma_id):

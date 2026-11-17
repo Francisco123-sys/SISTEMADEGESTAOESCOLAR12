@@ -17,7 +17,10 @@
         <div>
             <span>Utilizador: {{ session.get('user_nome') }}</span>
             <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
-            <a href="/logout">Sair</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="nav-link" style="border:0;background:none;color:inherit;cursor:pointer;">Sair</button>
+            </form>
         </div>
     </div>
 
@@ -55,6 +58,7 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <h3 class="card-title" style="border:none; margin:0;">Gestão da Direção</h3>
                 <div>
+                    <a href="/director/turmas" class="btn btn-primary">🏫 Gestão de Turmas e Capacidade</a>
                     <a href="/director/assign-teacher" class="btn btn-primary">🔗 Atribuir Turma/Disciplina a Professor</a>
                     <a href="/director/new-staff" class="btn btn-success">+ Cadastrar Cargo / Funcionário</a>
                     {% if session.get('user_role') in ['director', 'chefe_secretaria', 'admin'] %}
@@ -88,10 +92,17 @@
                         <td>
                             {% if f.role != 'admin' %}
                             <a href="/director/user/edit/{{ f.id }}" class="btn btn-warning" style="padding:3px 8px; font-size:0.75rem;">Editar</a>
-                            <a href="/director/user/toggle/{{ f.id }}" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">
-                                {{ 'Bloquear' if f.ativo else 'Desbloquear' }}
-                            </a>
-                            <a href="/director/user/delete/{{ f.id }}" onclick="return confirm('Tem certeza que deseja apagar este funcionário?')" class="btn btn-danger" style="padding:3px 8px; font-size:0.75rem;">Apagar</a>
+                            <form method="POST" action="/director/user/toggle/{{ f.id }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">
+                                    {{ 'Bloquear' if f.ativo else 'Desbloquear' }}
+                                </button>
+                            </form>
+                            <form method="POST" action="/director/user/delete/{{ f.id }}" style="display:inline;"
+                                  onsubmit="return confirm('Tem certeza que deseja apagar este funcionário?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger" style="padding:3px 8px; font-size:0.75rem;">Apagar</button>
+                            </form>
                             {% endif %}
                         </td>
                     </tr>

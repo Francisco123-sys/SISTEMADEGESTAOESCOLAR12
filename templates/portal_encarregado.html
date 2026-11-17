@@ -7,8 +7,16 @@
 </head>
 <body>
     <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Resultados Escolares do Educando</div>
+        <div class="brand">Escola Secundária da Manga | Portal do Encarregado</div>
+        {% if guardian %}
+        <form method="POST" action="/portal-encarregado" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="acao" value="logout">
+            <button type="submit" class="btn btn-primary">Terminar sessão</button>
+        </form>
+        {% else %}
         <a href="/">Voltar ao Login</a>
+        {% endif %}
     </div>
 
     <div class="container" style="max-width:980px;">
@@ -20,27 +28,86 @@
           {% endif %}
         {% endwith %}
 
-        <div class="card">
-            <h3 class="card-title">Consultar Resultados do Educando</h3>
-            <form method="POST" action="/portal-encarregado" style="display:flex; gap:10px;">
-                <input type="text" name="codigo_aluno" placeholder="Digite o Código do Aluno (ex: ALU-000001) ou Nº de BI..." required>
-                <button type="submit" class="btn btn-primary">Ver Resultados</button>
+        {% if not guardian %}
+        <div class="card" style="max-width:520px; margin:40px auto;">
+            <h1 class="card-title">Acesso do Encarregado de Educação</h1>
+            <p>Entre com as credenciais fornecidas pela Secretaria. O acesso é limitado aos educandos associados à sua conta.</p>
+            <form method="POST" action="/portal-encarregado">
+                <input type="hidden" name="acao" value="login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input id="email" type="email" name="email" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Palavra-passe</label>
+                    <input id="password" type="password" name="password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Entrar</button>
             </form>
+            <p style="font-size:.85rem; margin-top:16px;">Para criar uma conta ou recuperar o acesso, contacte a Secretaria da escola.</p>
+        </div>
+        {% else %}
+        <div class="card">
+            <h2 class="card-title">Bem-vindo(a), {{ guardian.nome }}</h2>
+            <p>Seleccione um educando associado à sua conta:</p>
+            {% if educandos %}
+            <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                {% for educando in educandos %}
+                <a class="btn {% if aluno and aluno.id == educando.id %}btn-primary{% else %}btn-secondary{% endif %}"
+                   href="/portal-encarregado?aluno={{ educando.id }}">
+                    {{ educando.nome }} — {{ educando.classe_ingresso }}.ª
+                    {% if educando.turma_nome %} / {{ educando.turma_nome }}{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>Ainda não existem educandos associados. Contacte a Secretaria para concluir a associação.</p>
+            {% endif %}
         </div>
 
-        {% if aluno %}
+        <div class="card">
+            <h3 class="card-title">Actualizar contacto</h3>
+            <form method="POST" action="/portal-encarregado" style="display:flex; gap:10px; max-width:600px;">
+                <input type="hidden" name="acao" value="update_contact">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="sr-only" for="guardian-contact">Contacto telefónico</label>
+                <input id="guardian-contact" type="text" name="contacto" value="{{ guardian.contacto or '' }}"
+                       maxlength="40" placeholder="Contacto telefónico">
+                <button type="submit" class="btn btn-primary">Actualizar</button>
+            </form>
+        </div>
+        <div class="card">
+            <h3 class="card-title">Alterar palavra-passe</h3>
+            <form method="POST" action="/portal-encarregado" class="responsive-form-grid">
+                <input type="hidden" name="acao" value="update_password">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="current_password">Palavra-passe actual</label>
+                    <input id="current_password" type="password" name="current_password" autocomplete="current-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password">Nova palavra-passe (mínimo 12 caracteres)</label>
+                    <input id="new_password" type="password" name="new_password" minlength="12" autocomplete="new-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Alterar palavra-passe</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if guardian and aluno %}
         <div class="card">
             <h3 class="card-title">Resultados Escolares: {{ aluno.nome }}</h3>
-            {% set ns = namespace(soma_faltas=0) %}
-            {% for n in notas %}
-                {% set ns.soma_faltas = ns.soma_faltas + (n.total_faltas or 0) %}
-            {% endfor %}
+            {% if aluno.foto_path %}
+            <img src="/portal-encarregado/foto/{{ aluno.foto_path }}" alt="Fotografia de {{ aluno.nome }}"
+                 style="width:100px;height:120px;object-fit:cover;border-radius:6px;">
+            {% endif %}
             <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:20px;">
                 <div><strong>Código / Processo:</strong> {{ aluno.code }}</div>
                 <div><strong>Classe:</strong> {{ aluno.classe_num }}ª Classe</div>
                 <div><strong>Turma / Sala:</strong> {{ aluno.turma_nome }} ({{ aluno.turma_sala or 'Sala 01' }})</div>
                 <div><strong>Curso / Turno:</strong> {{ aluno.curso }} ({{ aluno.turno }})</div>
-                <div><strong>Total de Faltas:</strong> <span style="color:#B42318; font-weight:bold;">{{ ns.soma_faltas + total_faltas }}</span></div>
+                <div><strong>Total de Faltas:</strong> <span style="color:#B42318; font-weight:bold;">{{ total_faltas }}</span></div>
                 <div><strong>Estado:</strong> Matriculado</div>
             </div>
 
@@ -98,17 +165,11 @@
             </p>
             <form method="POST" action="/portal-encarregado">
                 <input type="hidden" name="acao" value="reclamacao">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="student_id" value="{{ aluno.id }}">
-                <input type="hidden" name="codigo_aluno" value="{{ aluno.code }}">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                    <div class="form-group">
-                        <label>Nome do Encarregado:*</label>
-                        <input type="text" name="nome_encarregado" required placeholder="Nome completo do encarregado">
-                    </div>
-                    <div class="form-group">
-                        <label>Contacto Telefónico:*</label>
-                        <input type="text" name="contacto" required placeholder="Ex: 84 / 85 / 82 / 86 / 87...">
-                    </div>
+                    <p><strong>Encarregado:</strong> {{ guardian.nome }}</p>
+                    <p><strong>Contacto:</strong> {{ guardian.contacto or 'Não indicado' }}</p>
                 </div>
                 <div class="form-group">
                     <label>Mensagem sobre a sua preocupação:*</label>

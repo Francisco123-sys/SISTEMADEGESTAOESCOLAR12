@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS academic_years (
     ativo INTEGER DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS code_counters (
+    counter_key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS classes (
     id SERIAL PRIMARY KEY,
     numero INTEGER NOT NULL CHECK(numero BETWEEN 1 AND 12),
@@ -34,7 +39,9 @@ CREATE TABLE IF NOT EXISTS turmas (
     turno TEXT NOT NULL CHECK(turno IN ('Manhã', 'Tarde', 'Noite')),
     curso TEXT NOT NULL DEFAULT 'Diurno' CHECK(curso IN ('Diurno', 'Nocturno', 'À Distância')),
     capacidade_maxima INTEGER DEFAULT 40,
-    vagas_disponiveis INTEGER DEFAULT 40
+    vagas_disponiveis INTEGER DEFAULT 40,
+    area_curricular TEXT CHECK(area_curricular IN ('A', 'B', 'C') OR area_curricular IS NULL),
+    diretor_turma_id INTEGER REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS subjects (
@@ -61,6 +68,31 @@ CREATE TABLE IF NOT EXISTS students (
     sexo TEXT CHECK(sexo IN ('M', 'F')),
     morada TEXT,
     naturalidade TEXT,
+    provincia_nascimento TEXT,
+    nacionalidade TEXT DEFAULT 'Moçambicana',
+    foto_path TEXT,
+    pai_naturalidade TEXT,
+    pai_profissao TEXT,
+    pai_contacto TEXT,
+    mae_naturalidade TEXT,
+    mae_profissao TEXT,
+    mae_contacto TEXT,
+    encarregado_nome TEXT,
+    encarregado_parentesco TEXT,
+    encarregado_naturalidade TEXT,
+    encarregado_profissao TEXT,
+    encarregado_contacto_principal TEXT,
+    encarregado_contacto_alternativo TEXT,
+    encarregado_morada TEXT,
+    encarregado_email TEXT,
+    ingresso_situacao TEXT NOT NULL DEFAULT 'Interno' CHECK(ingresso_situacao IN ('Interno', 'Transferido')),
+    escola_origem TEXT,
+    provincia_origem TEXT,
+    distrito_origem TEXT,
+    classe_anterior INTEGER,
+    ano_lectivo_anterior INTEGER,
+    documento_transferencia_path TEXT,
+    observacoes_transferencia TEXT,
     encarregado_contacto_1 TEXT NOT NULL,
     encarregado_contacto_2 TEXT,
     encarregado_contacto_3 TEXT,
@@ -78,6 +110,26 @@ CREATE TABLE IF NOT EXISTS students (
     justificacao_alteracao TEXT,
     funcionario_id INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS guardians (
+    id SERIAL PRIMARY KEY,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    contacto TEXT,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    session_version INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS guardian_students (
+    guardian_id INTEGER NOT NULL REFERENCES guardians(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    parentesco TEXT,
+    principal INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (guardian_id, student_id)
 );
 
 CREATE TABLE IF NOT EXISTS grades (
