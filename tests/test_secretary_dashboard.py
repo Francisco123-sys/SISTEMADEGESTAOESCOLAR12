@@ -52,6 +52,11 @@ class SecretaryDashboardTests(unittest.TestCase):
         self.assertIn(b'Emitir listas nominais', response.data)
         self.assertIn(b'Gerir encarregados', response.data)
         self.assertIn(b'Nenhum pagamento registado.', response.data)
+        self.assertIn(b'class="secretary-icon-svg"', response.data)
+        self.assertNotRegex(
+            response.get_data(as_text=True),
+            r'[\U0001F300-\U0001FAFF\u2600-\u27BF]',
+        )
         self.assertNotIn(b'Receita registada', response.data)
         self.assertNotIn(b'Gerir colegas', response.data)
 

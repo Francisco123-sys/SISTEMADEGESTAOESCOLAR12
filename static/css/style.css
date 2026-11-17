@@ -326,7 +326,13 @@ progress {
     height: 40px;
     border-radius: 10px;
     background: #EFF8FF;
-    font-size: 1.25rem;
+    color: var(--navy-brand);
+}
+
+.secretary-icon-svg {
+    display: block;
+    width: 22px;
+    height: 22px;
 }
 
 .secretary-stat-card .stat-value,
@@ -357,12 +363,27 @@ progress {
     border-left-color: #12B76A;
 }
 
+.secretary-stat-exempt .secretary-stat-icon {
+    color: #027A48;
+    background: #ECFDF3;
+}
+
 .secretary-stat-nee {
     border-left-color: #7F56D9;
 }
 
+.secretary-stat-nee .secretary-stat-icon {
+    color: #6941C6;
+    background: #F4F3FF;
+}
+
 .secretary-stat-revenue {
     border-left-color: #12B76A;
+}
+
+.secretary-stat-revenue .secretary-stat-icon {
+    color: #027A48;
+    background: #ECFDF3;
 }
 
 .secretary-section {
@@ -418,7 +439,12 @@ progress {
     height: 38px;
     border-radius: 10px;
     background: #F2F4F7;
-    font-size: 1.15rem;
+    color: var(--navy-brand);
+}
+
+.secretary-quick-link > span .secretary-icon-svg {
+    width: 20px;
+    height: 20px;
 }
 
 .secretary-quick-link strong {
@@ -507,7 +533,11 @@ progress {
     .secretary-stat-icon {
         width: 30px;
         height: 30px;
-        font-size: 1rem;
+    }
+
+    .secretary-stat-icon .secretary-icon-svg {
+        width: 18px;
+        height: 18px;
     }
 
     .secretary-stat-card .stat-value {
