@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | Perfil do aluno</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header class="navbar secretary-navbar class-detail-navbar">
+        <div class="secretary-brand">
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                 alt="Emblema da República de Moçambique">
+            <div>
+                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
+                <div class="brand">Escola Secundária da Manga</div>
+                <div class="secretary-brand-section">Perfil do aluno</div>
+            </div>
+        </div>
+        <div class="secretary-user-nav">
+            <a href="{{ url_for('secretary.students_list') }}">Alunos</a>
+            <a href="{{ url_for('secretary.dashboard') }}">Painel da Secretaria</a>
+        </div>
+    </header>
+
+    <main class="container secretary-dashboard secretary-student-profile">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <a class="class-back-link" href="{{ url_for('secretary.students_list', classe_id=aluno.classe_id, turma_id=aluno.turma_id, ano_lectivo_id=aluno.ano_lectivo_id) }}">
+            ← Voltar à turma
+        </a>
+        <section class="student-profile-heading">
+            {% if aluno.foto_path %}
+            <img class="student-profile-photo"
+                 src="{{ url_for('secretary.student_private_file', filename=aluno.foto_path) }}"
+                 alt="Fotografia de {{ aluno.nome }}">
+            {% else %}
+            <div class="student-profile-photo student-profile-photo-empty" aria-hidden="true">—</div>
+            {% endif %}
+            <div class="student-profile-heading-copy">
+                <p class="secretary-eyebrow">Processo {{ aluno.code }}</p>
+                <h1>{{ aluno.nome }}</h1>
+                <p>{{ aluno.classe_num }}.ª Classe · {{ aluno.turma_nome or 'Sem turma atribuída' }}</p>
+            </div>
+            <div class="student-profile-actions no-print">
+                {% if aluno.ativo %}
+                <a class="btn btn-primary"
+                   href="{{ url_for('secretary.student_edit', student_id=aluno.id) }}">Editar matrícula</a>
+                <a class="btn btn-secondary"
+                   href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='boletim') }}"
+                   target="_blank" rel="noopener">Emitir boletim</a>
+                {% endif %}
+            </div>
+        </section>
+
+        <div class="student-profile-section-grid">
+            {% for titulo, campos in secoes %}
+            <section class="card student-profile-section">
+                <h2>{{ titulo }}</h2>
+                <dl>
+                    {% for label, valor in campos %}
+                    <div class="student-profile-field">
+                        <dt>{{ label }}</dt>
+                        <dd>{{ valor if valor is not none and valor != '' else '—' }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </section>
+            {% endfor %}
+        </div>
+
+        {% if aluno.documento_transferencia_path %}
+        <section class="card student-profile-documents">
+            <h2>Documentos anexados</h2>
+            <a href="{{ url_for('secretary.student_private_file', filename=aluno.documento_transferencia_path) }}">
+                Consultar documento de transferência (PDF)
+            </a>
+        </section>
+        {% endif %}
+    </main>
+</body>
+</html>

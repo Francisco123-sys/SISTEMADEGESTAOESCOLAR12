@@ -152,6 +152,37 @@ class TeacherGradeWorkflowTests(unittest.TestCase):
             response = self.client.get('/teacher/pauta-oficial/1/1')
         self.assertEqual(response.status_code, 302)
 
+    def test_official_pauta_uses_real_year_and_only_calculates_complete_results(self):
+        self.db.executemany('''
+            INSERT INTO grades (
+                student_id, subject_id, turma_id, trimestre, media_trimestral,
+                exame, media_final, faltas_justificadas,
+                faltas_nao_justificadas, total_faltas, status
+            ) VALUES (?, 1, 1, ?, ?, ?, ?, ?, ?, ?, 'Submetida')
+        ''', [
+            (1, 1, 13.0, None, 13.0, 1, 1, 2),
+            (1, 2, 14.0, None, 14.0, 0, 0, 0),
+            (1, 3, 15.0, 16.0, 15.4, 1, 0, 1),
+            (2, 1, 8.0, None, 8.0, 0, 0, 0),
+        ])
+        self.db.commit()
+
+        with patch('routes.teacher.get_db', return_value=self.db):
+            response = self.client.get('/teacher/pauta-oficial/1/1')
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Ano lectivo:</strong> 2026', html)
+        self.assertIn('16.0', html)
+        self.assertIn('14.1', html)
+        self.assertIn('APROVADO', html)
+        self.assertNotIn('REPROVADO', html)
+        self.assertNotIn('2026</u>', html)
+        self.assertNotRegex(
+            html,
+            r'[\U0001F300-\U0001FAFF\u2600-\u27BF]',
+        )
+
     def test_submitted_grade_sheet_cannot_be_submitted_again(self):
         self.db.execute('''
             INSERT INTO grades (

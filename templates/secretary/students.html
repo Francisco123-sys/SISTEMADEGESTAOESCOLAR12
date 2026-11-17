@@ -2,121 +2,387 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>SIGE - Alunos por Classe e Turma</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | Alunos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Alunos por Classe e Turma</div>
-        <div>
-            <a href="/secretary/students/new" class="btn btn-success" style="padding:6px 12px; font-size:0.85rem;">+ Matricular Novo Aluno</a>
-            <a href="/secretary/dashboard">Voltar ao Painel</a>
+    <header class="navbar secretary-navbar class-detail-navbar">
+        <div class="secretary-brand">
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                 alt="Emblema da República de Moçambique">
+            <div>
+                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
+                <div class="brand">Escola Secundária da Manga</div>
+                <div class="secretary-brand-section">Gestão de alunos</div>
+            </div>
         </div>
-    </div>
-    
-    <div class="container">
-        <div class="card" style="padding:18px;">
-            <form method="GET" action="/secretary/students" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
-                <div>
-                    <label style="margin-bottom:2px;">Pesquisar Nome/Código/BI:</label>
-                    <input type="text" name="q" value="{{ busca }}" placeholder="Ex: Maria ou ALU-000001">
-                </div>
-                <div>
-                    <label style="margin-bottom:2px;">Filtrar Classe:</label>
-                    <select name="classe">
-                        <option value="">Todas as Classes</option>
-                        {% for c in range(1, 13) %}
-                        <option value="{{ c }}" {% if classe_filtro == c|string %}selected{% endif %}>{{ c }}ª Classe</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label style="margin-bottom:2px;">Filtrar Turma:</label>
-                    <select name="turma_id">
-                        <option value="">Todas as Turmas</option>
-                        {% for t in turmas_disponiveis %}
-                        <option value="{{ t.id }}" {% if turma_filtro == t.id|string %}selected{% endif %}>{{ t.nome }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label style="margin-bottom:2px;">Estatística Especial:</label>
-                    <select name="especial">
-                        <option value="">Todos os Alunos</option>
-                        <option value="isentos" {% if filtro_especial == 'isentos' %}selected{% endif %}>Apenas Isentos de Taxa</option>
-                        <option value="nee" {% if filtro_especial == 'nee' %}selected{% endif %}>Apenas Alunos com NEE</option>
-                    </select>
-                </div>
-                <div>
-                    <button type="submit" class="btn btn-primary" style="height:40px;">Filtrar</button>
+        <div class="secretary-user-nav">
+            <a href="{{ url_for('secretary.student_form') }}">Matricular aluno</a>
+            <a href="{{ url_for('secretary.dashboard') }}">Painel da Secretaria</a>
+        </div>
+    </header>
+
+    <main class="container secretary-dashboard secretary-student-browser">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <section class="student-browser-heading">
+            <div>
+                <p class="secretary-eyebrow">Matrículas · 8.ª à 12.ª Classe</p>
+                <h1>Alunos</h1>
+                <p class="student-browser-subtitle">
+                    Consulte primeiro a classe, depois a turma e, por fim, os respectivos alunos.
+                </p>
+            </div>
+        </section>
+
+        <section class="card student-browser-filters" aria-label="Filtros de alunos">
+            <form method="GET" action="{{ url_for('secretary.students_list') }}">
+                <div class="student-browser-filter-grid">
+                    <div class="student-browser-search">
+                        <label for="student-search">Pesquisar nome, processo ou BI</label>
+                        <input id="student-search" type="search" name="q" value="{{ busca }}"
+                               maxlength="120" placeholder="Nome, código de processo ou BI">
+                    </div>
+                    <div>
+                        <label for="filter-class">Classe</label>
+                        <select id="filter-class" name="classe_id">
+                            <option value="">Todas as classes</option>
+                            {% for classe in classes %}
+                            <option value="{{ classe.id }}"
+                                    {% if selected_class_id == classe.id %}selected{% endif %}>
+                                {{ classe.numero }}.ª Classe
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-turma">Turma</label>
+                        <select id="filter-turma" name="turma_id">
+                            <option value="">Todas as turmas</option>
+                            {% for turma in turmas_disponiveis %}
+                            <option value="{{ turma.id }}"
+                                    {% if selected_turma_id == turma.id %}selected{% endif %}>
+                                {{ turma.classe_num }}.ª · {{ turma.nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-year">Ano lectivo</label>
+                        <select id="filter-year" name="ano_lectivo_id">
+                            <option value="todos"
+                                    {% if selected_year_id is none and request.args.get('ano_lectivo_id') == 'todos' %}selected{% endif %}>
+                                Todos os anos
+                            </option>
+                            {% for ano in academic_years %}
+                            <option value="{{ ano.id }}"
+                                    {% if selected_year_id == ano.id %}selected{% endif %}>
+                                {{ ano.ano }}{% if ano.ativo %} · Actual{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-shift">Turno</label>
+                        <select id="filter-shift" name="turno">
+                            <option value="">Todos</option>
+                            {% for turno in ['Manhã', 'Tarde', 'Noite'] %}
+                            <option value="{{ turno }}" {% if turno_filtro == turno %}selected{% endif %}>
+                                {{ turno }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-modality">Modalidade</label>
+                        <select id="filter-modality" name="modalidade">
+                            <option value="">Todas</option>
+                            {% for modalidade in ['Diurno', 'Nocturno', 'À Distância'] %}
+                            <option value="{{ modalidade }}"
+                                    {% if modalidade_filtro == modalidade %}selected{% endif %}>
+                                {{ modalidade }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-area">Área curricular</label>
+                        <select id="filter-area" name="area">
+                            <option value="">Todas</option>
+                            {% for codigo, nome in areas_curriculares.items() %}
+                            <option value="{{ codigo }}" {% if area_filtro == codigo %}selected{% endif %}>
+                                {{ nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-special">Situação especial</label>
+                        <select id="filter-special" name="especial">
+                            <option value="">Todas</option>
+                            <option value="isentos" {% if filtro_especial == 'isentos' %}selected{% endif %}>
+                                Isentos de taxa
+                            </option>
+                            <option value="nee" {% if filtro_especial == 'nee' %}selected{% endif %}>
+                                Com NEE
+                            </option>
+                        </select>
+                    </div>
+                    {% if pode_ver_inactivos %}
+                    <div>
+                        <label for="filter-status">Estado da matrícula</label>
+                        <select id="filter-status" name="situacao">
+                            <option value="activos" {% if situacao == 'activos' %}selected{% endif %}>
+                                Activas
+                            </option>
+                            <option value="inactivos" {% if situacao == 'inactivos' %}selected{% endif %}>
+                                Inactivas
+                            </option>
+                            <option value="todos" {% if situacao == 'todos' %}selected{% endif %}>
+                                Todas
+                            </option>
+                        </select>
+                    </div>
+                    {% endif %}
+                    {% if view_level == 'students' %}
+                    <div>
+                        <label for="page-size">Registos por página</label>
+                        <select id="page-size" name="per_page">
+                            {% for size in [10, 20, 50] %}
+                            <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>
+                                {{ size }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="student-browser-filter-actions">
+                        <button class="btn btn-primary" type="submit">Aplicar filtros</button>
+                        <a class="btn btn-secondary" href="{{ url_for('secretary.students_list') }}">
+                            Limpar
+                        </a>
+                    </div>
                 </div>
             </form>
-        </div>
+        </section>
 
-        {% if estrutura_escola %}
-            {% for c_num, classe_data in estrutura_escola.items() %}
-                <div class="classe-header">
-                    {{ c_num }}.ª CLASSE — Ensino {{ classe_data.nivel }}
+        {% if view_level == 'classes' %}
+        <section class="student-browser-section" aria-labelledby="student-browser-title">
+            <div class="student-browser-section-heading">
+                <div>
+                    <h2 id="student-browser-title">Classes</h2>
+                    <p>Seleccione uma classe para consultar as turmas disponíveis.</p>
                 </div>
-                
-                {% for t_nome, turma_info in classe_data.turmas.items() %}
-                    <div class="turma-subcard">
-                        <div class="turma-title">
-                            <div>
-                                📌 {{ t_nome }} &nbsp;&nbsp;<span style="font-size:0.85rem; font-weight:normal; color:#666;">({{ turma_info.alunos|length }} aluno(s))</span>
-                            </div>
-                            {% if turma_info.id %}
-                            <a href="/secretary/exportar-lista-doc/{{ turma_info.id }}" class="btn btn-primary" style="padding:5px 12px; font-size:0.8rem;">📄 Baixar Lista da Turma (.DOC)</a>
-                            {% endif %}
-                        </div>
-                        
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Nome Completo do Aluno</th>
-                                    <th>Foto</th>
-                                    <th>Nº BI / Cédula</th>
-                                    <th>Ingresso</th>
-                                    <th>Área curricular</th>
-                                    <th>Curso / Período</th>
-                                    <th>Isento</th>
-                                    <th>Documentos Oficiais</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for a in turma_info.alunos %}
-                                <tr>
-                                    <td><strong>{{ a.code }}</strong></td>
-                                    <td>{{ a.nome }}</td>
-                                    <td>
-                                        {% if a.foto_path %}
-                                        <img src="/secretary/students/file/{{ a.foto_path }}" alt="Fotografia de {{ a.nome }}" width="36" height="44" style="object-fit:cover;">
-                                        {% else %}—{% endif %}
-                                    </td>
-                                    <td>{{ a.bi_cedula }}</td>
-                                    <td>{{ a.ingresso_situacao or 'Interno' }}</td>
-                                    <td>{{ areas_curriculares.get(a.area_curricular, '—') }}</td>
-                                    <td>{{ a.curso }} ({{ a.turno }})</td>
-                                    <td>{{ 'SIM' if a.isento_taxa else 'NÃO' }}</td>
-                                    <td>
-                                        <a href="/secretary/students/edit/{{ a.id }}" class="btn btn-warning" style="padding:2px 6px; font-size:0.75rem;">Editar</a>
-                                        <a href="/secretary/documentos/{{ a.id }}/frequencia" target="_blank" class="btn btn-primary" style="padding:2px 6px; font-size:0.75rem;">Decl. Freq.</a>
-                                        <a href="/secretary/documentos/{{ a.id }}/notas" target="_blank" class="btn btn-primary" style="padding:2px 6px; font-size:0.75rem;">Decl. Notas</a>
-                                        <a href="/secretary/documentos/{{ a.id }}/boletim" target="_blank" class="btn btn-success" style="padding:2px 6px; font-size:0.75rem;">Boletim</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endfor %}
-            {% endfor %}
-        {% else %}
-            <div class="card" style="text-align:center; padding:40px;">
-                <h4 style="color:#666;">Nenhum aluno encontrado.</h4>
+                <span class="student-browser-count">{{ class_cards|length }} classes</span>
             </div>
+            <div class="student-browser-card-grid">
+                {% for classe in class_cards %}
+                <a class="student-browser-card student-browser-class-card" href="{{ classe.url }}">
+                    <span class="student-browser-card-kicker">Ensino {{ classe.nivel }}</span>
+                    <h3>{{ classe.numero }}.ª Classe</h3>
+                    <div class="student-browser-metrics">
+                        <span><strong>{{ classe.total_turmas }}</strong> turmas</span>
+                        <span><strong>{{ classe.inscritos }}</strong> alunos activos</span>
+                        <span><strong>{{ classe.vagas }}</strong> vagas</span>
+                    </div>
+                    <div class="student-browser-progress">
+                        <div>
+                            <span>Ocupação</span>
+                            <strong>{{ classe.ocupacao }}%</strong>
+                        </div>
+                        <progress value="{{ [classe.inscritos, classe.capacidade]|min }}"
+                                  max="{{ classe.capacidade if classe.capacidade else 1 }}"
+                                  aria-label="Ocupação da {{ classe.numero }}.ª Classe"></progress>
+                    </div>
+                    <span class="student-browser-card-link">Consultar turmas</span>
+                </a>
+                {% else %}
+                <div class="card student-browser-empty">
+                    <h3>Nenhuma classe encontrada</h3>
+                    <p>Altere os filtros para consultar outros registos.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        {% elif view_level == 'turmas' %}
+        <a class="class-back-link" href="{{ back_to_classes_url }}">← Todas as classes</a>
+        <section class="student-browser-section" aria-labelledby="student-browser-title">
+            <div class="student-browser-section-heading">
+                <div>
+                    <p class="secretary-eyebrow">{{ selected_class.numero }}.ª Classe</p>
+                    <h2 id="student-browser-title">Turmas</h2>
+                    <p>Seleccione uma turma para consultar a lista de alunos.</p>
+                </div>
+                <span class="student-browser-count">{{ turma_cards|length }} turmas</span>
+            </div>
+            <div class="student-browser-card-grid">
+                {% for turma in turma_cards %}
+                <a class="student-browser-card student-browser-turma-card" href="{{ turma.url }}">
+                    <span class="student-browser-card-kicker">
+                        {{ turma.ano_lectivo }} · {{ turma.turno }} · {{ turma.curso }}
+                    </span>
+                    <h3>{{ turma.nome }}</h3>
+                    <p class="student-browser-card-area">
+                        {{ areas_curriculares.get(turma.area_curricular, 'Área não definida') }}
+                        · {{ turma.sala or 'Sala não indicada' }}
+                    </p>
+                    <div class="student-browser-metrics">
+                        <span><strong>{{ turma.inscritos }}</strong> alunos activos</span>
+                        <span><strong>{{ turma.vagas }}</strong> vagas</span>
+                    </div>
+                    <div class="student-browser-progress">
+                        <div>
+                            <span>Ocupação</span>
+                            <strong>{{ turma.ocupacao }}%</strong>
+                        </div>
+                        <progress value="{{ [turma.inscritos, turma.capacidade_maxima or 0]|min }}"
+                                  max="{{ turma.capacidade_maxima or 1 }}"
+                                  aria-label="Ocupação da turma {{ turma.nome }}"></progress>
+                    </div>
+                    <span class="student-browser-card-link">Consultar alunos</span>
+                </a>
+                {% else %}
+                <div class="card student-browser-empty">
+                    <h3>Nenhuma turma encontrada</h3>
+                    <p>Não existem turmas que correspondam aos filtros seleccionados.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        {% else %}
+        <a class="class-back-link" href="{{ back_to_turmas_url }}">← Turmas da {{ selected_class.numero }}.ª Classe</a>
+        <section class="card student-browser-table-card">
+            <div class="student-browser-section-heading">
+                <div>
+                    <p class="secretary-eyebrow">{{ selected_class.numero }}.ª Classe · {{ selected_turma.nome }}</p>
+                    <h2>Alunos da turma</h2>
+                    <p>{{ total_alunos }} registos correspondem aos filtros aplicados.</p>
+                </div>
+                <a class="btn btn-secondary no-print"
+                   href="{{ url_for('secretary.export_class_list_pdf', turma_id=selected_turma.id, tipo='vitrine') }}">
+                    Lista da turma em PDF
+                </a>
+            </div>
+            <div class="secretary-table-wrap">
+                <table class="student-browser-table">
+                    <thead>
+                        <tr>
+                            <th>N.º</th>
+                            <th>Foto</th>
+                            <th>Nome</th>
+                            <th>Processo</th>
+                            <th>Sexo</th>
+                            <th>Estado</th>
+                            <th class="no-print">Acções</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for aluno in alunos %}
+                        <tr>
+                            <td>{{ (page - 1) * per_page + loop.index }}</td>
+                            <td>
+                                {% if aluno.foto_path %}
+                                <img class="student-browser-photo"
+                                     src="{{ url_for('secretary.student_private_file', filename=aluno.foto_path) }}"
+                                     alt="Fotografia de {{ aluno.nome }}">
+                                {% else %}
+                                <span class="student-browser-no-photo">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="student-browser-name">{{ aluno.nome }}</td>
+                            <td>{{ aluno.code }}</td>
+                            <td>{{ 'Masculino' if aluno.sexo == 'M' else 'Feminino' if aluno.sexo == 'F' else '—' }}</td>
+                            <td>
+                                <span class="student-browser-status {{ 'is-inactive' if not aluno.ativo else '' }}">
+                                    {{ 'Activa' if aluno.ativo else 'Inactiva' }}
+                                </span>
+                            </td>
+                            <td class="no-print">
+                                <details class="student-browser-actions">
+                                    <summary>Acções</summary>
+                                    <div class="student-browser-actions-menu">
+                                        <a href="{{ url_for('secretary.student_profile', student_id=aluno.id) }}">
+                                            Consultar perfil
+                                        </a>
+                                        {% if aluno.ativo %}
+                                        <a href="{{ url_for('secretary.student_edit', student_id=aluno.id) }}">
+                                            Editar matrícula
+                                        </a>
+                                        <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='frequencia') }}"
+                                           target="_blank" rel="noopener">Declaração de frequência</a>
+                                        <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='notas') }}"
+                                           target="_blank" rel="noopener">Declaração de notas</a>
+                                        <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='boletim') }}"
+                                           target="_blank" rel="noopener">Boletim</a>
+                                        {% if not aluno.pedido_eliminacao_pendente %}
+                                        <form method="POST"
+                                              action="{{ url_for('secretary.request_student_deletion', student_id=aluno.id) }}"
+                                              onsubmit="return confirm('Solicitar a eliminação da matrícula de {{ aluno.nome }}? O pedido carece de aprovação do Director.')">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <label class="sr-only" for="deletion-reason-{{ aluno.id }}">
+                                                Motivo do pedido de eliminação
+                                            </label>
+                                            <input id="deletion-reason-{{ aluno.id }}" type="text"
+                                                   name="motivo" maxlength="1000"
+                                                   placeholder="Motivo da solicitação">
+                                            <button type="submit" class="student-browser-danger-action">
+                                                Solicitar eliminação
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <span class="student-browser-pending">Eliminação pendente de aprovação</span>
+                                        {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </details>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="secretary-empty-state">
+                                Não existem alunos que correspondam aos filtros seleccionados.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if total_pages > 1 %}
+            <nav class="student-browser-pagination" aria-label="Paginação da lista de alunos">
+                <span>Página {{ page }} de {{ total_pages }}</span>
+                <div>
+                    {% if page > 1 %}
+                    <a class="btn btn-secondary" href="{{ pagination_urls[page - 1] }}">Anterior</a>
+                    {% endif %}
+                    {% for page_number in range(1, total_pages + 1) %}
+                    <a class="student-browser-page-link {{ 'is-current' if page_number == page else '' }}"
+                       href="{{ pagination_urls[page_number] }}"
+                       {% if page_number == page %}aria-current="page"{% endif %}>
+                        {{ page_number }}
+                    </a>
+                    {% endfor %}
+                    {% if page < total_pages %}
+                    <a class="btn btn-secondary" href="{{ pagination_urls[page + 1] }}">Seguinte</a>
+                    {% endif %}
+                </div>
+            </nav>
+            {% endif %}
+        </section>
         {% endif %}
-    </div>
+    </main>
+    <script>
+        document.getElementById('filter-class').addEventListener('change', function () {
+            document.getElementById('filter-turma').value = '';
+        });
+    </script>
 </body>
 </html>

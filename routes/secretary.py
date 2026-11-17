@@ -139,76 +139,482 @@ def dashboard():
 def students_list():
     if not check_secretary():
         return redirect(url_for('auth.login_landing'))
-    
+
     busca = request.args.get('q', '').strip()
-    classe_filtro = request.args.get('classe', '')
-    turma_filtro = request.args.get('turma_id', '')
+    raw_class_id = request.args.get('classe_id', '').strip()
+    legacy_class = request.args.get('classe', '').strip()
+    raw_turma_id = request.args.get('turma_id', '').strip()
+    raw_year_id = request.args.get('ano_lectivo_id', '').strip()
+    all_years = raw_year_id == 'todos'
+    selected_class_id = request.args.get('classe_id', type=int)
+    selected_turma_id = request.args.get('turma_id', type=int)
+    selected_year_id = request.args.get('ano_lectivo_id', type=int)
+    turno_filtro = request.args.get('turno', '').strip()
+    modalidade_filtro = request.args.get('modalidade', '').strip()
+    area_filtro = request.args.get('area', '').strip()
     filtro_especial = request.args.get('especial', '')
-    
+    situacao = request.args.get('situacao', 'activos')
+    per_page = request.args.get('per_page', 10, type=int)
+    page = request.args.get('page', 1, type=int)
+
     db = get_db()
     cursor = db.cursor()
-    
-    cursor.execute('''
-        SELECT t.id, t.nome, t.turno, t.curso, c.numero as classe_num 
-        FROM turmas t 
-        JOIN classes c ON t.classe_id = c.id 
-        ORDER BY c.numero ASC, t.nome ASC
-    ''')
+
+    cursor.execute('SELECT id, ano, ativo FROM academic_years ORDER BY ano DESC')
+    academic_years = cursor.fetchall()
+    valid_year_ids = {row['id'] for row in academic_years}
+    explicit_year = bool(raw_year_id)
+    if raw_year_id and selected_year_id is None and not all_years:
+        flash('Seleccione um ano lectivo válido.', 'warning')
+        selected_year_id = None
+    elif selected_year_id is not None and selected_year_id not in valid_year_ids:
+        flash('O ano lectivo seleccionado não existe.', 'warning')
+        selected_year_id = None
+    if selected_year_id is None and not all_years:
+        active_year = next((row for row in academic_years if row['ativo'] == 1), None)
+        selected_year_id = active_year['id'] if active_year else None
+
+    if raw_class_id and selected_class_id is None:
+        flash('Seleccione uma classe válida.', 'warning')
+        selected_class_id = None
+    elif selected_class_id is None and legacy_class:
+        try:
+            legacy_class_number = int(legacy_class)
+        except ValueError:
+            legacy_class_number = None
+        if legacy_class_number is not None:
+            cursor.execute(
+                'SELECT id FROM classes WHERE numero = ? AND numero BETWEEN 8 AND 12',
+                (legacy_class_number,),
+            )
+            legacy_row = cursor.fetchone()
+            selected_class_id = legacy_row['id'] if legacy_row else None
+
+    if raw_turma_id and selected_turma_id is None:
+        flash('Seleccione uma turma válida.', 'warning')
+        selected_turma_id = None
+
+    if selected_class_id is not None:
+        cursor.execute(
+            'SELECT id, numero, nivel FROM classes WHERE id = ? AND numero BETWEEN 8 AND 12',
+            (selected_class_id,),
+        )
+        selected_class = cursor.fetchone()
+        if not selected_class:
+            flash('A classe seleccionada não existe.', 'warning')
+            selected_class_id = None
+    else:
+        selected_class = None
+
+    selected_turma = None
+    if selected_turma_id is not None:
+        cursor.execute('''
+            SELECT t.id, t.nome, t.classe_id, t.ano_lectivo_id,
+                   c.numero AS classe_num
+            FROM turmas t
+            JOIN classes c ON c.id = t.classe_id
+            WHERE t.id = ? AND c.numero BETWEEN 8 AND 12
+        ''', (selected_turma_id,))
+        selected_turma = cursor.fetchone()
+        if not selected_turma:
+            flash('A turma seleccionada não existe.', 'warning')
+            selected_turma_id = None
+        elif selected_class_id and selected_turma['classe_id'] != selected_class_id:
+            flash('A turma não pertence à classe seleccionada.', 'danger')
+            return redirect(url_for('secretary.students_list'))
+        else:
+            if selected_class_id is None:
+                selected_class_id = selected_turma['classe_id']
+                cursor.execute(
+                    'SELECT id, numero, nivel FROM classes WHERE id = ?',
+                    (selected_class_id,),
+                )
+                selected_class = cursor.fetchone()
+            if explicit_year and not all_years and selected_year_id != selected_turma['ano_lectivo_id']:
+                flash('A turma não pertence ao ano lectivo seleccionado.', 'warning')
+                return redirect(url_for('secretary.students_list'))
+            if not explicit_year:
+                selected_year_id = selected_turma['ano_lectivo_id']
+
+    if turno_filtro not in ('', 'Manhã', 'Tarde', 'Noite'):
+        turno_filtro = ''
+    if modalidade_filtro not in ('', 'Diurno', 'Nocturno', 'À Distância'):
+        modalidade_filtro = ''
+    if area_filtro not in ('', 'A', 'B', 'C'):
+        area_filtro = ''
+    if filtro_especial not in ('', 'isentos', 'nee'):
+        filtro_especial = ''
+    if per_page not in (10, 20, 50):
+        per_page = 10
+    page = max(page, 1)
+
+    pode_ver_inactivos = session.get('user_role') in ('chefe_secretaria', 'admin')
+    if situacao not in ('activos', 'inactivos', 'todos'):
+        situacao = 'activos'
+    if situacao != 'activos' and not pode_ver_inactivos:
+        flash('A consulta de matrículas inactivas requer perfil autorizado.', 'warning')
+        situacao = 'activos'
+    if situacao == 'inactivos' and not student_deletion_schema_ready(cursor):
+        flash('A consulta de matrículas inactivas requer a migração de dados.', 'warning')
+        situacao = 'activos'
+
+    turma_conditions = []
+    turma_params = []
+    if selected_year_id is not None:
+        turma_conditions.append('t.ano_lectivo_id = ?')
+        turma_params.append(selected_year_id)
+    if turno_filtro:
+        turma_conditions.append('t.turno = ?')
+        turma_params.append(turno_filtro)
+    if modalidade_filtro:
+        turma_conditions.append('t.curso = ?')
+        turma_params.append(modalidade_filtro)
+    if area_filtro:
+        turma_conditions.append('t.area_curricular = ?')
+        turma_params.append(area_filtro)
+    turma_filter = ' AND '.join(turma_conditions) or '1 = 1'
+
+    student_conditions = []
+    student_params = []
+    if situacao == 'activos':
+        student_conditions.append(active_student_condition(cursor, 's'))
+    elif situacao == 'inactivos':
+        student_conditions.append('s.ativo = 0')
+    if selected_year_id is not None:
+        student_conditions.append('s.ano_lectivo_id = ?')
+        student_params.append(selected_year_id)
+    if busca:
+        student_conditions.append('(s.nome LIKE ? OR s.code LIKE ? OR s.bi_cedula LIKE ?)')
+        pattern = f'%{busca}%'
+        student_params.extend((pattern, pattern, pattern))
+    if filtro_especial == 'isentos':
+        student_conditions.append('COALESCE(s.isento_taxa, 0) = 1')
+    elif filtro_especial == 'nee':
+        student_conditions.append(
+            "COALESCE(NULLIF(TRIM(s.nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'"
+        )
+    student_filter = ' AND '.join(student_conditions) or '1 = 1'
+    has_student_filter = bool(
+        busca or filtro_especial or situacao != 'activos'
+    )
+    has_turma_filter = bool(
+        explicit_year or turno_filtro or modalidade_filtro or area_filtro
+    )
+
+    base_filter_args = {}
+    if busca:
+        base_filter_args['q'] = busca
+    if selected_year_id is not None:
+        base_filter_args['ano_lectivo_id'] = selected_year_id
+    elif all_years:
+        base_filter_args['ano_lectivo_id'] = 'todos'
+    if turno_filtro:
+        base_filter_args['turno'] = turno_filtro
+    if modalidade_filtro:
+        base_filter_args['modalidade'] = modalidade_filtro
+    if area_filtro:
+        base_filter_args['area'] = area_filtro
+    if filtro_especial:
+        base_filter_args['especial'] = filtro_especial
+    if situacao != 'activos':
+        base_filter_args['situacao'] = situacao
+
+    back_to_classes_url = url_for('secretary.students_list', **base_filter_args)
+    back_to_turmas_args = dict(base_filter_args)
+    if selected_class_id is not None:
+        back_to_turmas_args['classe_id'] = selected_class_id
+    back_to_turmas_url = url_for('secretary.students_list', **back_to_turmas_args)
+    view_level = 'classes'
+    class_cards = []
+    turma_cards = []
+    alunos = []
+    total_alunos = 0
+    total_pages = 1
+    pagination_urls = {}
+    page_url_args = dict(base_filter_args)
+
+    has_deletion_schema = student_deletion_schema_ready(cursor)
+    pending_request_expression = (
+        """EXISTS (
+            SELECT 1 FROM student_deletion_requests dr
+            WHERE dr.student_id = s.id AND dr.estado = 'Pendente'
+        )"""
+        if has_deletion_schema else '0'
+    )
+
+    if selected_turma_id is not None and selected_class_id is not None:
+        view_level = 'students'
+        cursor.execute(f'''
+            SELECT t.id
+            FROM turmas t
+            WHERE t.id = ? AND t.classe_id = ? AND {turma_filter}
+        ''',
+            [selected_turma_id, selected_class_id] + turma_params,
+        )
+        if not cursor.fetchone():
+            flash('A turma não corresponde aos filtros seleccionados.', 'warning')
+            selected_turma_id = None
+            view_level = 'turmas'
+        else:
+            page_url_args.update({
+                'classe_id': selected_class_id,
+                'turma_id': selected_turma_id,
+            })
+            cursor.execute(f'''
+                SELECT COUNT(*) AS total
+                FROM students s
+                JOIN turmas t ON t.id = s.turma_id
+                WHERE s.turma_id = ? AND {turma_filter} AND {student_filter}
+            ''', [selected_turma_id] + turma_params + student_params)
+            total_alunos = cursor.fetchone()['total']
+            total_pages = max((total_alunos + per_page - 1) // per_page, 1)
+            page = min(page, total_pages)
+            cursor.execute(f'''
+                SELECT s.*, t.nome AS turma_nome, t.sala AS turma_sala,
+                       t.area_curricular, c.numero AS classe_num,
+                       {pending_request_expression} AS pedido_eliminacao_pendente
+                FROM students s
+                JOIN turmas t ON t.id = s.turma_id
+                JOIN classes c ON c.id = t.classe_id
+                WHERE s.turma_id = ? AND {turma_filter} AND {student_filter}
+                ORDER BY s.nome ASC
+                LIMIT ? OFFSET ?
+            ''',
+                [selected_turma_id] + turma_params + student_params
+                + [per_page, (page - 1) * per_page])
+            alunos = cursor.fetchall()
+            for page_number in range(1, total_pages + 1):
+                args = dict(page_url_args)
+                args.update(page=page_number, per_page=per_page)
+                pagination_urls[page_number] = url_for('secretary.students_list', **args)
+    if selected_class_id is not None and view_level != 'students':
+        view_level = 'turmas'
+        turma_query = f'''
+            SELECT t.id, t.nome, t.sala, t.turno, t.curso, t.area_curricular,
+                   t.capacidade_maxima, c.numero AS classe_num,
+                   ay.ano AS ano_lectivo, u.nome AS diretor_turma,
+                   COUNT(DISTINCT s.id) AS inscritos,
+                   COUNT(DISTINCT CASE WHEN s.sexo = 'M' THEN s.id END) AS masculino,
+                   COUNT(DISTINCT CASE WHEN s.sexo = 'F' THEN s.id END) AS feminino
+            FROM turmas t
+            JOIN classes c ON c.id = t.classe_id
+            JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+            LEFT JOIN users u ON u.id = t.diretor_turma_id
+            LEFT JOIN students s ON s.turma_id = t.id AND {student_filter}
+            WHERE t.classe_id = ? AND {turma_filter}
+            GROUP BY t.id, c.numero, ay.ano, u.nome
+            ORDER BY t.nome
+        '''
+        cursor.execute(turma_query, student_params + [selected_class_id] + turma_params)
+        for row in cursor.fetchall():
+            if has_student_filter and row['inscritos'] == 0:
+                continue
+            turma = dict(row)
+            turma['vagas'] = max((turma['capacidade_maxima'] or 0) - turma['inscritos'], 0)
+            turma['ocupacao'] = (
+                round(turma['inscritos'] * 100 / turma['capacidade_maxima'])
+                if turma['capacidade_maxima'] else 0
+            )
+            args = dict(base_filter_args)
+            args.update(classe_id=selected_class_id, turma_id=turma['id'])
+            turma['url'] = url_for('secretary.students_list', **args)
+            turma_cards.append(turma)
+    if selected_class_id is None:
+        view_level = 'classes'
+        class_query = f'''
+            SELECT c.id, c.numero, c.nivel,
+                   COUNT(t.id) AS total_turmas,
+                   COALESCE(SUM(COALESCE(t.capacidade_maxima, 0)), 0) AS capacidade
+            FROM classes c
+            LEFT JOIN turmas t ON t.classe_id = c.id AND {turma_filter}
+            WHERE c.numero BETWEEN 8 AND 12
+            GROUP BY c.id, c.numero, c.nivel
+            ORDER BY c.numero
+        '''
+        cursor.execute(class_query, turma_params)
+        class_rows = cursor.fetchall()
+        stats_query = f'''
+            SELECT c.id,
+                   COUNT(DISTINCT s.id) AS inscritos,
+                   COUNT(DISTINCT CASE WHEN s.sexo = 'M' THEN s.id END) AS masculino,
+                   COUNT(DISTINCT CASE WHEN s.sexo = 'F' THEN s.id END) AS feminino
+            FROM classes c
+            LEFT JOIN turmas t ON t.classe_id = c.id AND {turma_filter}
+            LEFT JOIN students s ON s.turma_id = t.id AND {student_filter}
+            WHERE c.numero BETWEEN 8 AND 12
+            GROUP BY c.id
+        '''
+        cursor.execute(stats_query, turma_params + student_params)
+        student_stats = {row['id']: row for row in cursor.fetchall()}
+        for row in class_rows:
+            stats = student_stats[row['id']]
+            if has_student_filter and stats['inscritos'] == 0:
+                continue
+            if has_turma_filter and row['total_turmas'] == 0:
+                continue
+            card = dict(row)
+            card['inscritos'] = stats['inscritos']
+            card['masculino'] = stats['masculino']
+            card['feminino'] = stats['feminino']
+            card['vagas'] = max(card['capacidade'] - card['inscritos'], 0)
+            card['ocupacao'] = (
+                round(card['inscritos'] * 100 / card['capacidade'])
+                if card['capacidade'] else 0
+            )
+            args = dict(base_filter_args)
+            args['classe_id'] = card['id']
+            card['url'] = url_for('secretary.students_list', **args)
+            class_cards.append(card)
+
+    classes = [row for row in cursor.execute(
+        'SELECT id, numero FROM classes WHERE numero BETWEEN 8 AND 12 ORDER BY numero'
+    ).fetchall()]
+    turma_conditions_for_options = []
+    turma_option_params = []
+    if selected_year_id is not None:
+        turma_conditions_for_options.append('t.ano_lectivo_id = ?')
+        turma_option_params.append(selected_year_id)
+    if selected_class_id is not None:
+        turma_conditions_for_options.append('t.classe_id = ?')
+        turma_option_params.append(selected_class_id)
+    if turno_filtro:
+        turma_conditions_for_options.append('t.turno = ?')
+        turma_option_params.append(turno_filtro)
+    if modalidade_filtro:
+        turma_conditions_for_options.append('t.curso = ?')
+        turma_option_params.append(modalidade_filtro)
+    if area_filtro:
+        turma_conditions_for_options.append('t.area_curricular = ?')
+        turma_option_params.append(area_filtro)
+    option_filter = ' AND '.join(turma_conditions_for_options) or '1 = 1'
+    cursor.execute(f'''
+        SELECT t.id, t.nome, c.numero AS classe_num, t.area_curricular
+        FROM turmas t JOIN classes c ON c.id = t.classe_id
+        WHERE c.numero BETWEEN 8 AND 12 AND {option_filter}
+        ORDER BY c.numero, t.nome
+    ''', turma_option_params)
     turmas_disponiveis = cursor.fetchall()
 
-    params = []
-    active_students = active_student_condition(cursor, 's')
-    query = f'''
-        SELECT s.*, t.nome as turma_nome, t.sala as turma_sala, t.area_curricular,
-               t.id as turma_db_id, c.numero as classe_num
-        FROM students s 
-        LEFT JOIN turmas t ON s.turma_id = t.id 
-        LEFT JOIN classes c ON t.classe_id = c.id
-        WHERE {active_students}
-    '''
-    if busca:
-        query += ' AND (s.nome LIKE ? OR s.code LIKE ? OR s.bi_cedula LIKE ?)'
-        params.extend([f'%{busca}%', f'%{busca}%', f'%{busca}%'])
-        
-    if classe_filtro:
-        query += ' AND s.classe_ingresso = ?'
-        params.append(int(classe_filtro))
-        
-    if turma_filtro:
-        query += ' AND s.turma_id = ?'
-        params.append(int(turma_filtro))
+    if selected_class:
+        selected_class = dict(selected_class)
+    if selected_turma:
+        selected_turma = dict(selected_turma)
+    return render_template(
+        'secretary/students.html',
+        view_level=view_level,
+        class_cards=class_cards,
+        turma_cards=turma_cards,
+        alunos=alunos,
+        total_alunos=total_alunos,
+        total_pages=total_pages,
+        pagination_urls=pagination_urls,
+        page=page,
+        per_page=per_page,
+        filter_args=base_filter_args,
+        selected_class=selected_class,
+        selected_turma=selected_turma,
+        selected_class_id=selected_class_id,
+        selected_turma_id=selected_turma_id,
+        selected_year_id=selected_year_id,
+        academic_years=academic_years,
+        classes=classes,
+        turmas_disponiveis=turmas_disponiveis,
+        turno_filtro=turno_filtro,
+        modalidade_filtro=modalidade_filtro,
+        area_filtro=area_filtro,
+        busca=busca,
+        filtro_especial=filtro_especial,
+        situacao=situacao,
+        pode_ver_inactivos=pode_ver_inactivos,
+        areas_curriculares=AREAS_CURRICULARES,
+        back_to_classes_url=back_to_classes_url,
+        back_to_turmas_url=back_to_turmas_url,
+    )
 
-    if filtro_especial == 'isentos':
-        query += ' AND s.isento_taxa = 1'
-    elif filtro_especial == 'nee':
-        query += '''
-            AND COALESCE(NULLIF(TRIM(s.nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'
-        '''
 
-    query += ' ORDER BY s.classe_ingresso ASC, t.nome ASC, s.nome ASC'
-    cursor.execute(query, params)
-    todos_alunos = cursor.fetchall()
-    
-    estrutura_escola = {}
-    for a in todos_alunos:
-        c_num = a['classe_ingresso']
-        t_nome = a['turma_nome'] or 'Sem Turma Atribuída'
-        t_id = a['turma_db_id']
-        
-        if c_num not in estrutura_escola:
-            nivel = 'Primário' if c_num <= 6 else 'Secundário'
-            estrutura_escola[c_num] = {'numero': c_num, 'nivel': nivel, 'turmas': {}}
-            
-        if t_nome not in estrutura_escola[c_num]['turmas']:
-            estrutura_escola[c_num]['turmas'][t_nome] = {'id': t_id, 'alunos': []}
-            
-        estrutura_escola[c_num]['turmas'][t_nome]['alunos'].append(a)
+@secretary_bp.route('/students/<int:student_id>/profile')
+def student_profile(student_id):
+    if not check_secretary():
+        return redirect(url_for('auth.login_landing'))
 
-    return render_template('secretary/students.html', 
-                           estrutura_escola=estrutura_escola, 
-                           turmas_disponiveis=turmas_disponiveis,
-                           areas_curriculares=AREAS_CURRICULARES,
-                           busca=busca, classe_filtro=classe_filtro, turma_filtro=turma_filtro, filtro_especial=filtro_especial)
+    db = get_db()
+    cursor = db.cursor()
+    visibility = (
+        '1 = 1'
+        if session.get('user_role') in ('chefe_secretaria', 'admin')
+        else active_student_condition(cursor, 's')
+    )
+    cursor.execute(f'''
+        SELECT s.*, t.nome AS turma_nome, t.sala AS turma_sala,
+               t.classe_id AS classe_id,
+               t.area_curricular, c.numero AS classe_num,
+               ay.ano AS ano_lectivo, u.nome AS diretor_turma
+        FROM students s
+        LEFT JOIN turmas t ON t.id = s.turma_id
+        LEFT JOIN classes c ON c.id = t.classe_id
+        LEFT JOIN academic_years ay ON ay.id = s.ano_lectivo_id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
+        WHERE s.id = ? AND {visibility}
+    ''', (student_id,))
+    aluno = cursor.fetchone()
+    if not aluno:
+        flash('Aluno não encontrado ou sem permissão para consulta.', 'warning')
+        return redirect(url_for('secretary.students_list'))
+
+    secoes = (
+        ('Dados escolares', (
+            ('Processo', aluno['code']),
+            ('Classe', f"{aluno['classe_num']}.ª" if aluno['classe_num'] else '—'),
+            ('Turma', aluno['turma_nome'] or 'Sem turma'),
+            ('Área curricular', AREAS_CURRICULARES.get(aluno['area_curricular'], '—')),
+            ('Ano lectivo', aluno['ano_lectivo'] or '—'),
+            ('Director de Turma', aluno['diretor_turma'] or 'Não atribuído'),
+            ('Data de matrícula', aluno['data_matricula']),
+            ('Situação da matrícula', 'Activa' if aluno['ativo'] else 'Inactiva'),
+        )),
+        ('Identificação', (
+            ('Nome completo', aluno['nome']),
+            ('BI / Cédula', aluno['bi_cedula']),
+            ('Sexo', 'Masculino' if aluno['sexo'] == 'M' else 'Feminino' if aluno['sexo'] == 'F' else '—'),
+            ('Data de nascimento', aluno['data_nascimento']),
+            ('Naturalidade', aluno['naturalidade']),
+            ('Província de nascimento', aluno['provincia_nascimento']),
+            ('Nacionalidade', aluno['nacionalidade']),
+            ('Morada', aluno['morada']),
+        )),
+        ('Pai e mãe', (
+            ('Nome do pai', aluno['nome_pai']),
+            ('Naturalidade do pai', aluno['pai_naturalidade']),
+            ('Profissão do pai', aluno['pai_profissao']),
+            ('Contacto do pai', aluno['pai_contacto']),
+            ('Nome da mãe', aluno['nome_mae']),
+            ('Naturalidade da mãe', aluno['mae_naturalidade']),
+            ('Profissão da mãe', aluno['mae_profissao']),
+            ('Contacto da mãe', aluno['mae_contacto']),
+        )),
+        ('Encarregado de Educação', (
+            ('Nome', aluno['encarregado_nome']),
+            ('Parentesco', aluno['encarregado_parentesco']),
+            ('Contacto principal', aluno['encarregado_contacto_principal'] or aluno['encarregado_contacto_1']),
+            ('Contacto alternativo', aluno['encarregado_contacto_alternativo'] or aluno['encarregado_contacto_2']),
+            ('E-mail', aluno['encarregado_email']),
+            ('Profissão', aluno['encarregado_profissao']),
+            ('Morada', aluno['encarregado_morada']),
+        )),
+        ('Ingresso e situação especial', (
+            ('Situação de ingresso', aluno['ingresso_situacao']),
+            ('Escola de origem', aluno['escola_origem']),
+            ('Província de origem', aluno['provincia_origem']),
+            ('Distrito de origem', aluno['distrito_origem']),
+            ('Classe anterior', aluno['classe_anterior']),
+            ('Ano lectivo anterior', aluno['ano_lectivo_anterior']),
+            ('Isento de taxa', 'Sim' if aluno['isento_taxa'] else 'Não'),
+            ('Justificação da isenção', aluno['justificacao_isencao']),
+            ('Necessidades Educativas Especiais', aluno['nee_tipo']),
+            ('Observações', aluno['observacoes_transferencia']),
+        )),
+    )
+    return render_template('secretary/student_profile.html', aluno=aluno, secoes=secoes)
 
 
 @secretary_bp.route('/encarregados', methods=['GET', 'POST'])

@@ -53,25 +53,48 @@ def pauta_oficial_impressao(turma_id, subject_id):
             return redirect(url_for('teacher.dashboard'))
     active_students = active_student_condition(cursor, 's')
     cursor.execute('''
-        SELECT t.nome as turma_nome, t.sala as sala, t.curso as curso, t.turno as turno,
-               c.numero as classe_num, s.nome as disciplina_nome 
-        FROM turmas t JOIN classes c ON t.classe_id = c.id JOIN subjects s ON s.id = ? WHERE t.id = ?
+        SELECT t.nome AS turma_nome, t.sala, t.curso, t.turno,
+               c.numero AS classe_num, s.nome AS disciplina_nome,
+               ay.ano AS ano_lectivo, u.nome AS diretor_turma
+        FROM turmas t
+        JOIN classes c ON c.id = t.classe_id
+        JOIN subjects s ON s.id = ?
+        LEFT JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+        LEFT JOIN users u ON u.id = t.diretor_turma_id
+        WHERE t.id = ?
     ''', (subject_id, turma_id))
     info = cursor.fetchone()
-    
+
+    if not info:
+        flash('A turma ou disciplina não foi encontrada.', 'warning')
+        return redirect(url_for('teacher.dashboard'))
+
     cursor.execute('''
-        SELECT s.code, s.nome, g.av1, g.av2, g.av3, g.av4, g.media_trimestral, g.exame, g.media_final,
-               g.faltas_justificadas, g.faltas_nao_justificadas, g.total_faltas, g.comentario_professor
+        SELECT s.code, s.nome,
+               MAX(CASE WHEN g.trimestre = 1 THEN g.media_final END) AS nota_trimestre_1,
+               MAX(CASE WHEN g.trimestre = 2 THEN g.media_final END) AS nota_trimestre_2,
+               MAX(CASE WHEN g.trimestre = 3 THEN g.media_trimestral END) AS nota_trimestre_3,
+               MAX(CASE WHEN g.trimestre = 3 THEN g.exame END) AS exame_final,
+               MAX(CASE WHEN g.trimestre = 3 THEN g.media_final END) AS nota_final,
+               SUM(COALESCE(g.faltas_justificadas, 0)) AS faltas_justificadas,
+               SUM(COALESCE(g.faltas_nao_justificadas, 0)) AS faltas_nao_justificadas,
+               SUM(COALESCE(g.total_faltas, 0)) AS total_faltas,
+               COUNT(DISTINCT g.trimestre) AS trimestres_registados,
+               CASE WHEN COUNT(DISTINCT g.trimestre) = 3
+                    THEN AVG(g.media_final) END AS media_anual
         FROM students s
         LEFT JOIN grades g ON s.id = g.student_id AND g.subject_id = ? AND g.turma_id = ?
+            AND g.status IN ('Submetida', 'Fechada')
         WHERE s.turma_id = ? AND {active_students}
+        GROUP BY s.id, s.code, s.nome
         ORDER BY s.nome ASC
     '''.format(active_students=active_students), (subject_id, turma_id, turma_id))
     alunos_notas = cursor.fetchall()
     is_exame_class = info['classe_num'] in [9, 12]
     return render_template('teacher/pauta_oficial.html', info=info, alunos=alunos_notas,
                            is_exame_class=is_exame_class, prof_nome=session.get('user_nome'),
-                           limite_fnj=LIMITE_FALTAS_INJUSTIFICADAS)
+                           limite_fnj=LIMITE_FALTAS_INJUSTIFICADAS,
+                           data_emissao=datetime.now().strftime('%d/%m/%Y'))
 
 @teacher_bp.route('/grades/<int:turma_id>/<int:subject_id>', methods=['GET', 'POST'])
 def launch_grades(turma_id, subject_id):
