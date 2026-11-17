@@ -2,106 +2,215 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>SIGE - Painel da Secretaria</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | Painel da Secretaria</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="navbar" style="padding: 10px 30px;">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+    <header class="navbar secretary-navbar">
+        <div class="secretary-brand">
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                 alt="Emblema da República de Moçambique">
             <div>
-                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
-                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Painel da Secretaria</span></div>
+                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
+                <div class="brand">Escola Secundária da Manga</div>
+                <div class="secretary-brand-section">Painel da Secretaria</div>
             </div>
         </div>
-        <div>
+        <div class="secretary-user-nav">
             <span>Utilizador: {{ session.get('user_nome') }}</span>
-            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
-            <form method="POST" action="/logout" style="display:inline;">
+            <a href="{{ url_for('auth.change_password') }}">Trocar palavra-passe</a>
+            <form method="POST" action="{{ url_for('auth.logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="nav-link" style="border:0;background:none;color:inherit;cursor:pointer;">Sair</button>
+                <button type="submit">Sair</button>
             </form>
         </div>
-    </div>
-    <div class="container">
+    </header>
+
+    <main class="container secretary-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
         {% endwith %}
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">{{ total_alunos }}</div>
-                <div class="stat-label">Alunos Matriculados</div>
+
+        <section class="secretary-page-heading">
+            <div>
+                <p class="secretary-eyebrow">Administração escolar</p>
+                <h1>Painel da Secretaria</h1>
+                <p>Acesso rápido às matrículas, turmas, encarregados e operações financeiras.</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ total_isentos }}</div>
-                <div class="stat-label">Alunos Isentos de Taxa</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ total_nee }}</div>
-                <div class="stat-label">Alunos com NEE</div>
-            </div>
+            <a class="btn btn-primary" href="{{ url_for('secretary.student_form') }}">
+                + Matricular aluno
+            </a>
+        </section>
+
+        <section class="stats-grid secretary-stats" aria-label="Indicadores reais da Secretaria">
+            <a class="stat-card secretary-stat-card" href="{{ url_for('secretary.students_list') }}">
+                <span class="secretary-stat-icon" aria-hidden="true">🎓</span>
+                <span class="stat-value">{{ total_alunos }}</span>
+                <span class="stat-label">Total de alunos matriculados</span>
+            </a>
+            <a class="stat-card secretary-stat-card" href="{{ url_for('secretary.gerenciar_turmas') }}">
+                <span class="secretary-stat-icon" aria-hidden="true">🏫</span>
+                <span class="stat-value">{{ total_turmas }}</span>
+                <span class="stat-label">Total de turmas</span>
+            </a>
+            <a class="stat-card secretary-stat-card secretary-stat-exempt"
+               href="{{ url_for('secretary.students_list', especial='isentos') }}">
+                <span class="secretary-stat-icon" aria-hidden="true">📘</span>
+                <span class="stat-value">{{ total_isentos }}</span>
+                <span class="stat-label">Alunos isentos de taxa</span>
+                <span class="secretary-stat-link">Consultar alunos</span>
+            </a>
+            <a class="stat-card secretary-stat-card secretary-stat-nee"
+               href="{{ url_for('secretary.students_list', especial='nee') }}">
+                <span class="secretary-stat-icon" aria-hidden="true">♿</span>
+                <span class="stat-value">{{ total_nee }}</span>
+                <span class="stat-label">Alunos com NEE</span>
+                <span class="secretary-stat-link">Consulta restrita</span>
+            </a>
+            <a class="stat-card secretary-stat-card" href="#payments">
+                <span class="secretary-stat-icon" aria-hidden="true">🧾</span>
+                <span class="stat-value">{{ total_pagamentos }}</span>
+                <span class="stat-label">Pagamentos registados</span>
+            </a>
             {% if session.get('user_role') in ['chefe_secretaria', 'director', 'admin'] %}
-            <div class="stat-card">
-                <div class="stat-value">{{ "%.2f"|format(total_receita) }} MZN</div>
-                <div class="stat-label">Receita Registada</div>
+            <div class="stat-card secretary-stat-card secretary-stat-revenue">
+                <span class="secretary-stat-icon" aria-hidden="true">💰</span>
+                <span class="stat-value">{{ "%.2f"|format(total_receita) }} MZN</span>
+                <span class="stat-label">Receita registada</span>
             </div>
             {% endif %}
-        </div>
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h3 class="card-title" style="border:none; margin:0;">Ações Rápidas da Secretaria</h3>
+        </section>
+
+        <section class="card secretary-section" aria-labelledby="quick-access-title">
+            <div class="secretary-section-heading">
                 <div>
-                    <a href="/secretary/students/new" class="btn btn-primary">+ Matricular Aluno</a>
-                    <a href="/secretary/payments/new" class="btn btn-success">+ Registar Pagamento</a>
-                    <a href="/secretary/students" class="btn btn-primary">Ver Alunos e Listas (.DOC)</a>
-                    <a href="/secretary/encarregados" class="btn btn-primary">Gerir Encarregados</a>
-                    {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
-                    <a href="/secretary/colaboradores" class="btn btn-primary">👥 Gerir Colegas</a>
-                    <a href="/director/rectificar-notas" class="btn btn-warning">📝 Rectificar Notas</a>
-                    {% endif %}
+                    <p class="secretary-eyebrow">Fluxos de trabalho</p>
+                    <h2 id="quick-access-title">Acessos rápidos</h2>
                 </div>
             </div>
-        </div>
-        <div class="card">
-            <h3 class="card-title">Últimos Pagamentos Registados</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Nº Recibo</th>
-                        <th>Aluno</th>
-                        <th>Banco / Carteira</th>
-                        <th>Referência (9 Dígitos)</th>
-                        <th>Data Depósito</th>
-                        <th>Data Registo</th>
-                        <th>Valor (MZN)</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in pagamentos %}
-                    <tr>
-                        <td>{{ p.receipt_number }}</td>
-                        <td>{{ p.aluno_nome }} ({{ p.aluno_code }})</td>
-                        <td><strong>{{ p.banco_plataforma }}</strong></td>
-                        <td><strong>{{ p.referencia_talao }}</strong></td>
-                        <td>{{ p.data_deposito }}</td>
-                        <td>{{ p.data_registo }}</td>
-                        <td>{{ "%.2f"|format(p.valor_pago) }}</td>
-                        <td>
-                            <a href="/secretary/receipt/{{ p.id }}" target="_blank" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">Recibo</a>
-                            <a href="/secretary/payments/edit/{{ p.id }}" class="btn btn-warning" style="padding:3px 8px; font-size:0.75rem;">Editar</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="8">Nenhum pagamento registado.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+            <div class="secretary-quick-grid">
+                <a class="secretary-quick-link" href="{{ url_for('secretary.student_form') }}">
+                    <span aria-hidden="true">➕</span>
+                    <strong>Matricular aluno</strong>
+                    <small>Registar uma nova matrícula</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.students_list') }}">
+                    <span aria-hidden="true">🔎</span>
+                    <strong>Consultar alunos</strong>
+                    <small>Pesquisar e filtrar registos</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.gerenciar_turmas') }}">
+                    <span aria-hidden="true">🏫</span>
+                    <strong>Gestão de turmas</strong>
+                    <small>Turmas, ocupação e listas</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.manage_guardians') }}">
+                    <span aria-hidden="true">👨‍👩‍👧‍👦</span>
+                    <strong>Gerir encarregados</strong>
+                    <small>Contas e educandos associados</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.payment_form') }}">
+                    <span aria-hidden="true">💳</span>
+                    <strong>Gerir pagamentos</strong>
+                    <small>Registar pagamentos e talões</small>
+                </a>
+                <a class="secretary-quick-link" href="#payments">
+                    <span aria-hidden="true">🧾</span>
+                    <strong>Emitir recibos</strong>
+                    <small>Abrir um dos pagamentos recentes</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.students_list', especial='isentos') }}">
+                    <span aria-hidden="true">📘</span>
+                    <strong>Alunos isentos de taxa</strong>
+                    <small>Consultar registos de isenção</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.students_list', especial='nee') }}">
+                    <span aria-hidden="true">♿</span>
+                    <strong>Alunos com NEE</strong>
+                    <small>Acesso restrito à Secretaria</small>
+                </a>
+                <a class="secretary-quick-link" href="{{ url_for('secretary.gerenciar_turmas') }}">
+                    <span aria-hidden="true">📄</span>
+                    <strong>Emitir listas nominais</strong>
+                    <small>Escolher a turma e o formato</small>
+                </a>
+                {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                <a class="secretary-quick-link" href="{{ url_for('director.rectificar_notas') }}">
+                    <span aria-hidden="true">📝</span>
+                    <strong>Consultar pautas</strong>
+                    <small>Área autorizada para rectificação</small>
+                </a>
+                {% else %}
+                <a class="secretary-quick-link" href="{{ url_for('secretary.gerenciar_turmas') }}">
+                    <span aria-hidden="true">📊</span>
+                    <strong>Pautas por turma</strong>
+                    <small>Aceder às opções disponíveis</small>
+                </a>
+                {% endif %}
+                {% if session.get('user_role') in ['chefe_secretaria', 'admin'] %}
+                <a class="secretary-quick-link" href="{{ url_for('secretary.gerenciar_colaboradores') }}">
+                    <span aria-hidden="true">👥</span>
+                    <strong>Gerir colegas</strong>
+                    <small>Contas e estado de acesso</small>
+                </a>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="card secretary-section secretary-payments" id="payments"
+                 aria-labelledby="payments-title">
+            <div class="secretary-section-heading">
+                <div>
+                    <p class="secretary-eyebrow">Movimentos financeiros</p>
+                    <h2 id="payments-title">Últimos pagamentos registados</h2>
+                </div>
+                <a class="btn btn-primary" href="{{ url_for('secretary.payment_form') }}">
+                    + Registar pagamento
+                </a>
+            </div>
+            <div class="secretary-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>N.º recibo</th>
+                            <th>Aluno</th>
+                            <th>Banco / carteira</th>
+                            <th>Referência</th>
+                            <th>Data do depósito</th>
+                            <th>Data do registo</th>
+                            <th>Valor (MZN)</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pagamentos %}
+                        <tr>
+                            <td>{{ p.receipt_number }}</td>
+                            <td>{{ p.aluno_nome }} ({{ p.aluno_code }})</td>
+                            <td>{{ p.banco_plataforma }}</td>
+                            <td>{{ p.referencia_talao }}</td>
+                            <td>{{ p.data_deposito }}</td>
+                            <td>{{ p.data_registo }}</td>
+                            <td>{{ "%.2f"|format(p.valor_pago) }}</td>
+                            <td class="secretary-payment-actions">
+                                <a href="{{ url_for('secretary.receipt_view', payment_id=p.id) }}"
+                                   target="_blank" rel="noopener" class="btn btn-primary">Recibo</a>
+                                <a href="{{ url_for('secretary.payment_edit', payment_id=p.id) }}"
+                                   class="btn btn-warning">Editar</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="8" class="secretary-empty-state">Nenhum pagamento registado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 </body>
 </html>

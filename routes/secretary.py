@@ -84,12 +84,23 @@ def dashboard():
     cursor = db.cursor()
     cursor.execute('SELECT COUNT(*) as total FROM students')
     total_alunos = cursor.fetchone()['total']
+
+    cursor.execute('SELECT COUNT(*) as total FROM turmas')
+    total_turmas = cursor.fetchone()['total']
     
-    cursor.execute('SELECT COUNT(*) as total FROM students WHERE isento_taxa = 1')
+    cursor.execute(
+        'SELECT COUNT(*) as total FROM students WHERE COALESCE(isento_taxa, 0) = 1'
+    )
     total_isentos = cursor.fetchone()['total']
     
-    cursor.execute('SELECT COUNT(*) as total FROM students WHERE nee_tipo != "Nenhuma"')
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM students
+        WHERE COALESCE(NULLIF(TRIM(nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'
+    ''')
     total_nee = cursor.fetchone()['total']
+
+    cursor.execute('SELECT COUNT(*) AS total FROM payments')
+    total_pagamentos = cursor.fetchone()['total']
     
     total_receita = 0.0
     if session.get('user_role') in ['chefe_secretaria', 'director', 'admin']:
@@ -103,7 +114,16 @@ def dashboard():
     ''')
     ultimos_pagamentos = cursor.fetchall()
     
-    return render_template('secretary/dashboard.html', total_alunos=total_alunos, total_isentos=total_isentos, total_nee=total_nee, total_receita=total_receita, pagamentos=ultimos_pagamentos)
+    return render_template(
+        'secretary/dashboard.html',
+        total_alunos=total_alunos,
+        total_turmas=total_turmas,
+        total_isentos=total_isentos,
+        total_nee=total_nee,
+        total_pagamentos=total_pagamentos,
+        total_receita=total_receita,
+        pagamentos=ultimos_pagamentos,
+    )
 
 @secretary_bp.route('/students', methods=['GET'])
 def students_list():
@@ -150,7 +170,9 @@ def students_list():
     if filtro_especial == 'isentos':
         query += ' AND s.isento_taxa = 1'
     elif filtro_especial == 'nee':
-        query += ' AND s.nee_tipo != "Nenhuma"'
+        query += '''
+            AND COALESCE(NULLIF(TRIM(s.nee_tipo), ''), 'Nenhuma') <> 'Nenhuma'
+        '''
 
     query += ' ORDER BY s.classe_ingresso ASC, t.nome ASC, s.nome ASC'
     cursor.execute(query, params)
@@ -830,25 +852,55 @@ def export_class_list_pdf(turma_id, tipo):
 
     if tipo == 'vitrine':
         cursor.execute(
-            'SELECT nome FROM students WHERE turma_id = ? ORDER BY nome',
+            'SELECT nome, sexo FROM students WHERE turma_id = ? ORDER BY nome',
             (turma_id,),
         )
     else:
         cursor.execute('''
-            SELECT nome, code, bi_cedula, sexo, data_nascimento,
-                   COALESCE(encarregado_contacto_principal, encarregado_contacto_1) AS contacto_encarregado
-            FROM students WHERE turma_id = ? ORDER BY nome
+            SELECT s.nome, s.code, s.sexo, s.data_nascimento,
+                   COALESCE(
+                       NULLIF((
+                           SELECT g.nome
+                           FROM guardian_students gs
+                           JOIN guardians g ON g.id = gs.guardian_id
+                           WHERE gs.student_id = s.id AND g.ativo = 1
+                           ORDER BY gs.principal DESC, gs.created_at, gs.guardian_id
+                           LIMIT 1
+                       ), ''),
+                       NULLIF(TRIM(s.encarregado_nome), ''),
+                       ''
+                   ) AS encarregado_nome,
+                   COALESCE(
+                       NULLIF((
+                           SELECT g.contacto
+                           FROM guardian_students gs
+                           JOIN guardians g ON g.id = gs.guardian_id
+                           WHERE gs.student_id = s.id AND g.ativo = 1
+                           ORDER BY gs.principal DESC, gs.created_at, gs.guardian_id
+                           LIMIT 1
+                       ), ''),
+                       NULLIF(TRIM(s.encarregado_contacto_principal), ''),
+                       NULLIF(TRIM(s.encarregado_contacto_1), ''),
+                       ''
+                   ) AS contacto_encarregado
+            FROM students s
+            WHERE s.turma_id = ?
+            ORDER BY s.nome
         ''', (turma_id,))
     alunos = cursor.fetchall()
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        'SchoolTitle', parent=styles['Title'], fontName='Helvetica-Bold',
-        fontSize=13, leading=16, alignment=TA_CENTER, spaceAfter=2,
+        'NominalListTitle', parent=styles['Title'], fontName='Helvetica-Bold',
+        fontSize=13, leading=16, alignment=TA_CENTER, spaceBefore=5, spaceAfter=8,
     )
     header_style = ParagraphStyle(
-        'InstitutionHeader', parent=styles['Normal'], fontName='Helvetica',
-        fontSize=9, leading=12, alignment=TA_CENTER,
+        'InstitutionHeader', parent=styles['Normal'], fontName='Helvetica-Bold',
+        fontSize=9, leading=12, alignment=TA_CENTER, spaceAfter=0,
+    )
+    metadata_style = ParagraphStyle(
+        'ClassMetadata', parent=styles['Normal'], fontName='Helvetica',
+        fontSize=8.5, leading=12, alignment=TA_LEFT, spaceBefore=5, spaceAfter=8,
     )
     cell_style = ParagraphStyle(
         'TableCell', parent=styles['BodyText'], fontName='Helvetica',
@@ -859,36 +911,58 @@ def export_class_list_pdf(turma_id, tipo):
         textColor=colors.white, alignment=TA_CENTER,
     )
 
+    current_date = datetime.now()
+    month_names = (
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+    )
+    issue_date = (
+        f'{current_date.day} de {month_names[current_date.month - 1]} '
+        f'de {current_date.year}'
+    )
+    male_count = sum(
+        str(aluno['sexo'] or '').strip().upper() in {'M', 'MASCULINO'}
+        for aluno in alunos
+    )
+    female_count = sum(
+        str(aluno['sexo'] or '').strip().upper() in {'F', 'FEMININO'}
+        for aluno in alunos
+    )
+
     output = io.BytesIO()
     page_size = A4 if tipo == 'vitrine' else landscape(A4)
     document = SimpleDocTemplate(
         output,
         pagesize=page_size,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.8 * cm,
-        title=f'Lista {tipo} - {turma["nome"]}',
+        rightMargin=1.2 * cm,
+        leftMargin=1.2 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.6 * cm,
+        title=f'Lista de Alunos - {turma["ano_lectivo"]} - {turma["nome"]}',
         author='Escola Secundária da Manga',
     )
     story = []
-    emblem_path = os.path.join('static', 'img', 'emblema_moz.png')
-    emblem = ReportImage(emblem_path, width=1.5 * cm, height=1.5 * cm) if os.path.isfile(emblem_path) else ''
-    institution = Paragraph(
-        '<b>REPÚBLICA DE MOÇAMBIQUE</b><br/>'
-        'Província de Sofala — Distrito da Beira<br/>'
-        '<b>ESCOLA SECUNDÁRIA DA MANGA</b>',
-        header_style,
+    emblem_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'static',
+        'img',
+        'emblema_moz.png',
     )
-    heading = Table([[emblem, institution]], colWidths=[2 * cm, page_size[0] - 5 * cm])
-    heading.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-        ('LINEBELOW', (0, 0), (-1, -1), 0.6, colors.HexColor('#245B8F')),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    story.extend([heading, Spacer(1, 0.35 * cm)])
-    list_title = 'LISTA NOMINAL PARA VITRINE' if tipo == 'vitrine' else 'LISTA NOMINAL OFICIAL'
+    emblem = ReportImage(emblem_path, width=1.8 * cm, height=1.8 * cm)
+    emblem.hAlign = 'CENTER'
+    story.extend([
+        emblem,
+        Paragraph('REPÚBLICA DE MOÇAMBIQUE', header_style),
+        Paragraph('PROVÍNCIA DE SOFALA', header_style),
+        Paragraph('GOVERNO DO DISTRITO DA BEIRA', header_style),
+        Paragraph('ESCOLA SECUNDÁRIA DA MANGA', header_style),
+        Spacer(1, 0.25 * cm),
+    ])
+    list_title = (
+        f'LISTA NOMINAL OFICIAL – ANO LECTIVO {turma["ano_lectivo"]}'
+        if tipo == 'oficial'
+        else f'LISTA NOMINAL PARA VITRINE – ANO LECTIVO {turma["ano_lectivo"]}'
+    )
     story.append(Paragraph(list_title, title_style))
     area = {
         'A': 'Área A — Letras e Ciências Sociais',
@@ -897,14 +971,17 @@ def export_class_list_pdf(turma_id, tipo):
     }.get(turma['area_curricular'], '')
     modalidade = 'À Distância' if turma['curso'] == 'À Distância' else turma['turno']
     metadata = (
-        f'Ano lectivo: {turma["ano_lectivo"]} &nbsp;&nbsp; '
-        f'Classe: {turma["classe_num"]}.ª &nbsp;&nbsp; Turma: {escape(turma["nome"])}<br/>'
-        f'Sala: {escape(turma["sala"] or "—")} &nbsp;&nbsp; '
-        f'Área: {escape(area or "—")} &nbsp;&nbsp; '
-        f'Turno/Modalidade: {escape(modalidade)}'
+        f'<b>Turma:</b> {escape(turma["nome"])} &nbsp;&nbsp; '
+        f'<b>Classe:</b> {turma["classe_num"]}.ª &nbsp;&nbsp; '
+        f'<b>Data:</b> {issue_date}<br/>'
+        f'<b>Sala:</b> {escape(turma["sala"] or "—")} &nbsp;&nbsp; '
+        f'<b>Área:</b> {escape(area or "—")} &nbsp;&nbsp; '
+        f'<b>Turno/Modalidade:</b> {escape(modalidade)}<br/>'
+        f'<b>Total:</b> {len(alunos)} &nbsp;&nbsp; '
+        f'<b>Masculino:</b> {male_count} &nbsp;&nbsp; '
+        f'<b>Feminino:</b> {female_count}'
     )
-    story.append(Paragraph(metadata, header_style))
-    story.append(Spacer(1, 0.35 * cm))
+    story.append(Paragraph(metadata, metadata_style))
 
     if tipo == 'vitrine':
         headers = ('N.º', 'Nome do Aluno')
@@ -913,23 +990,34 @@ def export_class_list_pdf(turma_id, tipo):
             [str(index), Paragraph(escape(aluno['nome'] or ''), cell_style)]
             for index, aluno in enumerate(alunos, 1)
         ])
-        widths = [1.4 * cm, page_size[0] - 4.4 * cm]
+        widths = [1.4 * cm, page_size[0] - 3.8 * cm]
     else:
-        headers = ('N.º', 'Processo', 'Nome completo', 'BI/Cédula', 'Sexo', 'Nascimento', 'Contacto do encarregado')
+        headers = (
+            'N.º',
+            'Nome completo',
+            'Processo',
+            'Sexo',
+            'Nasc.',
+            'Encarregado',
+            'Contacto',
+        )
         data = [[Paragraph(value, table_header_style) for value in headers]]
         data.extend([
             [
                 str(index),
-                Paragraph(escape(aluno['code'] or ''), cell_style),
                 Paragraph(escape(aluno['nome'] or ''), cell_style),
-                Paragraph(escape(aluno['bi_cedula'] or ''), cell_style),
+                Paragraph(escape(aluno['code'] or ''), cell_style),
                 Paragraph(escape(aluno['sexo'] or ''), cell_style),
                 Paragraph(escape(aluno['data_nascimento'] or ''), cell_style),
+                Paragraph(escape(aluno['encarregado_nome'] or ''), cell_style),
                 Paragraph(escape(aluno['contacto_encarregado'] or ''), cell_style),
             ]
             for index, aluno in enumerate(alunos, 1)
         ])
-        widths = [1 * cm, 2.2 * cm, 6.4 * cm, 3 * cm, 1.2 * cm, 2.4 * cm, 3.6 * cm]
+        widths = [
+            0.9 * cm, 8.3 * cm, 2.3 * cm, 1.3 * cm,
+            2.4 * cm, 7.2 * cm, 4.0 * cm,
+        ]
     table = Table(data, colWidths=widths, repeatRows=1, splitByRow=1, hAlign='LEFT')
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#142B4A')),
@@ -945,7 +1033,7 @@ def export_class_list_pdf(turma_id, tipo):
     if tipo == 'oficial':
         story.append(Paragraph(
             f'Director de Turma: {escape(turma["diretor_turma"] or "Não atribuído")} '
-            f'&nbsp;&nbsp; Data de emissão: {datetime.now().strftime("%d/%m/%Y")}',
+            f'&nbsp;&nbsp; Data de emissão: {issue_date}',
             cell_style,
         ))
         story.append(Spacer(1, 1.2 * cm))
