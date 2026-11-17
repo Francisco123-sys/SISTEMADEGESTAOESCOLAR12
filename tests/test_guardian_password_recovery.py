@@ -240,6 +240,34 @@ class GuardianPasswordRecoveryTests(unittest.TestCase):
                 'unknown-teacher',
             ))
 
+    def test_staff_login_falls_back_when_rate_limit_table_is_missing(self):
+        remote = {'REMOTE_ADDR': '198.51.100.42'}
+        self.db.execute('DROP TABLE auth_rate_limits')
+        with patch('routes.auth.get_db', return_value=self.db):
+            self.client.get('/')
+            with self.client.session_transaction() as browser_session:
+                csrf_token = browser_session['_csrf_token']
+            for _ in range(5):
+                response = self.client.post(
+                    '/login',
+                    environ_overrides=remote,
+                    data={
+                        'csrf_token': csrf_token,
+                        'perfil': 'teacher',
+                        'identificador': 'fallback-teacher',
+                        'password': 'invalid-password',
+                    },
+                )
+                self.assertEqual(response.status_code, 302)
+
+        with app.test_request_context('/', environ_overrides=remote):
+            from services.auth_security import is_login_rate_limited
+
+            self.assertTrue(is_login_rate_limited(
+                self.db.cursor(),
+                'fallback-teacher',
+            ))
+
     def test_unknown_recovery_attempts_are_committed_and_limited(self):
         class TrackedDatabase:
             def __init__(self, connection):
