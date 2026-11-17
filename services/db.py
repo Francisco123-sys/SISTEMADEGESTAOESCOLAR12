@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+from urllib.parse import unquote, urlparse
 from flask import g
 from dotenv import load_dotenv
 
@@ -17,17 +18,53 @@ SQLITE_DATABASE = 'database/sige.db'
 DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError) if HAS_PSYCOPG2 else (sqlite3.IntegrityError,)
 
 
-def get_database_url():
+def get_database_url(prefer_unpooled=False):
+    if prefer_unpooled:
+        names = (
+            'DATABASE_URL_UNPOOLED',
+            'POSTGRES_URL_NON_POOLING',
+            'DATABASE_URL',
+            'POSTGRES_URL',
+            'POSTGRES_PRISMA_URL',
+        )
+    else:
+        names = (
+            'DATABASE_URL',
+            'POSTGRES_URL',
+            'POSTGRES_PRISMA_URL',
+            'DATABASE_URL_UNPOOLED',
+            'POSTGRES_URL_NON_POOLING',
+        )
+    return next(
+        (os.getenv(name, '').strip() for name in names if os.getenv(name, '').strip()),
+        '',
+    )
+
+
+def database_target_key(url):
+    parsed = urlparse(url)
+    if parsed.scheme not in ('postgres', 'postgresql') or not parsed.hostname:
+        raise ValueError('A URL da base de dados não é PostgreSQL válida.')
+    hostname = re.sub(r'-pooler(?=\.|$)', '', parsed.hostname.lower())
     return (
-        os.getenv('DATABASE_URL')
-        or os.getenv('POSTGRES_URL')
-        or os.getenv('DATABASE_URL_UNPOOLED')
-        or ''
-    ).strip()
+        hostname,
+        parsed.port or 5432,
+        unquote(parsed.path.lstrip('/')),
+        unquote(parsed.username or ''),
+    )
 
 
-def is_postgres():
-    url = get_database_url()
+def ensure_same_database_target(runtime_url, migration_url):
+    if not runtime_url or not migration_url:
+        raise RuntimeError('A ligação da aplicação e a ligação de migração devem estar configuradas.')
+    if database_target_key(runtime_url) != database_target_key(migration_url):
+        raise RuntimeError(
+            'A ligação de migração aponta para uma base diferente da ligação seleccionada pela aplicação.'
+        )
+
+
+def is_postgres(url=None):
+    url = url or get_database_url()
     return url.startswith('postgres://') or url.startswith('postgresql://')
 
 
@@ -177,14 +214,14 @@ class PgConnectionWrapper:
         self._conn.close()
 
 
-def create_standalone_connection():
-    if is_postgres():
+def create_standalone_connection(database_url=None):
+    database_url = database_url or get_database_url()
+    if is_postgres(database_url):
         if not HAS_PSYCOPG2:
             raise RuntimeError("psycopg2-binary não está instalado. Execute: pip install -r requirements.txt")
-        url = get_database_url()
-        if url.startswith('postgres://'):
-            url = url.replace('postgres://', 'postgresql://', 1)
-        raw_conn = psycopg2.connect(url)
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        raw_conn = psycopg2.connect(database_url)
         return PgConnectionWrapper(raw_conn)
     else:
         os.makedirs('database', exist_ok=True)

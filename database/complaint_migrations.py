@@ -31,10 +31,14 @@ def _existing_columns(cursor, is_postgres):
 
 
 def _column_name(row):
+    return _row_value(row, 'column_name', 0)
+
+
+def _row_value(row, key, index):
     try:
-        return row['column_name']
+        return row[key]
     except (TypeError, KeyError):
-        return row[0]
+        return row[index]
 
 
 def _table_columns(cursor, table_name, is_postgres):
@@ -48,6 +52,37 @@ def _table_columns(cursor, table_name, is_postgres):
         WHERE table_schema = current_schema() AND table_name = ?
     ''', (table_name,))
     return {_column_name(row) for row in cursor.fetchall()}
+
+
+def _backfill_guardian_ownership(cursor):
+    cursor.execute('''
+        SELECT id, student_id, nome_encarregado, contacto
+        FROM reclamacoes_encarregados
+        WHERE guardian_id IS NULL
+    ''')
+    legacy_complaints = cursor.fetchall()
+    for complaint in legacy_complaints:
+        cursor.execute('''
+            SELECT gs.guardian_id
+            FROM guardian_students gs
+            JOIN guardians g ON g.id = gs.guardian_id
+            WHERE gs.student_id = ? AND g.ativo = 1
+              AND LOWER(TRIM(g.nome)) = LOWER(TRIM(?))
+              AND COALESCE(TRIM(g.contacto), '') = COALESCE(TRIM(?), '')
+        ''', (
+            _row_value(complaint, 'student_id', 1),
+            _row_value(complaint, 'nome_encarregado', 2),
+            _row_value(complaint, 'contacto', 3),
+        ))
+        matching_guardians = cursor.fetchall()
+        if len(matching_guardians) == 1:
+            cursor.execute('''
+                UPDATE reclamacoes_encarregados SET guardian_id = ?
+                WHERE id = ? AND guardian_id IS NULL
+            ''', (
+                _row_value(matching_guardians[0], 'guardian_id', 0),
+                _row_value(complaint, 'id', 0),
+            ))
 
 
 def migrate_complaint_schema(cursor, is_postgres=False):
@@ -76,6 +111,7 @@ def migrate_complaint_schema(cursor, is_postgres=False):
             SET updated_at = created_at
             WHERE updated_at IS NULL
         ''')
+    _backfill_guardian_ownership(cursor)
 
     if is_postgres:
         cursor.execute('''
@@ -205,12 +241,23 @@ def migrate_complaint_schema(cursor, is_postgres=False):
 
 
 def migrate_complaints():
-    from services.db import create_standalone_connection, is_postgres
+    from services.db import (
+        create_standalone_connection,
+        ensure_same_database_target,
+        get_database_url,
+        is_postgres,
+    )
 
-    db = create_standalone_connection()
+    runtime_url = get_database_url()
+    migration_url = get_database_url(prefer_unpooled=True)
+    selected_url = migration_url or runtime_url
+    if is_postgres(selected_url):
+        ensure_same_database_target(runtime_url, selected_url)
+
+    db = create_standalone_connection(selected_url)
     cursor = db.cursor()
     try:
-        migrate_complaint_schema(cursor, is_postgres())
+        migrate_complaint_schema(cursor, is_postgres(selected_url))
         db.commit()
     except Exception:
         db.rollback()

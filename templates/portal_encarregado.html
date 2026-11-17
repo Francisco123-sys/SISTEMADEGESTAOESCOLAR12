@@ -32,7 +32,12 @@
         logout_action='logout' if guardian else None
     ) }}
 
-    <main class="container secretary-dashboard guardian-dashboard">
+    <main class="container secretary-dashboard guardian-dashboard"
+          {% if guardian and aluno %}
+          data-guardian-live="{{ url_for('auth.guardian_portal_updates') }}"
+          data-student-id="{{ aluno.id }}"
+          data-after-message-id="{{ last_complaint_message_id }}"
+          {% endif %}>
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -62,10 +67,12 @@
             <p><a href="{{ url_for('auth.guardian_password_recovery') }}">Esqueci-me da palavra-passe</a></p>
         </div>
         {% else %}
-        {% if complaint_notifications %}
-        <section class="card" aria-label="Notificações do portal">
+        {% if guardian and aluno %}
+        <section class="card" id="guardian-notifications"
+                 aria-label="Notificações do portal"
+                 {% if not complaint_notifications %}hidden{% endif %}>
             <h2 class="card-title">Novas actualizações nas reclamações</h2>
-            <ul>
+            <ul id="guardian-notification-list">
                 {% for notification in complaint_notifications %}
                 <li>
                     <a href="#complaint-{{ notification.complaint_id }}">
@@ -75,6 +82,8 @@
                     </a>
                     <small>{{ notification.created_at|string }}</small>
                 </li>
+                {% else %}
+                <li>Não existem notificações por ler.</li>
                 {% endfor %}
             </ul>
             <form method="POST" action="/portal-encarregado">
@@ -239,12 +248,13 @@
                             <strong>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</strong>
                             <p>{{ r.categoria or 'Outros Assuntos' }} · {{ r.created_at_display }}</p>
                         </div>
-                        <span class="guardian-complaint-state">{{ r.estado or r.status }}</span>
+                        <span class="guardian-complaint-state"
+                              data-complaint-state="{{ r.id }}">{{ r.estado or r.status }}</span>
                     </div>
                     <div class="guardian-complaint-thread">
                         {% if r.messages %}
                             {% for message in r.messages %}
-                            <div class="guardian-thread-message">
+                            <div class="guardian-thread-message" data-message-id="{{ message.id }}">
                                 <strong>
                                     {% if message.sender_type == 'guardian' %}A sua mensagem
                                     {% elif message.sender_type == 'director' %}Direcção
@@ -294,5 +304,85 @@
         </div>
         {% endif %}
     </main>
+    {% if guardian and aluno %}
+    <script>
+        (() => {
+            const portal = document.querySelector('.guardian-dashboard[data-guardian-live]');
+            if (!portal) return;
+            let lastMessageId = Number(portal.dataset.afterMessageId || 0);
+            const studentId = portal.dataset.studentId;
+
+            const updateNotifications = (notifications) => {
+                const panel = document.getElementById('guardian-notifications');
+                const list = document.getElementById('guardian-notification-list');
+                list.replaceChildren();
+                panel.hidden = notifications.length === 0;
+                for (const notification of notifications) {
+                    const item = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = `#complaint-${notification.complaint_id}`;
+                    link.textContent = notification.kind === 'new_message'
+                        ? 'Nova mensagem na conversa'
+                        : notification.kind === 'status_changed'
+                            ? 'O estado da reclamação foi actualizado'
+                            : 'A reclamação foi encaminhada para acompanhamento';
+                    item.append(link, document.createTextNode(` · ${notification.created_at}`));
+                    list.append(item);
+                }
+                if (!notifications.length) {
+                    const empty = document.createElement('li');
+                    empty.textContent = 'Não existem notificações por ler.';
+                    list.append(empty);
+                }
+            };
+
+            const refreshPortal = async () => {
+                if (document.hidden) return;
+                try {
+                    const url = new URL(portal.dataset.guardianLive, window.location.origin);
+                    url.searchParams.set('aluno', studentId);
+                    url.searchParams.set('after', lastMessageId);
+                    const response = await fetch(url, {
+                        cache: 'no-store',
+                        headers: { Accept: 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`Portal update failed: ${response.status}`);
+                    const data = await response.json();
+
+                    for (const state of data.complaint_states) {
+                        const stateElement = document.querySelector(
+                            `[data-complaint-state="${state.id}"]`
+                        );
+                        if (stateElement) stateElement.textContent = state.state;
+                    }
+                    for (const message of data.messages) {
+                        const thread = document.querySelector(
+                            `#complaint-${message.complaint_id} .guardian-complaint-thread`
+                        );
+                        if (!thread || thread.querySelector(`[data-message-id="${message.id}"]`)) continue;
+                        const entry = document.createElement('div');
+                        entry.className = 'guardian-thread-message';
+                        entry.dataset.messageId = message.id;
+                        const sender = document.createElement('strong');
+                        sender.textContent = message.sender_type === 'guardian'
+                            ? 'A sua mensagem'
+                            : message.sender_type === 'director' ? 'Direcção' : 'Secretaria';
+                        const body = document.createElement('p');
+                        body.textContent = message.body;
+                        entry.append(sender, body);
+                        thread.append(entry);
+                        lastMessageId = Math.max(lastMessageId, message.id);
+                    }
+                    updateNotifications(data.notifications);
+                } catch (error) {
+                    console.error('Não foi possível actualizar o portal do encarregado.', error);
+                }
+            };
+
+            refreshPortal();
+            window.setInterval(refreshPortal, 15000);
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

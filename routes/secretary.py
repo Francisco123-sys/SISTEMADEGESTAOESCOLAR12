@@ -5,7 +5,7 @@ import re
 import secrets
 import time
 from decimal import Decimal, InvalidOperation
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from services.db import (
     active_student_condition,
     get_db,
@@ -135,6 +135,11 @@ def dashboard():
         ORDER BY p.id DESC LIMIT 8
     ''')
     ultimos_pagamentos = cursor.fetchall()
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM reclamacoes_encarregados
+        WHERE estado IN ('Nova', 'Reaberta')
+    ''')
+    reclamacoes_novas = cursor.fetchone()['total']
     
     return render_template(
         'secretary/dashboard.html',
@@ -144,8 +149,59 @@ def dashboard():
         total_nee=total_nee,
         total_pagamentos=total_pagamentos,
         total_receita=total_receita,
+        reclamacoes_novas=reclamacoes_novas,
         pagamentos=ultimos_pagamentos,
     )
+
+
+@secretary_bp.route('/reclamacoes/updates')
+def complaint_updates():
+    if not check_secretary():
+        return jsonify(error='Acesso não autorizado.'), 403
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify(error='Sessão inválida.'), 401
+    cursor = get_db().cursor()
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM reclamacoes_encarregados
+        WHERE estado IN ('Nova', 'Reaberta')
+    ''')
+    new_count = cursor.fetchone()['total']
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+    ''', (user_id,))
+    unread_count = cursor.fetchone()['total']
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+    ''', (session.get('user_id'),))
+    complaint_unread_count = cursor.fetchone()['total']
+    cursor.execute('''
+        SELECT id, complaint_id, kind, created_at
+        FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+        ORDER BY id DESC
+        LIMIT 20
+    ''', (user_id,))
+    notifications = [
+        {
+            'id': row['id'],
+            'complaint_id': row['complaint_id'],
+            'kind': row['kind'],
+            'created_at': str(row['created_at']),
+        }
+        for row in cursor.fetchall()
+    ]
+    response = jsonify(
+        new_count=new_count,
+        unread_count=unread_count,
+        latest_notification_id=notifications[0]['id'] if notifications else 0,
+        notifications=notifications,
+    )
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
 
 @secretary_bp.route('/students', methods=['GET'])
 def students_list():
@@ -2393,6 +2449,7 @@ def gerenciar_reclamacoes():
         rec_id = request.form.get('rec_id', type=int)
         cursor.execute('''
             SELECT id, student_id, guardian_id, estado, mensagem,
+                   nome_encarregado, contacto,
                    forwarded_to_director
             FROM reclamacoes_encarregados WHERE id = ?
         ''', (rec_id,))
@@ -2533,6 +2590,16 @@ def gerenciar_reclamacoes():
     ''', tuple(params))
     reclamacoes = cursor.fetchall()
     cursor.execute('''
+        SELECT COUNT(*) AS total FROM reclamacoes_encarregados
+        WHERE estado IN ('Nova', 'Reaberta')
+    ''')
+    complaint_new_count = cursor.fetchone()['total']
+    cursor.execute('''
+        SELECT COUNT(*) AS total FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+    ''', (session.get('user_id'),))
+    complaint_unread_count = cursor.fetchone()['total']
+    cursor.execute('''
         SELECT id, complaint_id, kind, created_at
         FROM complaint_notifications
         WHERE recipient_user_id = ? AND read_at IS NULL
@@ -2569,17 +2636,24 @@ def gerenciar_reclamacoes():
             }
             for row in reclamacoes
         ]
-    return render_template(
-        'secretary/reclamacoes.html',
-        reclamacoes=reclamacoes,
-        complaint_states=COMPLAINT_STATES,
-        complaint_categories=COMPLAINT_CATEGORIES,
-        complaint_notifications=complaint_notifications,
-        complaint_message_keys={
+    template_context = {
+        'reclamacoes': reclamacoes,
+        'complaint_states': COMPLAINT_STATES,
+        'complaint_categories': COMPLAINT_CATEGORIES,
+        'complaint_notifications': complaint_notifications,
+        'complaint_unread_count': complaint_unread_count,
+        'complaint_new_count': complaint_new_count,
+        'latest_notification_id': (
+            complaint_notifications[0]['id'] if complaint_notifications else 0
+        ),
+        'complaint_message_keys': {
             row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
             for row in reclamacoes
         },
-        selected_state=state_filter,
-        selected_category=category_filter,
-        search=search,
-    )
+        'selected_state': state_filter,
+        'selected_category': category_filter,
+        'search': search,
+    }
+    if request.args.get('_partial') == '1':
+        return render_template('secretary/_complaint_cards.html', **template_context)
+    return render_template('secretary/reclamacoes.html', **template_context)

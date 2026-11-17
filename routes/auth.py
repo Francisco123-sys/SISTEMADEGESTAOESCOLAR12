@@ -7,6 +7,7 @@ import time
 from flask import (
     Blueprint,
     current_app,
+    jsonify,
     render_template,
     request,
     redirect,
@@ -230,17 +231,25 @@ def portal_encarregado():
                 flash('Escreva uma mensagem válida.', 'danger')
                 return redirect(url_for('auth.portal_encarregado'))
             cursor.execute('''
-                SELECT id, student_id, guardian_id, estado
+                SELECT id, student_id, guardian_id, estado,
+                       nome_encarregado, contacto
                 FROM reclamacoes_encarregados
-                WHERE id = ? AND (
-                    guardian_id = ? OR (
-                        guardian_id IS NULL AND student_id IN (
-                            SELECT student_id FROM guardian_students
-                            WHERE guardian_id = ?
-                        )
+                WHERE id = ?
+                  AND student_id IN (
+                      SELECT student_id FROM guardian_students
+                      WHERE guardian_id = ?
+                  )
+                  AND (
+                      guardian_id = ? OR (
+                          guardian_id IS NULL
+                          AND LOWER(TRIM(nome_encarregado)) = LOWER(TRIM(?))
+                          AND COALESCE(TRIM(contacto), '') = COALESCE(TRIM(?), '')
                     )
                 )
-            ''', (complaint_id, guardian['id'], guardian['id']))
+            ''', (
+                complaint_id, guardian['id'], guardian['id'], guardian['nome'],
+                guardian['contacto'],
+            ))
             complaint = cursor.fetchone()
             if not complaint:
                 flash('Não tem permissão para responder a esta reclamação.', 'danger')
@@ -314,6 +323,7 @@ def portal_encarregado():
     total_faltas = 0
     reclamacoes = []
     complaint_notifications = []
+    last_complaint_message_id = 0
     requested_student_id = request.args.get('aluno', type=int)
     if requested_student_id:
         cursor.execute('''
@@ -346,8 +356,17 @@ def portal_encarregado():
             SELECT id, nome_encarregado, mensagem, status, resposta_escola,
                    created_at, categoria, assunto, estado
             FROM reclamacoes_encarregados
-            WHERE student_id = ? ORDER BY id DESC
-        ''', (aluno['id'],))
+            WHERE student_id = ? AND (
+                guardian_id = ? OR (
+                    guardian_id IS NULL
+                    AND LOWER(TRIM(nome_encarregado)) = LOWER(TRIM(?))
+                    AND COALESCE(TRIM(contacto), '') = COALESCE(TRIM(?), '')
+                )
+            )
+            ORDER BY id DESC
+        ''', (
+            aluno['id'], guardian['id'], guardian['nome'], guardian['contacto'],
+        ))
         reclamacoes = []
         for row in cursor.fetchall():
             reclamacao = dict(row)
@@ -370,14 +389,17 @@ def portal_encarregado():
             ids = [row['id'] for row in reclamacoes]
             placeholders = ', '.join('?' for _ in ids)
             cursor.execute(f'''
-                SELECT complaint_id, sender_type, body, created_at
+                SELECT id, complaint_id, sender_type, body, created_at
                 FROM complaint_messages
                 WHERE complaint_id IN ({placeholders})
-                ORDER BY created_at, id
+                ORDER BY id
             ''', tuple(ids))
             messages_by_complaint = {}
             for message in cursor.fetchall():
                 messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
+                last_complaint_message_id = max(
+                    last_complaint_message_id, message['id']
+                )
             for reclamacao in reclamacoes:
                 reclamacao['messages'] = messages_by_complaint.get(reclamacao['id'], [])
             cursor.execute(f'''
@@ -403,11 +425,111 @@ def portal_encarregado():
         complaint_notifications=complaint_notifications,
         complaint_categories=COMPLAINT_CATEGORIES,
         complaint_submission_key=secrets.token_urlsafe(32),
+        last_complaint_message_id=last_complaint_message_id,
         complaint_message_keys={
             row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
             for row in reclamacoes
         },
     )
+
+
+@auth_bp.route('/portal-encarregado/updates')
+def guardian_portal_updates():
+    guardian_id = session.get('guardian_id')
+    if not guardian_id:
+        return jsonify(error='Sessão do encarregado necessária.'), 401
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        SELECT id, nome, contacto, session_version
+        FROM guardians WHERE id = ? AND ativo = 1
+    ''', (guardian_id,))
+    guardian = cursor.fetchone()
+    if (
+        not guardian
+        or guardian['session_version'] != session.get('guardian_session_version')
+    ):
+        session.clear()
+        return jsonify(error='Sessão expirada.'), 401
+
+    student_id = request.args.get('aluno', type=int)
+    if not student_id:
+        return jsonify(error='Educando inválido.'), 400
+    active_students = active_student_condition(cursor, 's')
+    cursor.execute(f'''
+        SELECT 1 FROM guardian_students gs
+        JOIN students s ON s.id = gs.student_id
+        WHERE gs.guardian_id = ? AND s.id = ? AND {active_students}
+    ''', (guardian_id, student_id))
+    if not cursor.fetchone():
+        return jsonify(error='Educando não associado à conta.'), 404
+
+    cursor.execute('''
+        SELECT m.id, m.complaint_id, m.sender_type, m.body, m.created_at
+        FROM complaint_messages m
+        JOIN reclamacoes_encarregados r ON r.id = m.complaint_id
+        WHERE r.student_id = ? AND (
+            r.guardian_id = ? OR (
+                r.guardian_id IS NULL
+                AND LOWER(TRIM(r.nome_encarregado)) = LOWER(TRIM(?))
+                AND COALESCE(TRIM(r.contacto), '') = COALESCE(TRIM(?), '')
+            )
+        ) AND m.id > ?
+        ORDER BY m.id
+        LIMIT 100
+    ''', (
+        student_id, guardian_id, guardian['nome'], guardian['contacto'],
+        max(0, request.args.get('after', 0, type=int) or 0),
+    ))
+    new_messages = [
+        {
+            'id': row['id'],
+            'complaint_id': row['complaint_id'],
+            'sender_type': row['sender_type'],
+            'body': row['body'],
+            'created_at': str(row['created_at']),
+        }
+        for row in cursor.fetchall()
+    ]
+    cursor.execute('''
+        SELECT id, estado FROM reclamacoes_encarregados
+        WHERE student_id = ? AND (
+            guardian_id = ? OR (
+                guardian_id IS NULL
+                AND LOWER(TRIM(nome_encarregado)) = LOWER(TRIM(?))
+                AND COALESCE(TRIM(contacto), '') = COALESCE(TRIM(?), '')
+            )
+        )
+    ''', (
+        student_id, guardian_id, guardian['nome'], guardian['contacto'],
+    ))
+    complaint_states = [
+        {'id': row['id'], 'state': row['estado']}
+        for row in cursor.fetchall()
+    ]
+    cursor.execute('''
+        SELECT id, complaint_id, kind, created_at
+        FROM complaint_notifications
+        WHERE recipient_guardian_id = ? AND read_at IS NULL
+        ORDER BY id DESC
+        LIMIT 20
+    ''', (guardian_id,))
+    notifications = [
+        {
+            'id': row['id'],
+            'complaint_id': row['complaint_id'],
+            'kind': row['kind'],
+            'created_at': str(row['created_at']),
+        }
+        for row in cursor.fetchall()
+    ]
+    response = jsonify(
+        messages=new_messages,
+        complaint_states=complaint_states,
+        notifications=notifications,
+    )
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @auth_bp.route('/portal-encarregado/foto/<filename>')

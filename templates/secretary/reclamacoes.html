@@ -42,7 +42,10 @@
         </div>
     </div>
 
-    <main class="container complaint-inbox">
+    <main class="container complaint-inbox"
+          data-updates-url="{{ url_for('secretary.complaint_updates') }}"
+          data-initial-new-count="{{ complaint_new_count }}"
+          data-initial-notification-id="{{ latest_notification_id }}">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for category, message in messages %}
             <div class="alert alert-{{ category }}">{{ message }}</div>
@@ -51,10 +54,19 @@
         <section class="card">
             <h1 class="card-title">Caixa de entrada</h1>
             <p>Consulte as reclamações, acompanhe as conversas e encaminhe os casos que necessitam da intervenção da Direcção.</p>
-            {% if complaint_notifications %}
             <section aria-label="Notificações não lidas">
-                <h2>Notificações por ler</h2>
-                <ul>
+                <h2>
+                    <svg class="secretary-icon-svg" viewBox="0 0 24 24" fill="none"
+                         xmlns="http://www.w3.org/2000/svg" stroke="currentColor"
+                         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                         aria-hidden="true">
+                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+                        <path d="M10 21h4"/>
+                    </svg>
+                    Notificações por ler
+                    <span id="complaint-notification-count" aria-live="polite">{{ complaint_unread_count }}</span>
+                </h2>
+                <ul id="complaint-notification-list">
                     {% for notification in complaint_notifications %}
                     <li><a href="#complaint-{{ notification.complaint_id }}">
                         {% if notification.kind == 'new_complaint' %}Nova reclamação recebida
@@ -62,6 +74,8 @@
                         {% elif notification.kind == 'forwarded' %}Reclamação encaminhada
                         {% else %}Actualização de reclamação{% endif %}
                     </a> · {{ notification.created_at|string }}</li>
+                    {% else %}
+                    <li>Não existem notificações por ler.</li>
                     {% endfor %}
                 </ul>
                 <form method="POST">
@@ -70,7 +84,6 @@
                     <button class="btn btn-secondary" type="submit">Marcar notificações como lidas</button>
                 </form>
             </section>
-            {% endif %}
             <form method="GET" class="complaint-filters">
                 <div class="form-group">
                     <label for="q">Pesquisar</label>
@@ -98,95 +111,78 @@
             </form>
         </section>
 
-        <section class="complaint-list">
-            {% for r in reclamacoes %}
-            <article class="complaint-card" id="complaint-{{ r.id }}">
-                <header class="complaint-heading">
-                    <div>
-                        <h2>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h2>
-                        <div class="complaint-meta">
-                            <p><strong>Educando:</strong> {{ r.aluno_nome }} ({{ r.aluno_code }})</p>
-                            <p><strong>Encarregado:</strong> {{ r.nome_encarregado }}</p>
-                            <p><strong>Contacto:</strong> {{ r.contacto or 'Não indicado' }}</p>
-                            <p><strong>Categoria:</strong> {{ r.categoria or 'Outros Assuntos' }}</p>
-                            <p><strong>Recebida:</strong> {{ r.created_at|string }}</p>
-                        </div>
-                    </div>
-                    <span class="complaint-state">{{ r.estado or r.status }}</span>
-                </header>
-                <div class="complaint-thread" aria-label="Conversa da reclamação">
-                    {% if r.messages %}
-                        {% for message in r.messages %}
-                        <div class="complaint-message">
-                            <strong>
-                                {% if message.sender_type == 'guardian' %}Encarregado
-                                {% elif message.sender_type == 'director' %}Direcção
-                                {% else %}Secretaria{% endif %}
-                            </strong>
-                            <p>{{ message.body }}</p>
-                            <small>{{ message.created_at|string }}</small>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                    <div class="complaint-message">
-                        <strong>Encarregado</strong>
-                        <p>{{ r.mensagem }}</p>
-                    </div>
-                    {% if r.resposta_escola %}
-                    <div class="complaint-message">
-                        <strong>Secretaria</strong>
-                        <p>{{ r.resposta_escola }}</p>
-                    </div>
-                    {% endif %}
-                    {% endif %}
-                </div>
-                <div class="complaint-actions">
-                    <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="rec_id" value="{{ r.id }}">
-                        <input type="hidden" name="action" value="reply">
-                        <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
-                        <label for="response-{{ r.id }}">Responder ao encarregado</label>
-                        <textarea id="response-{{ r.id }}" name="resposta_escola" rows="3" maxlength="5000" required></textarea>
-                        <button type="submit" class="btn btn-primary">Enviar resposta</button>
-                    </form>
-                    <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="rec_id" value="{{ r.id }}">
-                        <input type="hidden" name="action" value="status">
-                        <label for="state-{{ r.id }}">Actualizar estado</label>
-                        <select id="state-{{ r.id }}" name="estado" required>
-                            {% for estado in complaint_states %}
-                            <option value="{{ estado }}" {% if r.estado == estado %}selected{% endif %}>{{ estado }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="submit" class="btn btn-secondary">Guardar estado</button>
-                    </form>
-                    <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="rec_id" value="{{ r.id }}">
-                        <input type="hidden" name="action" value="forward">
-                        <label for="forward-{{ r.id }}">Encaminhar à Direcção</label>
-                        <textarea id="forward-{{ r.id }}" name="forward_reason" rows="3" maxlength="1000" placeholder="Motivo (opcional)"></textarea>
-                        <button type="submit" class="btn btn-secondary">Encaminhar</button>
-                        {% if r.forwarded_to_director %}<small>Já encaminhada à Direcção.</small>{% endif %}
-                    </form>
-                </div>
-                {% if r.history %}
-                <details style="margin-top:16px;">
-                    <summary>Histórico de estado</summary>
-                    <ul>
-                        {% for event in r.history %}
-                        <li>{{ event.old_state or 'Criada' }} para {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
-                        {% endfor %}
-                    </ul>
-                </details>
-                {% endif %}
-            </article>
-            {% else %}
-            <div class="card">Não existem reclamações para os filtros seleccionados.</div>
-            {% endfor %}
-        </section>
+        {% include 'secretary/_complaint_cards.html' %}
     </main>
+    <script>
+        (() => {
+            const inbox = document.querySelector('.complaint-inbox[data-updates-url]');
+            if (!inbox) return;
+            let lastNewCount = Number(inbox.dataset.initialNewCount || 0);
+            let lastNotificationId = Number(inbox.dataset.initialNotificationId || 0);
+
+            const updateNotificationList = (notifications) => {
+                const list = document.getElementById('complaint-notification-list');
+                list.replaceChildren();
+                if (!notifications.length) {
+                    const empty = document.createElement('li');
+                    empty.textContent = 'Não existem notificações por ler.';
+                    list.append(empty);
+                    return;
+                }
+                for (const notification of notifications) {
+                    const item = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = `#complaint-${notification.complaint_id}`;
+                    link.textContent = notification.kind === 'new_complaint'
+                        ? 'Nova reclamação recebida'
+                        : notification.kind === 'new_message'
+                            ? 'Nova mensagem do encarregado'
+                            : notification.kind === 'forwarded'
+                                ? 'Reclamação encaminhada'
+                                : 'Actualização de reclamação';
+                    item.append(link, document.createTextNode(` · ${notification.created_at}`));
+                    list.append(item);
+                }
+            };
+
+            const refreshInbox = async () => {
+                if (document.hidden) return;
+                try {
+                    const response = await fetch(inbox.dataset.updatesUrl, {
+                        cache: 'no-store',
+                        headers: { Accept: 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`Notification request failed: ${response.status}`);
+                    const data = await response.json();
+                    document.getElementById('complaint-notification-count').textContent = data.unread_count;
+                    updateNotificationList(data.notifications);
+
+                    if (data.new_count !== lastNewCount || data.latest_notification_id !== lastNotificationId) {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('_partial', '1');
+                        const cardsResponse = await fetch(url, {
+                            cache: 'no-store',
+                            headers: { Accept: 'text/html' }
+                        });
+                        if (!cardsResponse.ok) throw new Error(`Complaint list refresh failed: ${cardsResponse.status}`);
+                        const documentFragment = new DOMParser().parseFromString(
+                            await cardsResponse.text(),
+                            'text/html'
+                        );
+                        const updatedCards = documentFragment.getElementById('complaint-list');
+                        const currentCards = document.getElementById('complaint-list');
+                        if (updatedCards && currentCards) currentCards.replaceWith(updatedCards);
+                    }
+                    lastNewCount = data.new_count;
+                    lastNotificationId = data.latest_notification_id;
+                } catch (error) {
+                    console.error('Não foi possível actualizar a caixa de reclamações.', error);
+                }
+            };
+
+            refreshInbox();
+            window.setInterval(refreshInbox, 15000);
+        })();
+    </script>
 </body>
 </html>

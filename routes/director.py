@@ -43,7 +43,8 @@ def gerenciar_reclamacoes():
         actor_id = session.get('user_id')
         action = request.form.get('action')
         cursor.execute('''
-            SELECT id, student_id, guardian_id, estado
+            SELECT id, student_id, guardian_id, estado,
+                   nome_encarregado, contacto
             FROM reclamacoes_encarregados
             WHERE id = ? AND forwarded_to_director = 1
         ''', (complaint_id,))

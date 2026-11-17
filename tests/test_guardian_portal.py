@@ -137,9 +137,9 @@ class GuardianPortalTests(unittest.TestCase):
     def test_portal_renders_complaint_timestamp_returned_as_datetime(self):
         self.db.execute('''
             INSERT INTO reclamacoes_encarregados (
-                student_id, nome_encarregado, mensagem, status, resposta_escola,
-                created_at
-            ) VALUES (10, 'Encarregada Teste', 'Pedido de esclarecimento',
+                student_id, nome_encarregado, contacto, mensagem, status,
+                resposta_escola, created_at
+            ) VALUES (10, 'Encarregada Teste', '841234567', 'Pedido de esclarecimento',
                       'Pendente', '', '2026-11-17 10:30:00')
         ''')
         self.db.commit()
@@ -163,6 +163,27 @@ class GuardianPortalTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'2026-11-17', response.data)
         self.assertIn(b'Pedido de esclarecimento', response.data)
+
+    def test_guardian_cannot_read_another_guardians_complaint_for_same_student(self):
+        self.db.execute('''
+            INSERT INTO guardian_students (guardian_id, student_id, parentesco, principal)
+            VALUES (2, 10, 'Pai', 0)
+        ''')
+        self.db.execute('''
+            INSERT INTO reclamacoes_encarregados (
+                student_id, guardian_id, nome_encarregado, contacto, mensagem
+            ) VALUES (10, 1, 'Encarregada Teste', '841234567', 'Mensagem privada')
+        ''')
+        self.db.commit()
+        with patch('routes.auth.get_db', return_value=self.db):
+            with self.client.session_transaction() as browser_session:
+                browser_session['guardian_id'] = 2
+                browser_session['guardian_nome'] = 'Outra Conta'
+                browser_session['guardian_session_version'] = 0
+            response = self.client.get('/portal-encarregado?aluno=10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'Mensagem privada', response.data)
 
     def test_inactive_student_is_hidden_and_cannot_receive_portal_complaints(self):
         self.db.execute('UPDATE students SET ativo = 0 WHERE id = 10')

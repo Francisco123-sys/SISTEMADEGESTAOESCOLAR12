@@ -3,6 +3,7 @@ import sqlite3
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 from database.complaint_migrations import migrate_complaint_schema
+from services.db import ensure_same_database_target, get_database_url
 
 load_dotenv()
 
@@ -16,13 +17,10 @@ SQLITE_DATABASE_PATH = 'database/sige.db'
 
 
 def _get_pg_ddl_url():
-    url = (
-        os.getenv('DATABASE_URL_UNPOOLED')
-        or os.getenv('POSTGRES_URL_NON_POOLING')
-        or os.getenv('DATABASE_URL')
-        or os.getenv('POSTGRES_URL')
-        or ''
-    ).strip()
+    runtime_url = get_database_url()
+    url = get_database_url(prefer_unpooled=True)
+    if runtime_url and url:
+        ensure_same_database_target(runtime_url, url)
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
     return url

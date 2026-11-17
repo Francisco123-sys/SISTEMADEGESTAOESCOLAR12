@@ -20,6 +20,7 @@ class SecretaryDashboardTests(unittest.TestCase):
             {'total': 5},
             {'total': 3},
             {'total': 20},
+            {'total': 0},
         ]
         cursor.fetchall.return_value = []
         db = Mock()
@@ -52,6 +53,8 @@ class SecretaryDashboardTests(unittest.TestCase):
         self.assertIn(b'>3</span>', response.data)
         self.assertIn(b'Pagamentos registados', response.data)
         self.assertIn(b'>20</span>', response.data)
+        self.assertIn(b'Reclama\xc3\xa7\xc3\xb5es novas', response.data)
+        self.assertIn(b'secretary-new-complaints', response.data)
         self.assertIn(b'Emitir listas nominais', response.data)
         self.assertIn(b'Gerir encarregados', response.data)
         self.assertIn(b'Nenhum pagamento registado.', response.data)
@@ -72,6 +75,7 @@ class SecretaryDashboardTests(unittest.TestCase):
             {'total': 3},
             {'total': 20},
             {'total': 2450.50},
+            {'total': 0},
         ]
         with self.client.session_transaction() as browser_session:
             browser_session['user_role'] = 'chefe_secretaria'

@@ -68,12 +68,27 @@ def notify_guardian(cursor, complaint, message_id, kind, event_prefix):
     if complaint['guardian_id'] is not None:
         guardian_ids.append(complaint['guardian_id'])
     else:
+        complaint_keys = complaint.keys()
+        guardian_name = (
+            complaint['nome_encarregado']
+            if 'nome_encarregado' in complaint_keys else None
+        )
+        guardian_contact = (
+            complaint['contacto']
+            if 'contacto' in complaint_keys else None
+        )
         cursor.execute('''
             SELECT gs.guardian_id
             FROM guardian_students gs
             JOIN guardians g ON g.id = gs.guardian_id
             WHERE gs.student_id = ? AND g.ativo = 1
-        ''', (complaint['student_id'],))
+              AND LOWER(TRIM(g.nome)) = LOWER(TRIM(?))
+              AND COALESCE(TRIM(g.contacto), '') = COALESCE(TRIM(?), '')
+        ''', (
+            complaint['student_id'],
+            guardian_name,
+            guardian_contact,
+        ))
         guardian_ids.extend(row['guardian_id'] for row in cursor.fetchall())
 
     for guardian_id in dict.fromkeys(guardian_ids):

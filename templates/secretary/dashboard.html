@@ -43,6 +43,9 @@
     {% elif name == 'clipboard' %}
     <rect x="5" y="4" width="14" height="18" rx="2"/>
     <path d="M9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1M9 11h6M9 15h6"/>
+    {% elif name == 'bell' %}
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+    <path d="M10 21h4"/>
     {% endif %}
 </svg>
 {%- endmacro %}
@@ -102,6 +105,17 @@
                 <span class="secretary-stat-icon">{{ dashboard_icon('receipt') }}</span>
                 <span class="stat-value">{{ total_pagamentos }}</span>
                 <span class="stat-label">Pagamentos registados</span>
+            </a>
+            <a class="stat-card secretary-stat-card"
+               href="{{ url_for('secretary.gerenciar_reclamacoes') }}"
+               data-complaint-updates="{{ url_for('secretary.complaint_updates') }}">
+                <span class="secretary-stat-icon">{{ dashboard_icon('bell') }}</span>
+                <span class="stat-value" id="secretary-new-complaints">{{ reclamacoes_novas }}</span>
+                <span class="stat-label">Reclamações novas</span>
+                <span class="secretary-stat-link">
+                    <span class="secretary-icon-svg">{{ dashboard_icon('bell') }}</span>
+                    <span id="secretary-unread-notifications" aria-live="polite"></span>
+                </span>
             </a>
             {% if session.get('user_role') in ['chefe_secretaria', 'director', 'admin'] %}
             <div class="stat-card secretary-stat-card secretary-stat-revenue">
@@ -238,5 +252,29 @@
             </div>
         </section>
     </main>
+    <script>
+        (() => {
+            const card = document.querySelector('[data-complaint-updates]');
+            if (!card) return;
+            const refreshCounts = async () => {
+                if (document.hidden) return;
+                try {
+                    const response = await fetch(card.dataset.complaintUpdates, {
+                        cache: 'no-store',
+                        headers: { Accept: 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`Notification request failed: ${response.status}`);
+                    const data = await response.json();
+                    document.getElementById('secretary-new-complaints').textContent = data.new_count;
+                    document.getElementById('secretary-unread-notifications').textContent =
+                        data.unread_count ? `${data.unread_count} notificações por ler` : 'Sem notificações por ler';
+                } catch (error) {
+                    console.error('Não foi possível actualizar as notificações da Secretaria.', error);
+                }
+            };
+            refreshCounts();
+            window.setInterval(refreshCounts, 15000);
+        })();
+    </script>
 </body>
 </html>

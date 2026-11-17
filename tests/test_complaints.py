@@ -7,6 +7,32 @@ os.environ.setdefault('SECRET_KEY', 'test-secret-key')
 
 from app import app
 from database.complaint_migrations import migrate_complaint_schema
+from services.db import ensure_same_database_target, get_database_url
+
+
+class DatabaseConfigurationTests(unittest.TestCase):
+    def test_runtime_and_unpooled_precedence_select_the_same_database(self):
+        variables = {
+            'DATABASE_URL': 'postgresql://ep-sige-pooler.region.neon.tech/sige_dev',
+            'DATABASE_URL_UNPOOLED': 'postgresql://ep-sige.region.neon.tech/sige_dev',
+            'POSTGRES_URL': 'postgresql://ep-sige-pooler.region.neon.tech/sige_dev',
+            'POSTGRES_URL_NON_POOLING': 'postgresql://ep-sige.region.neon.tech/sige_dev',
+            'POSTGRES_PRISMA_URL': '',
+        }
+        with patch.dict(os.environ, variables):
+            runtime_url = get_database_url()
+            migration_url = get_database_url(prefer_unpooled=True)
+            ensure_same_database_target(runtime_url, migration_url)
+
+        self.assertIn('-pooler.', runtime_url)
+        self.assertNotIn('-pooler.', migration_url)
+
+    def test_migration_refuses_a_different_database_target(self):
+        with self.assertRaises(RuntimeError):
+            ensure_same_database_target(
+                'postgresql://ep-sige.region.neon.tech/sige_dev',
+                'postgresql://ep-sige.region.neon.tech/sige_prod',
+            )
 
 
 class ComplaintMigrationTests(unittest.TestCase):
@@ -15,7 +41,12 @@ class ComplaintMigrationTests(unittest.TestCase):
         db.row_factory = sqlite3.Row
         db.executescript('''
             CREATE TABLE users (id INTEGER PRIMARY KEY, role TEXT, ativo INTEGER);
-            CREATE TABLE guardians (id INTEGER PRIMARY KEY, ativo INTEGER);
+            CREATE TABLE guardians (
+                id INTEGER PRIMARY KEY, nome TEXT, contacto TEXT, ativo INTEGER
+            );
+            CREATE TABLE guardian_students (
+                guardian_id INTEGER, student_id INTEGER
+            );
             CREATE TABLE reclamacoes_encarregados (
                 id INTEGER PRIMARY KEY, student_id INTEGER, nome_encarregado TEXT,
                 contacto TEXT, mensagem TEXT, status TEXT, resposta_escola TEXT,
@@ -27,14 +58,16 @@ class ComplaintMigrationTests(unittest.TestCase):
                 body TEXT, created_at TIMESTAMP
             );
             INSERT INTO reclamacoes_encarregados VALUES
-                (1, 10, 'Encarregada', '', 'Pedido antigo', 'Respondida',
+                (1, 10, 'Encarregada', '841234567', 'Pedido antigo', 'Respondida',
                  'Resposta antiga', '2026-01-03 09:00:00');
+            INSERT INTO guardians VALUES (1, 'Encarregada', '841234567', 1);
+            INSERT INTO guardian_students VALUES (1, 10);
         ''')
         try:
             migrate_complaint_schema(db.cursor())
             migrate_complaint_schema(db.cursor())
             complaint = db.execute('''
-                SELECT mensagem, resposta_escola, estado, updated_at
+                SELECT mensagem, resposta_escola, estado, updated_at, guardian_id
                 FROM reclamacoes_encarregados WHERE id = 1
             ''').fetchone()
             message_columns = {
@@ -44,6 +77,7 @@ class ComplaintMigrationTests(unittest.TestCase):
             self.assertEqual(complaint['resposta_escola'], 'Resposta antiga')
             self.assertEqual(complaint['estado'], 'Respondida')
             self.assertEqual(str(complaint['updated_at'])[:10], '2026-01-03')
+            self.assertEqual(complaint['guardian_id'], 1)
             self.assertIn('message_key', message_columns)
         finally:
             db.close()
@@ -146,6 +180,14 @@ class ComplaintWorkflowTests(unittest.TestCase):
         self.assertEqual(portal.status_code, 200)
         self.assertIn(b'D\xc3\xbavida sobre matr\xc3\xadcula', portal.data)
         self.assertIn(b'Solicito esclarecimento', portal.data)
+        with patch('routes.auth.get_db', return_value=self.db):
+            portal_updates = self.client.get('/portal-encarregado/updates?aluno=10')
+        self.assertEqual(portal_updates.status_code, 200)
+        self.assertEqual(len(portal_updates.get_json()['messages']), 1)
+        self.assertEqual(
+            portal_updates.get_json()['messages'][0]['body'],
+            'Solicito esclarecimento sobre a matrícula.',
+        )
         self.assertEqual(
             self.db.execute('SELECT COUNT(*) FROM reclamacoes_encarregados').fetchone()[0],
             1,
@@ -160,6 +202,12 @@ class ComplaintWorkflowTests(unittest.TestCase):
             ).fetchone()[0],
             1,
         )
+        self._set_staff_session('secretary', 1)
+        with patch('routes.secretary.get_db', return_value=self.db):
+            updates = self.client.get('/secretary/reclamacoes/updates')
+        self.assertEqual(updates.status_code, 200)
+        self.assertEqual(updates.get_json()['new_count'], 1)
+        self.assertEqual(updates.get_json()['unread_count'], 1)
 
     def test_guardian_cannot_reply_to_unassociated_student_complaint(self):
         self.db.execute('''
@@ -200,6 +248,7 @@ class ComplaintWorkflowTests(unittest.TestCase):
 
         with patch('routes.secretary.get_db', return_value=self.db):
             inbox = self.client.get('/secretary/reclamacoes')
+            partial_inbox = self.client.get('/secretary/reclamacoes?_partial=1')
             reply = self.client.post('/secretary/reclamacoes', data={
                 'csrf_token': 'test-csrf-token',
                 'rec_id': str(complaint_id),
@@ -222,6 +271,8 @@ class ComplaintWorkflowTests(unittest.TestCase):
             })
 
         self.assertEqual(inbox.status_code, 200)
+        self.assertEqual(partial_inbox.status_code, 200)
+        self.assertIn(b'id="complaint-list"', partial_inbox.data)
         self.assertEqual(reply.status_code, 302)
         self.assertEqual(duplicate_reply.status_code, 302)
         self.assertEqual(forward.status_code, 302)
@@ -269,6 +320,11 @@ class ComplaintWorkflowTests(unittest.TestCase):
         with patch('routes.director.get_db', return_value=self.db):
             response = self.client.get('/director/reclamacoes')
         self.assertEqual(response.status_code, 302)
+
+    def test_staff_notifications_endpoint_rejects_unauthorized_profiles(self):
+        with patch('routes.secretary.get_db', return_value=self.db):
+            response = self.client.get('/secretary/reclamacoes/updates')
+        self.assertEqual(response.status_code, 403)
 
 
 if __name__ == '__main__':

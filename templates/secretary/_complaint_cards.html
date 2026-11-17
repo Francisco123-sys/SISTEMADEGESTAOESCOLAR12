@@ -1,0 +1,89 @@
+<section class="complaint-list" id="complaint-list">
+    {% for r in reclamacoes %}
+    <article class="complaint-card" id="complaint-{{ r.id }}">
+        <header class="complaint-heading">
+            <div>
+                <h2>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h2>
+                <div class="complaint-meta">
+                    <p><strong>Educando:</strong> {{ r.aluno_nome }} ({{ r.aluno_code }})</p>
+                    <p><strong>Encarregado:</strong> {{ r.nome_encarregado }}</p>
+                    <p><strong>Contacto:</strong> {{ r.contacto or 'Não indicado' }}</p>
+                    <p><strong>Categoria:</strong> {{ r.categoria or 'Outros Assuntos' }}</p>
+                    <p><strong>Recebida:</strong> {{ r.created_at|string }}</p>
+                </div>
+            </div>
+            <span class="complaint-state">{{ r.estado or r.status }}</span>
+        </header>
+        <div class="complaint-thread" aria-label="Conversa da reclamação">
+            {% if r.messages %}
+                {% for message in r.messages %}
+                <div class="complaint-message">
+                    <strong>
+                        {% if message.sender_type == 'guardian' %}Encarregado
+                        {% elif message.sender_type == 'director' %}Direcção
+                        {% else %}Secretaria{% endif %}
+                    </strong>
+                    <p>{{ message.body }}</p>
+                    <small>{{ message.created_at|string }}</small>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="complaint-message">
+                <strong>Encarregado</strong>
+                <p>{{ r.mensagem }}</p>
+            </div>
+            {% if r.resposta_escola %}
+            <div class="complaint-message">
+                <strong>Secretaria</strong>
+                <p>{{ r.resposta_escola }}</p>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+        <div class="complaint-actions">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="rec_id" value="{{ r.id }}">
+                <input type="hidden" name="action" value="reply">
+                <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
+                <label for="response-{{ r.id }}">Responder ao encarregado</label>
+                <textarea id="response-{{ r.id }}" name="resposta_escola" rows="3" maxlength="5000" required></textarea>
+                <button type="submit" class="btn btn-primary">Enviar resposta</button>
+            </form>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="rec_id" value="{{ r.id }}">
+                <input type="hidden" name="action" value="status">
+                <label for="state-{{ r.id }}">Actualizar estado</label>
+                <select id="state-{{ r.id }}" name="estado" required>
+                    {% for estado in complaint_states %}
+                    <option value="{{ estado }}" {% if r.estado == estado %}selected{% endif %}>{{ estado }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-secondary">Guardar estado</button>
+            </form>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="rec_id" value="{{ r.id }}">
+                <input type="hidden" name="action" value="forward">
+                <label for="forward-{{ r.id }}">Encaminhar à Direcção</label>
+                <textarea id="forward-{{ r.id }}" name="forward_reason" rows="3" maxlength="1000" placeholder="Motivo (opcional)"></textarea>
+                <button type="submit" class="btn btn-secondary">Encaminhar</button>
+                {% if r.forwarded_to_director %}<small>Já encaminhada à Direcção.</small>{% endif %}
+            </form>
+        </div>
+        {% if r.history %}
+        <details style="margin-top:16px;">
+            <summary>Histórico de estado</summary>
+            <ul>
+                {% for event in r.history %}
+                <li>{{ event.old_state or 'Criada' }} para {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+    </article>
+    {% else %}
+    <div class="card">Não existem reclamações para os filtros seleccionados.</div>
+    {% endfor %}
+</section>
