@@ -195,7 +195,7 @@
                 <tbody>
                     {% for r in reclamacoes %}
                     <tr>
-                        <td>{{ r.created_at[:10] }}</td>
+                        <td>{{ r.created_at_display }}</td>
                         <td>{{ r.nome_encarregado }}</td>
                         <td style="text-align:left;">{{ r.mensagem }}</td>
                         <td><strong>{{ r.status }}</strong></td>

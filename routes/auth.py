@@ -208,7 +208,16 @@ def portal_encarregado():
             FROM reclamacoes_encarregados
             WHERE student_id = ? ORDER BY id DESC
         ''', (aluno['id'],))
-        reclamacoes = cursor.fetchall()
+        reclamacoes = []
+        for row in cursor.fetchall():
+            reclamacao = dict(row)
+            created_at = reclamacao.get('created_at')
+            reclamacao['created_at_display'] = (
+                created_at.strftime('%Y-%m-%d')
+                if hasattr(created_at, 'strftime')
+                else str(created_at)[:10] if created_at else '—'
+            )
+            reclamacoes.append(reclamacao)
 
     return render_template(
         'portal_encarregado.html',

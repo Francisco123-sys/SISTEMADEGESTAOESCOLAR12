@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import sqlite3
 import unittest
@@ -11,11 +12,18 @@ from werkzeug.security import check_password_hash
 from app import app
 
 
+def _parse_timestamp(value):
+    return datetime.fromisoformat(value.decode())
+
+
+sqlite3.register_converter('TIMESTAMP', _parse_timestamp)
+
+
 class GuardianPortalTests(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True, SECRET_KEY='test-secret-key')
         self.client = app.test_client()
-        self.db = sqlite3.connect(':memory:')
+        self.db = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES)
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
             CREATE TABLE guardians (
@@ -67,7 +75,7 @@ class GuardianPortalTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
                 nome_encarregado TEXT, contacto TEXT, mensagem TEXT,
                 status TEXT DEFAULT 'Pendente', resposta_escola TEXT DEFAULT '',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             INSERT INTO students VALUES
                 (10, 'Educando Associado', 'ALU-10', 'BI-10', NULL, 8, 'Diurno', 'Manhã', 1, 1),
@@ -117,6 +125,36 @@ class GuardianPortalTests(unittest.TestCase):
 
         self.assertIn(b'Educando Associado', response.data)
         self.assertNotIn(b'Educando Alheio', response.data)
+
+    def test_portal_renders_complaint_timestamp_returned_as_datetime(self):
+        self.db.execute('''
+            INSERT INTO reclamacoes_encarregados (
+                student_id, nome_encarregado, mensagem, status, resposta_escola,
+                created_at
+            ) VALUES (10, 'Encarregada Teste', 'Pedido de esclarecimento',
+                      'Pendente', '', '2026-11-17 10:30:00')
+        ''')
+        self.db.commit()
+        stored_timestamp = self.db.execute(
+            'SELECT created_at FROM reclamacoes_encarregados'
+        ).fetchone()['created_at']
+        self.assertIsInstance(stored_timestamp, datetime)
+
+        with patch('routes.auth.get_db', return_value=self.db):
+            self.client.get('/portal-encarregado')
+            with self.client.session_transaction() as browser_session:
+                token = browser_session['_csrf_token']
+            self.client.post('/portal-encarregado', data={
+                'acao': 'login',
+                'csrf_token': token,
+                'email': 'encarregada@example.test',
+                'password': 'guardian-password-123',
+            })
+            response = self.client.get('/portal-encarregado?aluno=10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'2026-11-17', response.data)
+        self.assertIn(b'Pedido de esclarecimento', response.data)
 
     def test_inactive_student_is_hidden_and_cannot_receive_portal_complaints(self):
         self.db.execute('UPDATE students SET ativo = 0 WHERE id = 10')
