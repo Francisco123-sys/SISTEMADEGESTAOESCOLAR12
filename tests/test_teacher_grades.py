@@ -103,6 +103,63 @@ class TeacherGradeWorkflowTests(unittest.TestCase):
         self.assertEqual(tuple(rows[0]), (1, 13.0, 15.0, 13.8, 3, 'Submetida'))
         self.assertEqual(tuple(rows[1]), (2, 11.0, 10.0, 10.6, 0, 'Submetida'))
 
+    def test_dashboard_scopes_assignments_and_metrics_to_selected_trimester(self):
+        self.db.execute(
+            'INSERT INTO teacher_assignments (id, teacher_id, turma_id, subject_id) VALUES (2, 8, 2, 2)'
+        )
+        self.db.executemany('''
+            INSERT INTO grades (
+                student_id, subject_id, turma_id, trimestre, media_final, status
+            ) VALUES (?, 1, 1, 1, 12, 'Submetida')
+        ''', [(1,), (2,)])
+        self.db.commit()
+
+        with patch('routes.teacher.get_db', return_value=self.db):
+            submitted = self.client.get(
+                '/teacher/dashboard?ano_lectivo_id=1&trimestre=1&estado=submetida'
+            )
+            pending = self.client.get(
+                '/teacher/dashboard?ano_lectivo_id=1&trimestre=2&estado=pendente'
+            )
+
+        submitted_html = submitted.get_data(as_text=True)
+        pending_html = pending.get_data(as_text=True)
+        self.assertEqual(submitted.status_code, 200)
+        self.assertEqual(pending.status_code, 200)
+        self.assertIn('12ª A', submitted_html)
+        self.assertNotIn('8ª A', submitted_html)
+        self.assertIn('2 / 2', submitted_html)
+        self.assertIn('0 / 2', pending_html)
+        self.assertIn('Pendente', pending_html)
+
+    def test_grade_submission_for_another_trimester_is_not_blocked_by_first(self):
+        self.db.executemany('''
+            INSERT INTO grades (
+                student_id, subject_id, turma_id, trimestre, status
+            ) VALUES (?, 1, 1, 1, 'Submetida')
+        ''', [(1,), (2,)])
+        self.db.commit()
+
+        with (
+            patch('routes.teacher.get_db', return_value=self.db),
+            patch('routes.teacher.log_audit'),
+        ):
+            page = self.client.get('/teacher/grades/1/1?trimestre=2')
+            response = self.client.post(
+                '/teacher/grades/1/1?trimestre=2',
+                data=self._grade_form(trimestre='2'),
+            )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('2.º Trimestre', page.get_data(as_text=True))
+        self.assertEqual(response.status_code, 302)
+        quarter_counts = self.db.execute('''
+            SELECT trimestre, COUNT(*) AS total
+            FROM grades WHERE turma_id = 1 AND subject_id = 1
+            GROUP BY trimestre ORDER BY trimestre
+        ''').fetchall()
+        self.assertEqual([tuple(row) for row in quarter_counts], [(1, 2), (2, 2)])
+
     def test_rejects_out_of_range_scores_and_students_outside_assigned_class(self):
         invalid_forms = (
             self._grade_form(av1_1='20.1'),

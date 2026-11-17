@@ -2,93 +2,234 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>SIGE - Painel do Professor</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SIGE | Painel do Professor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="navbar" style="padding: 10px 30px;">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <img src="/static/img/emblema_moz.png" alt="Emblema da República de Moçambique" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
+    <header class="navbar secretary-navbar teacher-navbar">
+        <div class="secretary-brand">
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
+                 alt="Emblema da República de Moçambique">
             <div>
-                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala • Beira</div>
-                <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Portal do Docente</span></div>
+                <div class="secretary-brand-country">República de Moçambique · Província de Sofala</div>
+                <div class="brand">Escola Secundária da Manga</div>
+                <div class="secretary-brand-section">Painel do Professor</div>
             </div>
         </div>
-        <div>
+        <div class="secretary-user-nav">
             <span>Professor: {{ session.get('user_nome') }}</span>
-            <a href="/change-password" style="font-size:0.85rem;">🔑 Trocar Senha</a>
-            <form method="POST" action="/logout" style="display:inline;">
+            <a href="{{ url_for('auth.change_password') }}">Trocar palavra-passe</a>
+            <form method="POST" action="{{ url_for('auth.logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="nav-link" style="border:0;background:none;color:inherit;cursor:pointer;">Sair</button>
+                <button type="submit">Sair</button>
             </form>
         </div>
-    </div>
+    </header>
 
-    <div class="container" style="max-width: 1180px;">
+    <main class="container secretary-dashboard teacher-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
         {% endwith %}
 
-        <div class="card">
-            <h3 class="card-title">As Minhas Turmas, Indicadores Pedagógicos e Disciplinas Atribuídas</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Classe / Turma</th>
-                        <th>Disciplina</th>
-                        <th>Indicadores da Turma</th>
-                        <th>Aulas Dadas</th>
-                        <th>Estado Pauta</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for a in atribuicoes %}
-                    <tr>
-                        <td><strong>{{ a.classe_num }}ª Classe</strong><br>{{ a.turma_nome }} ({{ a.total_alunos }} alunos)</td>
-                        <td><strong>{{ a.disciplina_nome }}</strong></td>
-                        <td style="font-size:0.82rem; line-height:1.5;">
-                            {% if a.submetida_count > 0 %}
-                                Média Turma: <strong>{{ "%.1f"|format(a.media_turma or 0) }} val.</strong><br>
-                                <span style="color:#027A48;">✔ Positivas: {{ a.aprovados_count }}</span> |
-                                <span style="color:#B42318;">✖ Negativas: {{ a.negativas_count }}</span>
-                                {% if a.risco_faltas_count > 0 %}
-                                    <br><span style="color:#B54708; font-weight:600;">⚠️ {{ a.risco_faltas_count }} aluno(s) em risco por faltas</span>
-                                {% endif %}
-                            {% else %}
-                                <span style="color:#667085;">Aguardando lançamento de notas</span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            <strong>{{ a.total_aulas_dadas }}</strong> aula(s)
-                        </td>
-                        <td>
-                            {% if a.submetida_count > 0 %}
-                                <span style="background:#ECFDF3; color:#027A48; padding:3px 8px; border-radius:4px; font-weight:600; font-size:0.8rem;">🔒 Submetida</span>
-                            {% else %}
-                                <span style="background:#FFFAEB; color:#B54708; padding:3px 8px; border-radius:4px; font-weight:600; font-size:0.8rem;">Pendente</span>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if a.submetida_count > 0 %}
-                                <a href="/teacher/grades/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-warning" style="padding:5px 10px; font-size:0.82rem;">👁️ Consultar Pauta</a>
-                            {% else %}
-                                <a href="/teacher/grades/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-primary" style="padding:5px 10px; font-size:0.82rem;">✏️ Lançar Notas & Faltas</a>
-                            {% endif %}
-                            <a href="/teacher/sumarios/{{ a.turma_id }}/{{ a.subject_id }}" class="btn btn-primary" style="padding:5px 10px; font-size:0.82rem; background:#344054;">📘 Sumários</a>
-                            <a href="/teacher/pauta-oficial/{{ a.turma_id }}/{{ a.subject_id }}" target="_blank" class="btn btn-success" style="padding:5px 10px; font-size:0.82rem;">🖨️ Pauta A4</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="6">Nenhuma turma atribuída a este professor.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+        <section class="secretary-page-heading teacher-page-heading">
+            <div>
+                <p class="secretary-eyebrow">Área pedagógica</p>
+                <h1>As minhas turmas</h1>
+                <p>Acompanhe as pautas, os sumários e os indicadores das suas atribuições.</p>
+            </div>
+        </section>
+
+        <section class="stats-grid secretary-stats teacher-stats"
+                 aria-label="Indicadores das atribuições apresentadas">
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_turmas }}</span>
+                <span class="stat-label">Turmas atribuídas</span>
+            </article>
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_alunos }}</span>
+                <span class="stat-label">Alunos activos</span>
+            </article>
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_disciplinas }}</span>
+                <span class="stat-label">Disciplinas</span>
+            </article>
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_notas }}</span>
+                <span class="stat-label">Notas submetidas no trimestre</span>
+            </article>
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_notas_pendentes }}</span>
+                <span class="stat-label">Notas por lançar</span>
+            </article>
+            <article class="stat-card secretary-stat-card">
+                <span class="stat-value">{{ total_aulas }}</span>
+                <span class="stat-label">Sumários registados</span>
+            </article>
+        </section>
+
+        <section class="card secretary-section teacher-filter-section" aria-labelledby="teacher-filters-title">
+            <div class="secretary-section-heading">
+                <div>
+                    <p class="secretary-eyebrow">Consulta pedagógica</p>
+                    <h2 id="teacher-filters-title">Filtrar atribuições</h2>
+                </div>
+                <a class="teacher-clear-filters" href="{{ url_for('teacher.dashboard') }}">Limpar filtros</a>
+            </div>
+            <form method="GET" action="{{ url_for('teacher.dashboard') }}" class="teacher-filter-form">
+                <div class="teacher-filter-field">
+                    <label for="ano_lectivo_id">Ano lectivo</label>
+                    <select id="ano_lectivo_id" name="ano_lectivo_id">
+                        <option value="todos" {% if all_years or not selected_year_id %}selected{% endif %}>
+                            Todos os anos
+                        </option>
+                        {% for ano in academic_years %}
+                        <option value="{{ ano.id }}" {% if selected_year_id == ano.id %}selected{% endif %}>
+                            {{ ano.ano }}{% if ano.ativo %} · Actual{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="teacher-filter-field">
+                    <label for="classe">Classe</label>
+                    <select id="classe" name="classe">
+                        <option value="">Todas as classes</option>
+                        {% for classe in classes %}
+                        <option value="{{ classe.numero }}"
+                                {% if selected_class == classe.numero %}selected{% endif %}>
+                            {{ classe.numero }}.ª Classe
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="teacher-filter-field">
+                    <label for="turma_id">Turma</label>
+                    <select id="turma_id" name="turma_id">
+                        <option value="">Todas as turmas</option>
+                        {% for turma in turmas %}
+                        <option value="{{ turma.id }}"
+                                {% if selected_turma_id == turma.id %}selected{% endif %}>
+                            {{ turma.classe_num }}.ª · {{ turma.nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="teacher-filter-field">
+                    <label for="disciplina_id">Disciplina</label>
+                    <select id="disciplina_id" name="disciplina_id">
+                        <option value="">Todas as disciplinas</option>
+                        {% for disciplina in disciplinas %}
+                        <option value="{{ disciplina.id }}"
+                                {% if selected_subject_id == disciplina.id %}selected{% endif %}>
+                            {{ disciplina.nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="teacher-filter-field">
+                    <label for="trimestre">Trimestre</label>
+                    <select id="trimestre" name="trimestre">
+                        {% for numero in (1, 2, 3) %}
+                        <option value="{{ numero }}" {% if trimestre == numero %}selected{% endif %}>
+                            {{ numero }}.º Trimestre
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="teacher-filter-field">
+                    <label for="estado">Estado da pauta</label>
+                    <select id="estado" name="estado">
+                        <option value="todos" {% if estado_filtro == 'todos' %}selected{% endif %}>Todos os estados</option>
+                        <option value="pendente" {% if estado_filtro == 'pendente' %}selected{% endif %}>Pendente</option>
+                        <option value="em_curso" {% if estado_filtro == 'em_curso' %}selected{% endif %}>Em curso</option>
+                        <option value="submetida" {% if estado_filtro == 'submetida' %}selected{% endif %}>Submetida</option>
+                    </select>
+                </div>
+                <div class="teacher-filter-field teacher-search-field">
+                    <label for="q">Pesquisar</label>
+                    <input id="q" type="search" name="q" value="{{ busca }}"
+                           placeholder="Turma, disciplina ou classe">
+                </div>
+                <div class="teacher-filter-actions">
+                    <button class="btn btn-primary" type="submit">Aplicar filtros</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="teacher-assignment-section" aria-labelledby="teacher-assignments-title">
+            <div class="secretary-section-heading teacher-assignments-heading">
+                <div>
+                    <p class="secretary-eyebrow">Trabalho pedagógico</p>
+                    <h2 id="teacher-assignments-title">Atribuições encontradas</h2>
+                </div>
+                <span class="teacher-result-count">{{ atribuicoes|length }} atribuição(ões)</span>
+            </div>
+            <div class="teacher-assignment-grid">
+                {% for a in atribuicoes %}
+                <article class="card teacher-assignment-card">
+                    <div class="teacher-assignment-top">
+                        <div>
+                            <span class="teacher-class-label">{{ a.classe_num }}.ª Classe</span>
+                            <h3>{{ a.turma_nome }}</h3>
+                            <p>{{ a.disciplina_nome }}</p>
+                        </div>
+                        <span class="teacher-status teacher-status-{{ a.estado_pauta|lower|replace(' ', '-') }}">
+                            {{ a.estado_pauta }}
+                        </span>
+                    </div>
+
+                    <dl class="teacher-assignment-details">
+                        <div>
+                            <dt>Ano lectivo</dt>
+                            <dd>{{ a.ano_lectivo }}</dd>
+                        </div>
+                        <div>
+                            <dt>Turno</dt>
+                            <dd>{{ a.turno or 'Não definido' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Alunos activos</dt>
+                            <dd>{{ a.total_alunos }}</dd>
+                        </div>
+                        <div>
+                            <dt>Sumários</dt>
+                            <dd>{{ a.total_aulas_dadas }}</dd>
+                        </div>
+                    </dl>
+
+                    <div class="teacher-grade-progress">
+                        <div class="teacher-progress-label">
+                            <span>Notas submetidas no {{ trimestre }}.º trimestre</span>
+                            <strong>{{ a.notas_registadas }} / {{ a.total_alunos }}</strong>
+                        </div>
+                        <progress value="{{ a.progresso_notas }}" max="100"
+                                  aria-label="{{ a.progresso_notas }} por cento das notas submetidas"></progress>
+                        <small>{{ a.notas_pendentes }} nota(s) por lançar</small>
+                    </div>
+
+                    <div class="teacher-assignment-actions">
+                        {% if a.estado_pauta == 'Submetida' %}
+                        <a class="btn btn-warning" href="{{ a.grades_url }}">Consultar pauta</a>
+                        {% elif a.estado_pauta != 'Sem alunos activos' %}
+                        <a class="btn btn-primary" href="{{ a.grades_url }}">Lançar notas</a>
+                        {% endif %}
+                        <a class="btn teacher-secondary-action" href="{{ a.sumarios_url }}">Sumários</a>
+                        <a class="btn teacher-secondary-action" href="{{ a.pauta_url }}" target="_blank"
+                           rel="noopener">Pauta oficial</a>
+                    </div>
+                </article>
+                {% else %}
+                <div class="card teacher-empty-state">
+                    <h3>Nenhuma atribuição encontrada</h3>
+                    <p>Altere os filtros ou confirme com a Direcção se as suas turmas e disciplinas foram atribuídas.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
 </body>
 </html>

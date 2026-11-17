@@ -15,27 +15,241 @@ def dashboard():
     if not check_teacher():
         flash('Acesso negado.', 'danger')
         return redirect(url_for('auth.login_landing'))
-        
+
     db = get_db()
     cursor = db.cursor()
-    active_students = active_student_condition(cursor, 'st')
+    teacher_id = session['user_id']
     cursor.execute('''
-        SELECT ta.id, t.nome as turma_nome, s.nome as disciplina_nome, t.id as turma_id, s.id as subject_id, c.numero as classe_num,
-               (SELECT COUNT(*) FROM students st WHERE st.turma_id = t.id AND {active_students}) as total_alunos,
-               (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.status IN ('Submetida', 'Fechada')) as submetida_count,
-               (SELECT AVG(g.media_final) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id) as media_turma,
-               (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.media_final >= 9.5) as aprovados_count,
-               (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.media_final < 9.5) as negativas_count,
-               (SELECT COUNT(*) FROM grades g WHERE g.turma_id = t.id AND g.subject_id = s.id AND g.faltas_nao_justificadas >= ?) as risco_faltas_count,
-               (SELECT COUNT(*) FROM lesson_summaries ls WHERE ls.turma_id = t.id AND ls.subject_id = s.id) as total_aulas_dadas
+        SELECT DISTINCT ay.id, ay.ano, ay.ativo
         FROM teacher_assignments ta
-        JOIN turmas t ON ta.turma_id = t.id
-        JOIN subjects s ON ta.subject_id = s.id
-        JOIN classes c ON t.classe_id = c.id
+        JOIN turmas t ON t.id = ta.turma_id
+        JOIN academic_years ay ON ay.id = t.ano_lectivo_id
         WHERE ta.teacher_id = ?
-    '''.format(active_students=active_students), (LIMITE_FALTAS_INJUSTIFICADAS, session['user_id']))
-    atribuicoes = cursor.fetchall()
-    return render_template('teacher/dashboard.html', atribuicoes=atribuicoes)
+        ORDER BY ay.ano DESC
+    ''', (teacher_id,))
+    academic_years = cursor.fetchall()
+    year_ids = {row['id'] for row in academic_years}
+
+    cursor.execute('''
+        SELECT DISTINCT c.numero
+        FROM teacher_assignments ta
+        JOIN turmas t ON t.id = ta.turma_id
+        JOIN classes c ON c.id = t.classe_id
+        WHERE ta.teacher_id = ?
+        ORDER BY c.numero
+    ''', (teacher_id,))
+    classes = cursor.fetchall()
+    class_numbers = {row['numero'] for row in classes}
+
+    cursor.execute('''
+        SELECT DISTINCT t.id, t.nome, c.numero AS classe_num
+        FROM teacher_assignments ta
+        JOIN turmas t ON t.id = ta.turma_id
+        JOIN classes c ON c.id = t.classe_id
+        WHERE ta.teacher_id = ?
+        ORDER BY c.numero, t.nome
+    ''', (teacher_id,))
+    turmas = cursor.fetchall()
+    turma_ids = {row['id'] for row in turmas}
+
+    cursor.execute('''
+        SELECT DISTINCT sub.id, sub.nome
+        FROM teacher_assignments ta
+        JOIN subjects sub ON sub.id = ta.subject_id
+        WHERE ta.teacher_id = ?
+        ORDER BY sub.nome
+    ''', (teacher_id,))
+    disciplinas = cursor.fetchall()
+    subject_ids = {row['id'] for row in disciplinas}
+
+    raw_year = request.args.get('ano_lectivo_id', '').strip()
+    selected_year_id = request.args.get('ano_lectivo_id', type=int)
+    all_years = raw_year == 'todos'
+    if raw_year and selected_year_id is None and not all_years:
+        flash('Seleccione um ano lectivo válido.', 'warning')
+        raw_year = ''
+    if selected_year_id is not None and selected_year_id not in year_ids:
+        flash('O ano lectivo não pertence às atribuições deste professor.', 'warning')
+        selected_year_id = None
+        raw_year = ''
+        all_years = False
+    if not raw_year and not all_years:
+        active_year = next((row for row in academic_years if row['ativo'] == 1), None)
+        selected_year_id = active_year['id'] if active_year else None
+
+    selected_class = request.args.get('classe', type=int)
+    if selected_class not in class_numbers:
+        if request.args.get('classe'):
+            flash('A classe não pertence às atribuições deste professor.', 'warning')
+        selected_class = None
+    selected_turma_id = request.args.get('turma_id', type=int)
+    if selected_turma_id not in turma_ids:
+        if request.args.get('turma_id'):
+            flash('A turma não pertence às atribuições deste professor.', 'warning')
+        selected_turma_id = None
+    selected_subject_id = request.args.get('disciplina_id', type=int)
+    if selected_subject_id not in subject_ids:
+        if request.args.get('disciplina_id'):
+            flash('A disciplina não pertence às atribuições deste professor.', 'warning')
+        selected_subject_id = None
+
+    trimestre = request.args.get('trimestre', 1, type=int)
+    if trimestre not in (1, 2, 3):
+        flash('Seleccione um trimestre válido.', 'warning')
+        trimestre = 1
+    estado_filtro = request.args.get('estado', 'todos')
+    if estado_filtro not in ('todos', 'pendente', 'em_curso', 'submetida'):
+        estado_filtro = 'todos'
+    busca = request.args.get('q', '').strip()[:100]
+
+    active_students = active_student_condition(cursor, 'st')
+    active_grade_students = active_student_condition(cursor, 'sg')
+    where = ['ta.teacher_id = ?']
+    params = [teacher_id]
+    if selected_year_id is not None:
+        where.append('t.ano_lectivo_id = ?')
+        params.append(selected_year_id)
+    if selected_class is not None:
+        where.append('c.numero = ?')
+        params.append(selected_class)
+    if selected_turma_id is not None:
+        where.append('t.id = ?')
+        params.append(selected_turma_id)
+    if selected_subject_id is not None:
+        where.append('sub.id = ?')
+        params.append(selected_subject_id)
+    if busca:
+        where.append(
+            "(t.nome LIKE ? OR sub.nome LIKE ? OR CAST(c.numero AS TEXT) LIKE ?)"
+        )
+        search_pattern = f'%{busca}%'
+        params.extend((search_pattern, search_pattern, search_pattern))
+
+    assignment_query = f'''
+        SELECT ta.id, t.nome AS turma_nome, sub.nome AS disciplina_nome,
+               t.id AS turma_id, sub.id AS subject_id, c.numero AS classe_num,
+               t.ano_lectivo_id, ay.ano AS ano_lectivo, t.turno, t.curso,
+               (SELECT COUNT(*) FROM students st
+                WHERE st.turma_id = t.id AND {active_students}) AS total_alunos,
+               (SELECT COUNT(DISTINCT g.student_id)
+                FROM grades g
+                JOIN students sg ON sg.id = g.student_id
+                WHERE g.turma_id = t.id AND g.subject_id = sub.id
+                  AND g.trimestre = ? AND g.status IN ('Submetida', 'Fechada')
+                  AND {active_grade_students}) AS notas_registadas,
+               (SELECT AVG(g.media_final)
+                FROM grades g
+                JOIN students sg ON sg.id = g.student_id
+                WHERE g.turma_id = t.id AND g.subject_id = sub.id
+                  AND g.trimestre = ? AND g.status IN ('Submetida', 'Fechada')
+                  AND {active_grade_students}) AS media_turma,
+               (SELECT COUNT(DISTINCT g.student_id)
+                FROM grades g
+                JOIN students sg ON sg.id = g.student_id
+                WHERE g.turma_id = t.id AND g.subject_id = sub.id
+                  AND g.trimestre = ? AND g.status IN ('Submetida', 'Fechada')
+                  AND g.faltas_nao_justificadas >= ?
+                  AND {active_grade_students}) AS risco_faltas_count,
+               (SELECT COUNT(*) FROM lesson_summaries ls
+                WHERE ls.turma_id = t.id AND ls.subject_id = sub.id) AS total_aulas_dadas
+        FROM teacher_assignments ta
+        JOIN turmas t ON t.id = ta.turma_id
+        JOIN subjects sub ON sub.id = ta.subject_id
+        JOIN classes c ON c.id = t.classe_id
+        JOIN academic_years ay ON ay.id = t.ano_lectivo_id
+        WHERE {' AND '.join(where)}
+        ORDER BY c.numero, t.nome, sub.nome
+    '''
+    cursor.execute(
+        assignment_query,
+        [trimestre, trimestre, trimestre, LIMITE_FALTAS_INJUSTIFICADAS] + params,
+    )
+    atribuicoes = []
+    for row in cursor.fetchall():
+        assignment = dict(row)
+        assignment['notas_pendentes'] = max(
+            assignment['total_alunos'] - assignment['notas_registadas'], 0
+        )
+        assignment['progresso_notas'] = (
+            round(assignment['notas_registadas'] * 100 / assignment['total_alunos'])
+            if assignment['total_alunos'] else 0
+        )
+        if not assignment['total_alunos']:
+            assignment['estado_pauta'] = 'Sem alunos activos'
+        elif assignment['notas_registadas'] == assignment['total_alunos']:
+            assignment['estado_pauta'] = 'Submetida'
+        elif assignment['notas_registadas']:
+            assignment['estado_pauta'] = 'Em curso'
+        else:
+            assignment['estado_pauta'] = 'Pendente'
+        expected_status = {
+            'pendente': 'Pendente',
+            'em_curso': 'Em curso',
+            'submetida': 'Submetida',
+        }.get(estado_filtro)
+        if expected_status and assignment['estado_pauta'] != expected_status:
+            continue
+        assignment['grades_url'] = url_for(
+            'teacher.launch_grades',
+            turma_id=assignment['turma_id'],
+            subject_id=assignment['subject_id'],
+            trimestre=trimestre,
+        )
+        assignment['sumarios_url'] = url_for(
+            'teacher.sumarios',
+            turma_id=assignment['turma_id'],
+            subject_id=assignment['subject_id'],
+        )
+        assignment['pauta_url'] = url_for(
+            'teacher.pauta_oficial_impressao',
+            turma_id=assignment['turma_id'],
+            subject_id=assignment['subject_id'],
+        )
+        atribuicoes.append(assignment)
+
+    turma_ids_visiveis = {a['turma_id'] for a in atribuicoes}
+    total_alunos = 0
+    if turma_ids_visiveis:
+        placeholders = ', '.join('?' for _ in turma_ids_visiveis)
+        cursor.execute(
+            f'SELECT COUNT(DISTINCT s.id) AS total FROM students s '
+            f'WHERE s.turma_id IN ({placeholders}) AND {active_student_condition(cursor, "s")}',
+            list(turma_ids_visiveis),
+        )
+        total_alunos = cursor.fetchone()['total']
+
+    filter_values = {
+        'ano_lectivo_id': 'todos' if all_years else selected_year_id,
+        'classe': selected_class,
+        'turma_id': selected_turma_id,
+        'disciplina_id': selected_subject_id,
+        'trimestre': trimestre,
+        'estado': estado_filtro,
+        'q': busca,
+    }
+    return render_template(
+        'teacher/dashboard.html',
+        atribuicoes=atribuicoes,
+        academic_years=academic_years,
+        classes=classes,
+        turmas=turmas,
+        disciplinas=disciplinas,
+        selected_year_id=selected_year_id,
+        all_years=all_years,
+        selected_class=selected_class,
+        selected_turma_id=selected_turma_id,
+        selected_subject_id=selected_subject_id,
+        trimestre=trimestre,
+        estado_filtro=estado_filtro,
+        busca=busca,
+        filter_values=filter_values,
+        total_turmas=len(turma_ids_visiveis),
+        total_alunos=total_alunos,
+        total_disciplinas=len({a['subject_id'] for a in atribuicoes}),
+        total_notas=sum(a['notas_registadas'] for a in atribuicoes),
+        total_notas_pendentes=sum(a['notas_pendentes'] for a in atribuicoes),
+        total_aulas=sum(a['total_aulas_dadas'] for a in atribuicoes),
+    )
 
 @teacher_bp.route('/pauta-oficial/<int:turma_id>/<int:subject_id>')
 def pauta_oficial_impressao(turma_id, subject_id):
@@ -100,6 +314,10 @@ def pauta_oficial_impressao(turma_id, subject_id):
 def launch_grades(turma_id, subject_id):
     if not check_teacher():
         return redirect(url_for('auth.login_landing'))
+    trimestre = request.values.get('trimestre', 1, type=int)
+    if trimestre not in (1, 2, 3):
+        flash('Seleccione um trimestre válido.', 'warning')
+        return redirect(url_for('teacher.dashboard'))
     db = get_db()
     cursor = db.cursor()
     cursor.execute('SELECT id FROM teacher_assignments WHERE teacher_id = ? AND turma_id = ? AND subject_id = ?', 
@@ -120,14 +338,18 @@ def launch_grades(turma_id, subject_id):
 
     cursor.execute('''
         SELECT COUNT(*) as total FROM grades 
-        WHERE turma_id = ? AND subject_id = ? AND status IN ('Submetida', 'Fechada')
-    ''', (turma_id, subject_id))
+        WHERE turma_id = ? AND subject_id = ? AND trimestre = ?
+          AND status IN ('Submetida', 'Fechada')
+    ''', (turma_id, subject_id, trimestre))
     ja_submetida = cursor.fetchone()['total'] > 0
     
     if request.method == 'POST':
         if ja_submetida:
             flash('BLOQUEADO: As notas desta pauta já foram submetidas e não podem ser alteradas pelo professor. Apenas o Chefe da Secretaria ou o Director da Escola podem rectificar notas.', 'danger')
-            return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
+            return redirect(url_for(
+                'teacher.launch_grades', turma_id=turma_id,
+                subject_id=subject_id, trimestre=trimestre,
+            ))
 
         aluno_ids = request.form.getlist('student_id')
         cursor.execute(
@@ -141,7 +363,10 @@ def launch_grades(turma_id, subject_id):
             or set(aluno_ids) != expected_student_ids
         ):
             flash('A lista de alunos submetida não corresponde à turma atribuída.', 'danger')
-            return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
+            return redirect(url_for(
+                'teacher.launch_grades', turma_id=turma_id,
+                subject_id=subject_id, trimestre=trimestre,
+            ))
 
         validated_grades = []
         try:
@@ -171,7 +396,10 @@ def launch_grades(turma_id, subject_id):
                 validated_grades.append((sid, scores, exam, fj, fnj, comentario))
         except (InvalidOperation, TypeError, ValueError):
             flash('Notas, exames ou faltas inválidos. Verifique os valores e tente novamente.', 'danger')
-            return redirect(url_for('teacher.launch_grades', turma_id=turma_id, subject_id=subject_id))
+            return redirect(url_for(
+                'teacher.launch_grades', turma_id=turma_id,
+                subject_id=subject_id, trimestre=trimestre,
+            ))
 
         for sid, scores, exame_val, fj, fnj, comentario in validated_grades:
             av1, av2, av3, av4 = scores
@@ -189,26 +417,27 @@ def launch_grades(turma_id, subject_id):
                     faltas_justificadas, faltas_nao_justificadas, total_faltas,
                     comentario_professor, status
                 )
-                VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submetida')
-            ''', (sid, subject_id, turma_id, av1, av2, av3, av4, media_trim, exame_val, media_final,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submetida')
+            ''', (sid, subject_id, turma_id, trimestre, av1, av2, av3, av4, media_trim, exame_val, media_final,
                    fj, fnj, total_faltas, comentario))
         db.commit()
         log_audit(session['user_id'], 'SUBMISSAO_NOTAS_FALTAS',
                   f"Professor {session.get('user_nome')} submeteu pauta (notas, faltas e pareceres) Turma {turma_id}, Disciplina {subject_id}.")
         flash('Pauta (notas, faltas e pareceres pedagógicos) submetida e bloqueada com sucesso!', 'success')
-        return redirect(url_for('teacher.dashboard'))
+        return redirect(url_for('teacher.dashboard', trimestre=trimestre))
 
     cursor.execute('''
         SELECT s.id, s.code, s.nome, g.av1, g.av2, g.av3, g.av4, g.exame, g.media_final,
                g.faltas_justificadas, g.faltas_nao_justificadas, g.total_faltas, g.comentario_professor, g.status
         FROM students s
         LEFT JOIN grades g ON s.id = g.student_id AND g.subject_id = ? AND g.turma_id = ?
+            AND g.trimestre = ?
         WHERE s.turma_id = ? AND {active_students} ORDER BY s.nome ASC
-    '''.format(active_students=active_students), (subject_id, turma_id, turma_id))
+    '''.format(active_students=active_students), (subject_id, turma_id, trimestre, turma_id))
     alunos = cursor.fetchall()
     return render_template('teacher/grades.html', info=info, alunos=alunos, is_exame_class=is_exame_class,
                            turma_id=turma_id, subject_id=subject_id, ja_submetida=ja_submetida,
-                           limite_fnj=LIMITE_FALTAS_INJUSTIFICADAS)
+                           limite_fnj=LIMITE_FALTAS_INJUSTIFICADAS, trimestre=trimestre)
 
 # LIVRO DE PONTO DIGITAL / REGISTO DE SUMÁRIOS POR TURMA E DISCIPLINA
 @teacher_bp.route('/sumarios/<int:turma_id>/<int:subject_id>', methods=['GET', 'POST'])

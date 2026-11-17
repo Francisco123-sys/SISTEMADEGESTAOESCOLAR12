@@ -20,7 +20,7 @@
                 <div class="brand" style="font-size:1.15rem; line-height:1.2;">ESCOLA SECUNDÁRIA DA MANGA <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Lançamento de Notas, Faltas e Pareceres</span></div>
             </div>
         </div>
-        <a href="/teacher/dashboard">Voltar ao Painel</a>
+        <a href="{{ url_for('teacher.dashboard') }}">Voltar ao Painel</a>
     </div>
 
     <div class="container" style="max-width: 1280px;">
@@ -34,15 +34,15 @@
 
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-                <h3 class="card-title" style="margin:0;">Pauta: {{ info.turma_nome }} — Disciplina: {{ info.disciplina_nome }}</h3>
+                <h3 class="card-title" style="margin:0;">Pauta: {{ info.turma_nome }} — Disciplina: {{ info.disciplina_nome }} — {{ trimestre }}.º Trimestre</h3>
                 <span style="font-size:0.85rem; background:#EFF8FF; color:#175CD3; padding:5px 10px; border-radius:6px; border:1px solid #B2DDFF;">
-                    ℹ️ Limite de Faltas Não Justificadas (FNJ): <strong>{{ limite_fnj }}</strong> | Use <strong>Tab</strong> ou <strong>Enter</strong> para avançar
+                    Limite de Faltas Não Justificadas (FNJ): <strong>{{ limite_fnj }}</strong> | Use <strong>Tab</strong> ou <strong>Enter</strong> para avançar
                 </span>
             </div>
 
             {% if ja_submetida %}
             <div class="alert alert-warning">
-                <strong>🔒 Pauta Submetida e Bloqueada para Edição:</strong> As notas, faltas e pareceres desta disciplina já foram submetidos. Para rectificações, contacte o <strong>Chefe da Secretaria</strong> ou o <strong>Director da Escola</strong>.
+                <strong>Pauta submetida e bloqueada para edição:</strong> As notas, faltas e pareceres deste trimestre já foram submetidos. Para rectificações, contacte o <strong>Chefe da Secretaria</strong> ou o <strong>Director da Escola</strong>.
             </div>
             {% endif %}
 
@@ -56,6 +56,7 @@
 
             <form method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="trimestre" value="{{ trimestre }}">
                 <div style="overflow-x:auto;">
                     <table>
                         <thead>
