@@ -4492,3 +4492,322 @@ body.sige-sidebar-collapsed .sige-sidebar-logout button {
         max-height: none;
     }
 }
+
+/* SIGE Neon: shared premium dashboard surface */
+:root {
+    --sige-premium-navy: #0B1F3A;
+    --sige-premium-blue: #245B8F;
+    --sige-premium-blue-soft: #EFF6FC;
+    --sige-premium-surface: #FFFFFF;
+    --sige-premium-bg: #F4F7FB;
+    --sige-premium-border: #E2E8F0;
+}
+
+body:has(.sige-sidebar),
+body:has(.sige-topbar) {
+    background:
+        radial-gradient(circle at 92% 8%, rgba(36, 91, 143, 0.055), transparent 24rem),
+        var(--sige-premium-bg);
+}
+
+.card,
+.secretary-section,
+.director-dashboard > .card,
+.admin-dashboard > .card,
+.guardian-dashboard > .card,
+.student-browser-table-card,
+.student-profile-section,
+.teacher-assignment-card,
+.complaint-workspace > *,
+.grade-correction-card {
+    background: var(--sige-premium-surface);
+    border: 1px solid var(--sige-premium-border);
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(16, 24, 40, 0.055);
+}
+
+.card-title {
+    color: var(--sige-premium-navy);
+    border-bottom-color: var(--sige-premium-border);
+}
+
+.sige-topbar {
+    min-height: 74px;
+    background: var(--sige-premium-navy);
+    box-shadow: 0 3px 14px rgba(11, 31, 58, 0.14);
+}
+
+.sige-sidebar {
+    background: linear-gradient(180deg, #0B1F3A 0%, #102D4D 58%, #173B62 100%);
+    box-shadow: 8px 0 24px rgba(11, 31, 58, 0.10);
+}
+
+.sige-sidebar-heading {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sige-sidebar-mark {
+    background: #FFFFFF;
+    color: var(--sige-premium-navy);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.sige-sidebar-user {
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+}
+
+.sige-sidebar-nav {
+    gap: 4px;
+}
+
+.sige-sidebar-link {
+    position: relative;
+    min-height: 44px;
+    border-radius: 8px;
+}
+
+.sige-sidebar-link.is-active {
+    background: rgba(219, 234, 254, 0.16);
+    border: 1px solid rgba(147, 197, 253, 0.22);
+}
+
+.sige-sidebar-link.is-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 3px;
+    height: 22px;
+    border-radius: 0 3px 3px 0;
+    background: #93C5FD;
+}
+
+.sige-sidebar-logout button {
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+}
+
+.secretary-page-heading,
+.sige-active-users-heading {
+    margin-bottom: 18px;
+}
+
+.stats-grid,
+.director-dashboard-stats,
+.student-browser-card-grid,
+.sige-active-users-grid {
+    gap: 12px;
+}
+
+.stat-card,
+.sige-metric-card,
+.secretary-stat-card {
+    border: 1px solid var(--sige-premium-border);
+    border-radius: 12px;
+    box-shadow: 0 5px 16px rgba(16, 24, 40, 0.045);
+}
+
+.stat-card {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.stat-card[href]:hover {
+    border-color: #B8CCE2;
+    box-shadow: 0 8px 20px rgba(16, 24, 40, 0.075);
+    transform: translateY(-1px);
+}
+
+.secretary-stat-icon,
+.sige-metric-icon {
+    border-radius: 10px;
+}
+
+.secretary-quick-grid {
+    grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+    gap: 10px;
+}
+
+.secretary-quick-link {
+    min-height: 64px;
+    border-radius: 10px;
+    border-color: var(--sige-premium-border);
+    box-shadow: 0 2px 7px rgba(16, 24, 40, 0.035);
+}
+
+.secretary-quick-link:hover {
+    border-color: #A7C4DF;
+    box-shadow: 0 7px 16px rgba(16, 24, 40, 0.075);
+}
+
+.btn {
+    min-height: 38px;
+    border-radius: 7px;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-primary {
+    background: var(--sige-premium-blue);
+}
+
+.btn-primary:hover {
+    background: #1D4F78;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="date"],
+input[type="number"],
+input[type="time"],
+input[type="tel"],
+select,
+textarea {
+    border-radius: 8px;
+    background: #FCFDFE;
+    box-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.025);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: #84ADDA;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(36, 91, 143, 0.10);
+}
+
+.alert {
+    border-radius: 8px;
+}
+
+.secretary-table-wrap,
+.student-browser-table-card,
+.director-dashboard .secretary-table-wrap,
+.guardian-dashboard .secretary-table-wrap {
+    border-radius: 12px;
+}
+
+table {
+    border: 1px solid var(--sige-premium-border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+th {
+    height: 44px;
+    background: #EDF3F8;
+    color: #254158;
+    border-bottom: 1px solid #D9E2EC;
+}
+
+td {
+    border-bottom-color: #EDF1F5;
+}
+
+tbody tr {
+    transition: background-color 0.12s ease;
+}
+
+tbody tr:hover {
+    background: #F7FAFD;
+}
+
+.deletion-decision-form,
+.director-dashboard .card > div:first-child,
+.teacher-filter-actions,
+.student-browser-filter-actions,
+.grade-filter-actions {
+    flex-wrap: wrap;
+}
+
+.director-dashboard .card > div:first-child {
+    gap: 12px;
+}
+
+.director-dashboard .card > div:first-child > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.sige-active-user-card {
+    background: #F8FAFC;
+    border: 1px solid var(--sige-premium-border);
+    border-radius: 10px;
+}
+
+@media (max-width: 900px) {
+    .container,
+    .secretary-dashboard {
+        max-width: 100%;
+    }
+
+    .secretary-quick-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .director-dashboard .card > div:first-child {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .director-dashboard .card > div:first-child > div:last-child {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 600px) {
+    body:has(.sige-sidebar),
+    body:has(.sige-topbar) {
+        background: var(--sige-premium-bg);
+    }
+
+    .card,
+    .secretary-section,
+    .director-dashboard > .card,
+    .admin-dashboard > .card,
+    .guardian-dashboard > .card {
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(16, 24, 40, 0.04);
+    }
+
+    .secretary-quick-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .secretary-quick-link {
+        min-height: 58px;
+    }
+
+    .stats-grid,
+    .director-dashboard-stats,
+    .sige-active-users-grid {
+        gap: 8px;
+    }
+
+    table {
+        border: 0;
+        border-radius: 0;
+    }
+}
+
+@media print {
+    body:has(.sige-sidebar),
+    body:has(.sige-topbar) {
+        background: #FFFFFF;
+    }
+
+    .card,
+    .secretary-section,
+    .director-dashboard > .card,
+    .admin-dashboard > .card,
+    .guardian-dashboard > .card,
+    table,
+    .stat-card,
+    .sige-metric-card {
+        border: 0;
+        box-shadow: none;
+    }
+}

@@ -162,7 +162,7 @@ class SecretaryStudentBrowsingTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(html.count('class="sige-topbar"'), 1)
-        self.assertIn('css/style.css?v=lista-nominal-1', html)
+        self.assertIn('css/style.css?v=premium-1', html)
         self.assertIn('Lista Nominal de Alunos', html)
         self.assertIn('PDF para vitrine', html)
         self.assertIn('Baixar em Word (.DOCX)', html)
