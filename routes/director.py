@@ -144,8 +144,13 @@ def gerenciar_reclamacoes():
     ):
         view_filter = 'todas'
     search = request.args.get('q', '').strip()
+    try:
+        page = max(1, int(request.args.get('pagina', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 25
     conditions = ['r.forwarded_to_director = 1']
-    params = [session.get('user_id')]
+    params = []
     if search:
         conditions.append('''
             (CAST(r.id AS TEXT) LIKE ? OR s.nome LIKE ? OR s.code LIKE ?
@@ -169,8 +174,20 @@ def gerenciar_reclamacoes():
         conditions.append("r.estado = 'Respondida'")
     elif view_filter == 'resolvidas':
         conditions.append("r.estado = 'Resolvida'")
+    count_params = list(params)
+    cursor.execute(f'''
+        SELECT COUNT(*) AS total
+        FROM reclamacoes_encarregados r
+        JOIN students s ON s.id = r.student_id
+        WHERE {' AND '.join(conditions)}
+    ''', tuple(count_params))
+    complaint_total = cursor.fetchone()['total']
+    total_pages = max(1, (complaint_total + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
     cursor.execute(f'''
         SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code,
+               t.nome AS turma_nome,
                EXISTS (
                    SELECT 1 FROM complaint_notifications cn
                    WHERE cn.complaint_id = r.id
@@ -179,9 +196,11 @@ def gerenciar_reclamacoes():
                ) AS has_unread_activity
         FROM reclamacoes_encarregados r
         JOIN students s ON s.id = r.student_id
+        LEFT JOIN turmas t ON t.id = s.turma_id
         WHERE {' AND '.join(conditions)}
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC, r.id DESC
-    ''', tuple(params))
+        LIMIT ? OFFSET ?
+    ''', tuple([session.get('user_id')] + params + [per_page, offset]))
     complaints = cursor.fetchall()
     cursor.execute('''
         SELECT COUNT(*) AS total, COUNT(DISTINCT complaint_id) AS complaint_total
@@ -248,6 +267,9 @@ def gerenciar_reclamacoes():
         complaint_unread_case_count=complaint_unread_case_count,
         view_filter=view_filter,
         search=search,
+        complaint_page=page,
+        complaint_pages=total_pages,
+        complaint_total=complaint_total,
         complaint_message_keys={
             row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
             for row in complaints
@@ -817,46 +839,195 @@ def rectificar_notas():
     cursor = db.cursor()
 
     if request.method == 'POST':
-        grade_id = request.form.get('grade_id')
-        av1 = float(request.form.get('av1', 0))
-        av2 = float(request.form.get('av2', 0))
-        av3 = float(request.form.get('av3', 0))
-        av4 = float(request.form.get('av4', 0))
-        exame_raw = request.form.get('exame', '').strip()
+        grade_id = request.form.get('grade_id', type=int)
         motivo = request.form.get('motivo', '').strip()
-
-        media_trim = (av1 + av2 + av3 + av4) / 4.0
-        if exame_raw != '':
-            exame_val = float(exame_raw)
-            media_final = (media_trim * 0.6) + (exame_val * 0.4)
-        else:
-            exame_val = None
-            media_final = media_trim
+        if not grade_id:
+            flash('Seleccione uma nota válida.', 'danger')
+            return redirect(url_for('director.rectificar_notas'))
+        if not motivo or len(motivo) > 1000:
+            flash('O motivo da rectificação é obrigatório (máximo 1000 caracteres).', 'danger')
+            return redirect(url_for('director.rectificar_notas'))
 
         cursor.execute('''
-            UPDATE grades SET av1=?, av2=?, av3=?, av4=?, media_trimestral=?, exame=?, media_final=?
+            SELECT g.*, s.nome AS aluno_nome, s.code AS aluno_code,
+                   t.nome AS turma_nome, sub.nome AS disciplina_nome
+            FROM grades g
+            JOIN students s ON g.student_id = s.id
+            JOIN turmas t ON g.turma_id = t.id
+            JOIN subjects sub ON g.subject_id = sub.id
+            WHERE g.id = ?
+        ''', (grade_id,))
+        previous = cursor.fetchone()
+        if not previous:
+            flash('Nota não encontrada.', 'danger')
+            return redirect(url_for('director.rectificar_notas'))
+
+        score_fields = ('av1', 'av2', 'av3', 'av4')
+        scores = {}
+        try:
+            for field in score_fields:
+                value = float(request.form.get(field, previous[field]))
+                if value < 0 or value > 20:
+                    raise ValueError
+                scores[field] = value
+            exame_raw = request.form.get('exame', '').strip()
+            exame_val = None if exame_raw == '' else float(exame_raw)
+            if exame_val is not None and (exame_val < 0 or exame_val > 20):
+                raise ValueError
+        except (TypeError, ValueError):
+            flash('Notas inválidas. Utilize valores entre 0 e 20.', 'danger')
+            return redirect(url_for('director.rectificar_notas'))
+
+        media_trim = (
+            scores['av1'] + scores['av2'] + scores['av3'] + scores['av4']
+        ) / 4.0
+        media_final = (
+            (media_trim * 0.6) + (exame_val * 0.4)
+            if exame_val is not None else media_trim
+        )
+        cursor.execute('''
+            UPDATE grades
+            SET av1=?, av2=?, av3=?, av4=?, media_trimestral=?,
+                exame=?, media_final=?
             WHERE id=?
-        ''', (av1, av2, av3, av4, media_trim, exame_val, media_final, grade_id))
+        ''', (
+            scores['av1'], scores['av2'], scores['av3'], scores['av4'],
+            media_trim, exame_val, media_final, grade_id,
+        ))
         db.commit()
 
         log_audit(
             session['user_id'],
             'RECTIFICACAO_NOTA',
-            f"Nota ID {grade_id} alterada por {session.get('user_nome')}. Motivo: {motivo}",
+            (
+                f"Nota ID {grade_id} rectificada por {session.get('user_nome')}. "
+                f"Aluno {previous['aluno_nome']} ({previous['aluno_code']}); "
+                f"turma {previous['turma_nome']}; disciplina {previous['disciplina_nome']}. "
+                f"Notas anteriores: AV1={previous['av1']}, AV2={previous['av2']}, "
+                f"AV3={previous['av3']}, AV4={previous['av4']}, "
+                f"exame={previous['exame'] if previous['exame'] is not None else '-'}. "
+                f"Notas novas: AV1={scores['av1']}, AV2={scores['av2']}, "
+                f"AV3={scores['av3']}, AV4={scores['av4']}, "
+                f"exame={exame_val if exame_val is not None else '-'}. "
+                f"Motivo: {motivo}"
+            ),
             module='Notas e pautas',
-            affected_record=f'Nota ID {grade_id}',
-            change_details=f'Notas rectificadas. Motivo: {motivo or "Não indicado"}.',
+            affected_record=f'Nota ID {grade_id}; aluno {previous["aluno_code"]}',
+            change_details=(
+                f"Valores anteriores → novos: "
+                f"AV1 {previous['av1']}→{scores['av1']}, "
+                f"AV2 {previous['av2']}→{scores['av2']}, "
+                f"AV3 {previous['av3']}→{scores['av3']}, "
+                f"AV4 {previous['av4']}→{scores['av4']}, "
+                f"exame {previous['exame'] if previous['exame'] is not None else '-'}"
+                f"→{exame_val if exame_val is not None else '-'}. "
+                f"Justificação: {motivo}"
+            ),
         )
         flash('Nota rectificada com sucesso e registada no trilho de auditoria!', 'success')
-        return redirect(url_for('director.rectificar_notas'))
+        return redirect(url_for(
+            'director.rectificar_notas',
+            classe_id=request.form.get('classe_id'),
+            turma_id=request.form.get('turma_id'),
+            subject_id=request.form.get('subject_id'),
+            trimestre=request.form.get('trimestre'),
+            student_id=request.form.get('student_id'),
+        ))
 
-    cursor.execute('''
-        SELECT g.*, s.nome as aluno_nome, s.code as aluno_code, t.nome as turma_nome, sub.nome as disciplina_nome
-        FROM grades g
-        JOIN students s ON g.student_id = s.id
-        JOIN turmas t ON g.turma_id = t.id
-        JOIN subjects sub ON g.subject_id = sub.id
-        ORDER BY t.nome ASC, s.nome ASC
-    ''')
-    notas = cursor.fetchall()
-    return render_template('director/rectificar_notas.html', notas=notas)
+    classe_id = request.args.get('classe_id', type=int)
+    turma_id = request.args.get('turma_id', type=int)
+    subject_id = request.args.get('subject_id', type=int)
+    trimestre = request.args.get('trimestre', type=int)
+    student_id = request.args.get('student_id', type=int)
+    search = request.args.get('q', '').strip()
+
+    cursor.execute('SELECT id, numero FROM classes ORDER BY numero')
+    classes = cursor.fetchall()
+    turmas = []
+    if classe_id:
+        cursor.execute('''
+            SELECT id, nome, sala FROM turmas
+            WHERE classe_id = ? ORDER BY nome
+        ''', (classe_id,))
+        turmas = cursor.fetchall()
+    disciplinas = []
+    if turma_id:
+        cursor.execute('''
+            SELECT DISTINCT sub.id, sub.nome
+            FROM grades g
+            JOIN subjects sub ON sub.id = g.subject_id
+            WHERE g.turma_id = ?
+            ORDER BY sub.nome
+        ''', (turma_id,))
+        disciplinas = cursor.fetchall()
+
+    alunos = []
+    aluno_selecionado = None
+    notas_selecionadas = []
+    if turma_id and subject_id and trimestre:
+        conditions = [
+            'g.turma_id = ?',
+            'g.subject_id = ?',
+            'g.trimestre = ?',
+        ]
+        params = [turma_id, subject_id, trimestre]
+        if student_id:
+            conditions.append('g.student_id = ?')
+            params.append(student_id)
+        if search:
+            conditions.append('(s.nome LIKE ? OR s.code LIKE ?)')
+            params.extend([f'%{search}%', f'%{search}%'])
+        cursor.execute(f'''
+            SELECT g.id, g.student_id, g.av1, g.av2, g.av3, g.av4,
+                   g.exame, g.media_trimestral, g.media_final,
+                   s.nome AS aluno_nome, s.code AS aluno_code,
+                   t.nome AS turma_nome, c.numero AS classe_num,
+                   sub.nome AS disciplina_nome
+            FROM grades g
+            JOIN students s ON s.id = g.student_id
+            JOIN turmas t ON t.id = g.turma_id
+            JOIN classes c ON c.id = t.classe_id
+            JOIN subjects sub ON sub.id = g.subject_id
+            WHERE {' AND '.join(conditions)}
+            ORDER BY s.nome
+        ''', tuple(params))
+        notas_selecionadas = cursor.fetchall()
+
+        cursor.execute('''
+            SELECT s.id, s.code, s.nome,
+                   COUNT(g.id) AS total_pautas
+            FROM students s
+            LEFT JOIN grades g ON g.student_id = s.id
+                AND g.turma_id = ? AND g.subject_id = ?
+                AND g.trimestre = ?
+            WHERE s.turma_id = ?
+            GROUP BY s.id, s.code, s.nome
+            ORDER BY s.nome
+        ''', (turma_id, subject_id, trimestre, turma_id))
+        alunos = cursor.fetchall()
+        if student_id:
+            cursor.execute('''
+                SELECT s.id, s.code, s.nome,
+                       t.nome AS turma_nome, c.numero AS classe_num
+                FROM students s
+                JOIN turmas t ON t.id = s.turma_id
+                JOIN classes c ON c.id = t.classe_id
+                WHERE s.id = ?
+            ''', (student_id,))
+            aluno_selecionado = cursor.fetchone()
+
+    return render_template(
+        'director/rectificar_notas.html',
+        classes=classes,
+        turmas=turmas,
+        disciplinas=disciplinas,
+        alunos=alunos,
+        aluno_selecionado=aluno_selecionado,
+        notas=notas_selecionadas,
+        selected_classe_id=classe_id,
+        selected_turma_id=turma_id,
+        selected_subject_id=subject_id,
+        selected_trimestre=trimestre,
+        selected_student_id=student_id,
+        search=search,
+    )

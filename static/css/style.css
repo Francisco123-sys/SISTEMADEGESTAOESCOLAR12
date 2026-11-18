@@ -4107,3 +4107,399 @@ body.sige-sidebar-collapsed .sige-sidebar-logout button {
         padding-left: 0;
     }
 }
+
+.complaint-workspace {
+    grid-template-columns: minmax(260px, 300px) minmax(360px, 1fr) minmax(250px, 300px);
+}
+
+.guardian-complaint-workspace {
+    grid-template-columns: minmax(240px, 310px) minmax(0, 1fr);
+}
+
+.complaint-details-column {
+    position: sticky;
+    top: 84px;
+    min-width: 0;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
+}
+
+.complaint-profile-details,
+.complaint-details-placeholder {
+    padding: 16px;
+    background: #FFFFFF;
+    border: 1px solid #DCE5EC;
+    border-radius: 12px;
+}
+
+.complaint-profile-details[hidden],
+.complaint-details-placeholder[hidden] {
+    display: none;
+}
+
+.complaint-profile-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 13px;
+    border-bottom: 1px solid #E7EDF2;
+}
+
+.complaint-profile-heading p,
+.complaint-profile-heading h3 {
+    margin: 0;
+}
+
+.complaint-profile-heading p {
+    color: #718298;
+    font-size: 0.72rem;
+}
+
+.complaint-profile-heading h3 {
+    margin-top: 3px;
+    color: #1D4160;
+    font-size: 0.92rem;
+}
+
+.complaint-profile-avatar {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    place-items: center;
+    color: #FFFFFF;
+    background: #4E7E9F;
+    border-radius: 50%;
+    font-weight: 800;
+}
+
+.complaint-profile-data {
+    display: grid;
+    gap: 10px;
+    margin: 13px 0 0;
+}
+
+.complaint-profile-data div {
+    min-width: 0;
+}
+
+.complaint-profile-data dt {
+    color: #718298;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.complaint-profile-data dd {
+    margin: 3px 0 0;
+    color: #354A5D;
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.complaint-details-section {
+    margin-top: 15px;
+    padding-top: 13px;
+    border-top: 1px solid #E7EDF2;
+}
+
+.complaint-details-section h3 {
+    margin: 0;
+    color: #31516B;
+    font-size: 0.86rem;
+}
+
+.complaint-tracking-summary {
+    display: grid;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.complaint-tracking-summary li {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.75fr) minmax(0, 1.25fr);
+    gap: 8px;
+    color: #718298;
+    font-size: 0.76rem;
+}
+
+.complaint-tracking-summary strong {
+    color: #354A5D;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.complaint-details-placeholder {
+    color: #718298;
+    text-align: center;
+}
+
+.complaint-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.complaint-pagination > span {
+    color: #526579;
+    font-size: 0.82rem;
+}
+
+.grade-correction-page {
+    max-width: 1500px;
+}
+
+.grade-correction-heading {
+    margin-bottom: 18px;
+}
+
+.grade-correction-heading h1 {
+    margin: 4px 0 6px;
+    color: #173451;
+}
+
+.grade-correction-heading p:last-child {
+    margin: 0;
+    color: #667085;
+}
+
+.grade-correction-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(220px, 1.35fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.grade-filter-field,
+.grade-filter-actions {
+    min-width: 0;
+}
+
+.grade-filter-field label {
+    display: block;
+    margin-bottom: 6px;
+    color: #34495C;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.grade-filter-actions {
+    padding-bottom: 1px;
+}
+
+.grade-correction-workspace {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.grade-student-list,
+.grade-correction-card,
+.grade-correction-placeholder {
+    min-width: 0;
+}
+
+.grade-section-heading,
+.grade-correction-card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.grade-section-heading h2,
+.grade-correction-card-heading h2,
+.grade-correction-placeholder h2 {
+    margin: 3px 0 0;
+    color: #173451;
+}
+
+.grade-section-heading > span,
+.grade-correction-period {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    color: #315D80;
+    background: #EAF3FA;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.grade-student-options {
+    display: grid;
+    gap: 7px;
+    max-height: 620px;
+    margin-top: 14px;
+    overflow-y: auto;
+}
+
+.grade-student-option {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    min-height: 58px;
+    padding: 8px;
+    color: #34495C;
+    background: #FFFFFF;
+    border: 1px solid #DEE7EE;
+    border-radius: 9px;
+    text-decoration: none;
+}
+
+.grade-student-option:hover,
+.grade-student-option:focus-visible,
+.grade-student-option.is-selected {
+    border-color: #78A0BF;
+    background: #F3F8FC;
+    outline: none;
+}
+
+.grade-student-option.is-selected {
+    box-shadow: inset 3px 0 #3E7DA5;
+}
+
+.grade-student-avatar {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    color: #FFFFFF;
+    background: #557F9D;
+    border-radius: 50%;
+    font-weight: 800;
+}
+
+.grade-student-option strong,
+.grade-student-option small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.grade-student-option strong {
+    color: #263F56;
+    font-size: 0.84rem;
+}
+
+.grade-student-option small,
+.grade-student-count {
+    color: #718298;
+    font-size: 0.72rem;
+}
+
+.grade-correction-card-heading {
+    padding-bottom: 14px;
+    border-bottom: 1px solid #E7EDF2;
+}
+
+.grade-correction-card-heading p:not(.secretary-eyebrow) {
+    margin: 5px 0 0;
+    color: #667085;
+}
+
+.grade-correction-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.grade-correction-summary div {
+    padding: 12px;
+    background: #F7FAFC;
+    border: 1px solid #E7EDF2;
+    border-radius: 9px;
+}
+
+.grade-correction-summary dt {
+    color: #718298;
+    font-size: 0.72rem;
+}
+
+.grade-correction-summary dd {
+    margin: 5px 0 0;
+    color: #173451;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.grade-correction-score-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.grade-correction-motive {
+    margin-top: 14px;
+}
+
+.grade-correction-form > .btn {
+    margin-top: 12px;
+}
+
+.grade-correction-placeholder,
+.grade-empty-state {
+    color: #718298;
+    text-align: center;
+}
+
+.grade-correction-placeholder {
+    min-height: 280px;
+    display: grid;
+    place-content: center;
+    gap: 7px;
+}
+
+.grade-correction-placeholder > span {
+    color: #6E9AB8;
+    font-size: 2rem;
+}
+
+@media (max-width: 1250px) {
+    .complaint-workspace {
+        grid-template-columns: minmax(250px, 280px) minmax(340px, 1fr);
+    }
+    .complaint-details-column {
+        display: none;
+    }
+    .grade-correction-filters {
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+    }
+    .grade-correction-score-grid {
+        grid-template-columns: repeat(3, minmax(120px, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .complaint-workspace {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .complaint-details-column {
+        display: none;
+    }
+    .complaint-pagination {
+        flex-wrap: wrap;
+    }
+    .grade-correction-filters,
+    .grade-correction-summary,
+    .grade-correction-score-grid,
+    .grade-correction-workspace {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .grade-filter-actions .btn {
+        width: 100%;
+    }
+    .grade-correction-card-heading {
+        flex-direction: column;
+    }
+    .grade-student-options {
+        max-height: none;
+    }
+}

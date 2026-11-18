@@ -124,4 +124,45 @@
         </div>
         {% endfor %}
     </div>
+    <aside class="complaint-details-column" aria-label="Detalhes da reclamação">
+        {% for r in reclamacoes %}
+        <section class="complaint-profile-details" data-complaint-details="{{ r.id }}" hidden>
+            <div class="complaint-profile-heading">
+                <span class="complaint-profile-avatar" aria-hidden="true">
+                    {{ (r.nome_encarregado or 'Encarregado')[:1]|upper }}
+                </span>
+                <div>
+                    <p>Encarregado de Educação</p>
+                    <h3>{{ r.nome_encarregado or 'Não informado' }}</h3>
+                </div>
+            </div>
+            <dl class="complaint-profile-data">
+                <div><dt>Aluno associado</dt><dd>{{ r.aluno_nome }} · {{ r.aluno_code }}</dd></div>
+                <div><dt>Turma</dt><dd>{{ r.turma_nome or 'Não indicada' }}</dd></div>
+                <div><dt>Contacto</dt><dd>{{ r.contacto or 'Não indicado' }}</dd></div>
+            </dl>
+            <div class="complaint-details-section">
+                <h3>Informações da ocorrência</h3>
+                <dl class="complaint-profile-data">
+                    <div><dt>Referência</dt><dd>#{{ r.id }}</dd></div>
+                    <div><dt>Assunto</dt><dd>{{ r.assunto or 'Não indicado' }}</dd></div>
+                    <div><dt>Categoria</dt><dd>{{ r.categoria or 'Outros Assuntos' }}</dd></div>
+                    <div><dt>Submetida</dt><dd>{{ r.created_at|string }}</dd></div>
+                    <div><dt>Estado</dt><dd>{{ r.estado or r.status }}</dd></div>
+                    <div><dt>Responsável</dt><dd>{{ 'Direcção' if r.forwarded_to_director else 'Secretaria' }}</dd></div>
+                </dl>
+            </div>
+            <div class="complaint-details-section">
+                <h3>Acompanhamento</h3>
+                <ul class="complaint-tracking-summary">
+                    <li><span>Recepção</span><strong>{{ r.created_at|string }}</strong></li>
+                    <li><span>Última actividade</span><strong>{{ (r.updated_at or r.created_at)|string }}</strong></li>
+                    <li><span>Encaminhamento</span><strong>{{ 'Sim' if r.forwarded_to_director else 'Não' }}</strong></li>
+                    <li><span>Situação</span><strong>{{ r.estado or r.status }}</strong></li>
+                </ul>
+            </div>
+        </section>
+        {% endfor %}
+        <div class="complaint-details-placeholder">Seleccione uma reclamação para consultar os detalhes.</div>
+    </aside>
 </section>

@@ -2666,6 +2666,12 @@ def gerenciar_reclamacoes():
     state_filter = request.args.get('estado', '').strip()
     category_filter = request.args.get('categoria', '').strip()
     search = request.args.get('q', '').strip()
+    try:
+        page = max(1, int(request.args.get('pagina', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 25
+    offset = (page - 1) * per_page
     view_filter = request.args.get('filtro', 'todas').strip()
     if view_filter not in (
         'todas', 'novas', 'nao_lidas', 'em_tratamento',
@@ -2705,8 +2711,20 @@ def gerenciar_reclamacoes():
         conditions.append("r.estado = 'Respondida'")
     elif view_filter == 'resolvidas':
         conditions.append("r.estado = 'Resolvida'")
+    count_params = list(params)
+    cursor.execute(f'''
+        SELECT COUNT(*) AS total
+        FROM reclamacoes_encarregados r
+        JOIN students s ON r.student_id = s.id
+        WHERE {' AND '.join(conditions)}
+    ''', tuple(count_params))
+    complaint_total = cursor.fetchone()['total']
+    total_pages = max(1, (complaint_total + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
     cursor.execute(f'''
         SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code,
+               t.nome AS turma_nome,
                EXISTS (
                    SELECT 1 FROM complaint_notifications cn
                    WHERE cn.complaint_id = r.id
@@ -2715,9 +2733,11 @@ def gerenciar_reclamacoes():
                ) AS has_unread_activity
         FROM reclamacoes_encarregados r
         JOIN students s ON r.student_id = s.id
+        LEFT JOIN turmas t ON t.id = s.turma_id
         WHERE {' AND '.join(conditions)}
         ORDER BY COALESCE(r.updated_at, r.created_at) DESC, r.id DESC
-    ''', tuple([session.get('user_id')] + params))
+        LIMIT ? OFFSET ?
+    ''', tuple([session.get('user_id')] + params + [per_page, offset]))
     reclamacoes = cursor.fetchall()
     cursor.execute('''
         SELECT COUNT(*) AS total FROM reclamacoes_encarregados
@@ -2799,6 +2819,9 @@ def gerenciar_reclamacoes():
         'selected_category': category_filter,
         'search': search,
         'view_filter': view_filter,
+        'complaint_page': page,
+        'complaint_pages': total_pages,
+        'complaint_total': complaint_total,
     }
     if request.args.get('_partial') == '1':
         return render_template('secretary/_complaint_cards.html', **template_context)

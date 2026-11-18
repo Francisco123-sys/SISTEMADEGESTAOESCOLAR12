@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Reclamações encaminhadas</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=responsive-2">
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
@@ -39,6 +39,23 @@
                 </form>
                 {% endif %}
             </section>
+            {% if complaint_pages > 1 %}
+            <nav class="complaint-pagination" aria-label="Paginação das reclamações">
+                {% if complaint_page > 1 %}
+                <a class="btn btn-secondary" href="{{ url_for(
+                    'director.gerenciar_reclamacoes', pagina=complaint_page-1,
+                    filtro=view_filter, q=search if search else none
+                ) }}">Anterior</a>
+                {% endif %}
+                <span>Página {{ complaint_page }} de {{ complaint_pages }} · {{ complaint_total }} ocorrência(s)</span>
+                {% if complaint_page < complaint_pages %}
+                <a class="btn btn-primary" href="{{ url_for(
+                    'director.gerenciar_reclamacoes', pagina=complaint_page+1,
+                    filtro=view_filter, q=search if search else none
+                ) }}">Seguinte</a>
+                {% endif %}
+            </nav>
+            {% endif %}
             <form method="GET" class="complaint-filters">
                 <input type="hidden" name="filtro" value="{{ view_filter }}">
                 <div class="form-group">
@@ -181,6 +198,47 @@
                 </div>
                 {% endfor %}
             </div>
+            <aside class="complaint-details-column" aria-label="Detalhes da reclamação">
+                {% for r in reclamacoes %}
+                <section class="complaint-profile-details" data-complaint-details="{{ r.id }}" hidden>
+                    <div class="complaint-profile-heading">
+                        <span class="complaint-profile-avatar" aria-hidden="true">
+                            {{ (r.nome_encarregado or 'Encarregado')[:1]|upper }}
+                        </span>
+                        <div>
+                            <p>Encarregado de Educação</p>
+                            <h3>{{ r.nome_encarregado or 'Não informado' }}</h3>
+                        </div>
+                    </div>
+                    <dl class="complaint-profile-data">
+                        <div><dt>Aluno associado</dt><dd>{{ r.aluno_nome }} · {{ r.aluno_code }}</dd></div>
+                        <div><dt>Turma</dt><dd>{{ r.turma_nome or 'Não indicada' }}</dd></div>
+                        <div><dt>Contacto</dt><dd>{{ r.contacto or 'Não indicado' }}</dd></div>
+                    </dl>
+                    <div class="complaint-details-section">
+                        <h3>Informações da ocorrência</h3>
+                        <dl class="complaint-profile-data">
+                            <div><dt>Referência</dt><dd>#{{ r.id }}</dd></div>
+                            <div><dt>Assunto</dt><dd>{{ r.assunto or 'Não indicado' }}</dd></div>
+                            <div><dt>Categoria</dt><dd>{{ r.categoria or 'Outros Assuntos' }}</dd></div>
+                            <div><dt>Submetida</dt><dd>{{ r.created_at|string }}</dd></div>
+                            <div><dt>Estado</dt><dd>{{ r.estado }}</dd></div>
+                            <div><dt>Responsável</dt><dd>Direcção</dd></div>
+                        </dl>
+                    </div>
+                    <div class="complaint-details-section">
+                        <h3>Acompanhamento</h3>
+                        <ul class="complaint-tracking-summary">
+                            <li><span>Recepção</span><strong>{{ r.created_at|string }}</strong></li>
+                            <li><span>Última actividade</span><strong>{{ (r.updated_at or r.created_at)|string }}</strong></li>
+                            <li><span>Encaminhamento</span><strong>Sim</strong></li>
+                            <li><span>Situação</span><strong>{{ r.estado }}</strong></li>
+                        </ul>
+                    </div>
+                </section>
+                {% endfor %}
+                <div class="complaint-details-placeholder">Seleccione uma reclamação para consultar os detalhes.</div>
+            </aside>
         </section>
     </main>
     <script src="{{ url_for('static', filename='js/complaint-center.js') }}" defer></script>

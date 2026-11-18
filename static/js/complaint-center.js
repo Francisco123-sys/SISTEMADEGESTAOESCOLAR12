@@ -14,6 +14,15 @@
             if (!detail || !selectedItem) return;
 
             details.forEach((item) => { item.hidden = item !== detail; });
+            const detailColumn = workspace.querySelector('.complaint-details-column');
+            if (detailColumn) {
+                const profiles = [...detailColumn.querySelectorAll('[data-complaint-details]')];
+                const profilePlaceholder = detailColumn.querySelector('.complaint-details-placeholder');
+                profiles.forEach((profile) => {
+                    profile.hidden = profile.dataset.complaintDetails !== String(id);
+                });
+                if (profilePlaceholder) profilePlaceholder.hidden = profiles.length > 0;
+            }
             items.forEach((item) => {
                 const active = item === selectedItem;
                 item.classList.toggle('is-selected', active);
@@ -38,6 +47,14 @@
                 item.classList.remove('is-selected');
                 item.setAttribute('aria-expanded', 'false');
             });
+            const detailColumn = workspace.querySelector('.complaint-details-column');
+            if (detailColumn) {
+                detailColumn.querySelectorAll('[data-complaint-details]').forEach((profile) => {
+                    profile.hidden = true;
+                });
+                const placeholder = detailColumn.querySelector('.complaint-details-placeholder');
+                if (placeholder) placeholder.hidden = false;
+            }
             workspace.classList.remove('has-selection', 'complaint-mobile-detail');
             if (returnFocus) selectedItem?.focus();
             if (window.location.hash.startsWith('#complaint-')) {

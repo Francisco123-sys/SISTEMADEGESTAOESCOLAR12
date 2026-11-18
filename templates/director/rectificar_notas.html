@@ -4,24 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Rectificação de Notas</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=responsive-2">
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Rectificação de Notas') }}
-    <div class="navbar" style="padding: 10px 30px;">
-        <div style="display:flex; align-items:center; gap:14px;">
-            <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">
-            <div>
-                <div style="font-size:0.72rem; letter-spacing:0.8px; opacity:0.85; text-transform:uppercase;">República de Moçambique • Província de Sofala</div>
-                <div class="brand" style="font-size:1.15rem; line-height:1.2;">Escola Secundária da Manga <span style="font-weight:400; font-size:0.9rem; opacity:0.9;">| Direção & Secretaria</span></div>
-            </div>
-        </div>
-        <div>
-            <a href="/director/dashboard">Voltar ao Painel</a>
-        </div>
-    </div>
-    <div class="container">
+    <main class="container grade-correction-page">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -30,49 +18,202 @@
           {% endif %}
         {% endwith %}
 
-        <div class="card">
-            <h3 class="card-title">Rectificação Exclusiva de Notas (Director & Chefe da Secretaria)</h3>
-            <p style="font-size:0.9rem; color:#666;">Apenas contas com privilégio de Direção ou Chefe da Secretaria podem rectificar notas após a submissão pelo professor. Todas as alterações são registadas permanentemente no Trilho de Auditoria.</p>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Turma</th>
-                        <th>Aluno</th>
-                        <th>Disciplina</th>
-                        <th>AV1</th>
-                        <th>AV2</th>
-                        <th>AV3</th>
-                        <th>AV4</th>
-                        <th>Média / Final</th>
-                        <th>Ação de Rectificação</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for n in notas %}
-                    <tr>
-                        <form method="POST">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <input type="hidden" name="grade_id" value="{{ n.id }}">
-                            <td>{{ n.turma_nome }}</td>
-                            <td>{{ n.aluno_nome }} ({{ n.aluno_code }})</td>
-                            <td><strong>{{ n.disciplina_nome }}</strong></td>
-                            <td><input type="number" step="0.1" min="0" max="20" name="av1" value="{{ n.av1 }}" style="width:60px;"></td>
-                            <td><input type="number" step="0.1" min="0" max="20" name="av2" value="{{ n.av2 }}" style="width:60px;"></td>
-                            <td><input type="number" step="0.1" min="0" max="20" name="av3" value="{{ n.av3 }}" style="width:60px;"></td>
-                            <td><input type="number" step="0.1" min="0" max="20" name="av4" value="{{ n.av4 }}" style="width:60px;"></td>
-                            <td><strong>{{ "%.1f"|format(n.media_final) }}</strong></td>
-                            <td>
-                                <input type="text" name="motivo" placeholder="Motivo obrigatório..." required style="width:140px; display:inline-block; font-size:0.8rem; padding:4px;">
-                                <button type="submit" class="btn btn-warning" style="padding:4px 10px; font-size:0.8rem;">Rectificar</button>
-                            </td>
-                        </form>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="9">Nenhuma nota registada no sistema.</td></tr>
+        <section class="grade-correction-heading">
+            <p class="secretary-eyebrow">Área académica autorizada</p>
+            <h1>Rectificação de Notas</h1>
+            <p>Seleccione a classe, a turma, a disciplina, o período lectivo e o aluno para consultar ou rectificar as avaliações.</p>
+        </section>
+
+        <form method="GET" class="card grade-correction-filters" aria-label="Seleccionar pauta">
+            <div class="grade-filter-field">
+                <label for="classe_id">1. Classe</label>
+                <select id="classe_id" name="classe_id" onchange="this.form.submit()">
+                    <option value="">Seleccione a classe</option>
+                    {% for classe in classes %}
+                    <option value="{{ classe.id }}" {% if selected_classe_id == classe.id %}selected{% endif %}>
+                        {{ classe.numero }}.ª Classe
+                    </option>
                     {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+                </select>
+            </div>
+            <div class="grade-filter-field">
+                <label for="turma_id">2. Turma</label>
+                <select id="turma_id" name="turma_id" {% if not selected_classe_id %}disabled{% endif %} onchange="this.form.submit()">
+                    <option value="">Seleccione a turma</option>
+                    {% for turma in turmas %}
+                    <option value="{{ turma.id }}" {% if selected_turma_id == turma.id %}selected{% endif %}>
+                        {{ turma.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="grade-filter-field">
+                <label for="subject_id">3. Disciplina</label>
+                <select id="subject_id" name="subject_id" {% if not selected_turma_id %}disabled{% endif %}>
+                    <option value="">Seleccione a disciplina</option>
+                    {% for disciplina in disciplinas %}
+                    <option value="{{ disciplina.id }}" {% if selected_subject_id == disciplina.id %}selected{% endif %}>
+                        {{ disciplina.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="grade-filter-field">
+                <label for="trimestre">4. Período lectivo</label>
+                <select id="trimestre" name="trimestre" {% if not selected_subject_id %}disabled{% endif %}>
+                    <option value="">Seleccione o período</option>
+                    {% for numero in (1, 2, 3) %}
+                    <option value="{{ numero }}" {% if selected_trimestre == numero %}selected{% endif %}>
+                        {{ numero }}.º Trimestre
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="grade-filter-field grade-filter-search">
+                <label for="q">5. Pesquisar aluno</label>
+                <input id="q" type="search" name="q" value="{{ search }}"
+                       placeholder="Nome, número ou código">
+            </div>
+            <div class="grade-filter-actions">
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </div>
+        </form>
+
+        {% if selected_turma_id and selected_subject_id and selected_trimestre %}
+        <section class="grade-correction-workspace" aria-label="Alunos e rectificações">
+            <div class="card grade-student-list">
+                <div class="grade-section-heading">
+                    <div>
+                        <p class="secretary-eyebrow">Passo 5</p>
+                        <h2>Seleccionar aluno</h2>
+                    </div>
+                    <span>{{ alunos|length }} aluno(s)</span>
+                </div>
+                <div class="grade-student-options">
+                    {% for aluno in alunos %}
+                    {% if not search or search|lower in aluno.nome|lower or search|lower in aluno.code|lower %}
+                    <a class="grade-student-option{% if selected_student_id == aluno.id %} is-selected{% endif %}"
+                       href="{{ url_for(
+                           'director.rectificar_notas',
+                           classe_id=selected_classe_id,
+                           turma_id=selected_turma_id,
+                           subject_id=selected_subject_id,
+                           trimestre=selected_trimestre,
+                           student_id=aluno.id,
+                           q=search if search else none
+                       ) }}">
+                        <span class="grade-student-avatar" aria-hidden="true">
+                            {{ aluno.nome[:1]|upper }}
+                        </span>
+                        <span>
+                            <strong>{{ aluno.nome }}</strong>
+                            <small>{{ aluno.code }}</small>
+                        </span>
+                        <span class="grade-student-count">{{ aluno.total_pautas }} pauta(s)</span>
+                    </a>
+                    {% endif %}
+                    {% else %}
+                    <div class="grade-empty-state">Não existem alunos nesta turma e período.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="grade-correction-detail">
+                {% if aluno_selecionado and notas %}
+                {% set nota = notas[0] %}
+                <article class="card grade-correction-card">
+                    <header class="grade-correction-card-heading">
+                        <div>
+                            <p class="secretary-eyebrow">Passo 6 · Rectificação</p>
+                            <h2>{{ aluno_selecionado.nome }}</h2>
+                            <p>{{ aluno_selecionado.code }} · {{ aluno_selecionado.classe_num }}.ª Classe · {{ aluno_selecionado.turma_nome }}</p>
+                        </div>
+                        <span class="grade-correction-period">{{ selected_trimestre }}.º Trimestre</span>
+                    </header>
+
+                    <dl class="grade-correction-summary">
+                        <div><dt>Disciplina</dt><dd>{{ nota.disciplina_nome }}</dd></div>
+                        <div><dt>Média actual</dt><dd data-grade-media>{{ "%.1f"|format(nota.media_trimestral or 0) }}</dd></div>
+                        <div><dt>Média final</dt><dd data-grade-final>{{ "%.1f"|format(nota.media_final or 0) }}</dd></div>
+                        {% if nota.exame is not none %}
+                        <div><dt>Exame</dt><dd data-grade-exam>{{ "%.1f"|format(nota.exame) }}</dd></div>
+                        {% endif %}
+                    </dl>
+
+                    <form method="POST" class="grade-correction-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="grade_id" value="{{ nota.id }}">
+                        <input type="hidden" name="classe_id" value="{{ selected_classe_id }}">
+                        <input type="hidden" name="turma_id" value="{{ selected_turma_id }}">
+                        <input type="hidden" name="subject_id" value="{{ selected_subject_id }}">
+                        <input type="hidden" name="trimestre" value="{{ selected_trimestre }}">
+                        <input type="hidden" name="student_id" value="{{ selected_student_id }}">
+
+                        <div class="grade-correction-score-grid">
+                            {% for field, label in (
+                                ('av1', 'Primeira Avaliação (AV1)'),
+                                ('av2', 'Segunda Avaliação (AV2)'),
+                                ('av3', 'Terceira Avaliação (AV3)'),
+                                ('av4', 'Quarta Avaliação (AV4)')
+                            ) %}
+                            <div class="form-group">
+                                <label for="{{ field }}">{{ label }}</label>
+                                <input id="{{ field }}" type="number" min="0" max="20" step="0.1"
+                                       name="{{ field }}" value="{{ nota[field] if nota[field] is not none else '' }}"
+                                       data-grade-score required>
+                            </div>
+                            {% endfor %}
+                            <div class="form-group">
+                                <label for="exame">Nota de exame <small>(quando aplicável)</small></label>
+                                <input id="exame" type="number" min="0" max="20" step="0.1"
+                                       name="exame" value="{{ nota.exame if nota.exame is not none else '' }}"
+                                       data-grade-exam-input>
+                            </div>
+                        </div>
+
+                        <div class="form-group grade-correction-motive">
+                            <label for="motivo">Motivo da rectificação <span aria-hidden="true">*</span></label>
+                            <textarea id="motivo" name="motivo" rows="3" maxlength="1000"
+                                      required placeholder="Indique a justificação da alteração"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-warning">Guardar Rectificação</button>
+                    </form>
+                </article>
+                {% else %}
+                <div class="card grade-correction-placeholder">
+                    <span aria-hidden="true">±</span>
+                    <h2>Seleccione um aluno</h2>
+                    <p>A ficha com as avaliações actuais aparecerá depois da selecção.</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+    </main>
+
+    <script>
+        (() => {
+            const scores = [...document.querySelectorAll('[data-grade-score]')];
+            const exam = document.querySelector('[data-grade-exam-input]');
+            const media = document.querySelector('[data-grade-media]');
+            const finalMedia = document.querySelector('[data-grade-final]');
+            if (!scores.length) return;
+            const update = () => {
+                const values = scores.map((input) => input.value === '' ? null : Number(input.value));
+                const filled = values.filter((value) => value !== null && Number.isFinite(value));
+                const period = filled.length ? filled.reduce((sum, value) => sum + value, 0) / filled.length : null;
+                if (media) media.textContent = period === null ? '—' : period.toFixed(1);
+                if (finalMedia) {
+                    const examValue = exam && exam.value !== '' ? Number(exam.value) : null;
+                    const finalValue = period === null ? null :
+                        (examValue !== null && Number.isFinite(examValue) ? period * 0.6 + examValue * 0.4 : period);
+                    finalMedia.textContent = finalValue === null ? '—' : finalValue.toFixed(1);
+                }
+            };
+            [...scores, exam].filter(Boolean).forEach((input) => input.addEventListener('input', update));
+            update();
+        })();
+    </script>
 </body>
 </html>

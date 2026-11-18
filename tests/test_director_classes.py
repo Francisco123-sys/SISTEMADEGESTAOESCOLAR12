@@ -34,7 +34,15 @@ class DirectorClassManagementTests(unittest.TestCase):
                 ano_lectivo_id INTEGER
             );
             CREATE TABLE students (
-                id INTEGER PRIMARY KEY, turma_id INTEGER, ativo INTEGER NOT NULL DEFAULT 1
+                id INTEGER PRIMARY KEY, turma_id INTEGER, code TEXT, nome TEXT,
+                ativo INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE subjects (id INTEGER PRIMARY KEY, nome TEXT);
+            CREATE TABLE grades (
+                id INTEGER PRIMARY KEY, student_id INTEGER, subject_id INTEGER,
+                turma_id INTEGER, trimestre INTEGER, av1 REAL, av2 REAL,
+                av3 REAL, av4 REAL, media_trimestral REAL, exame REAL,
+                media_final REAL
             );
             INSERT INTO academic_years VALUES (1, 2026, 1);
             INSERT INTO classes VALUES (8, 8), (10, 10);
@@ -46,7 +54,14 @@ class DirectorClassManagementTests(unittest.TestCase):
                 (4, '10ª A01', 'Sala 04', 'Manhã', 'Diurno', 30, 29, 'A', NULL, 10, 1),
                 (5, '10ª B01', 'Sala 05', 'Tarde', 'Diurno', 30, 30, 'B', NULL, 10, 1),
                 (6, '10ª C01', 'Sala 06', 'Manhã', 'Diurno', 30, 0, 'C', NULL, 10, 1);
-            INSERT INTO students (id, turma_id) VALUES (1, 1), (2, 1);
+            INSERT INTO students (id, turma_id, code, nome) VALUES
+                (1, 1, 'ALU-001', 'Aluno Um'),
+                (2, 1, 'ALU-002', 'Aluno Dois');
+            INSERT INTO subjects (id, nome) VALUES (1, 'Matemática');
+            INSERT INTO grades (
+                id, student_id, subject_id, turma_id, trimestre,
+                av1, av2, av3, av4, media_trimestral, exame, media_final
+            ) VALUES (1, 1, 1, 1, 1, 10, 11, 12, 13, 11.5, NULL, 11.5);
         ''')
         with self.client.session_transaction() as browser_session:
             browser_session['user_role'] = 'director'
@@ -83,6 +98,75 @@ class DirectorClassManagementTests(unittest.TestCase):
         self.assertNotIn(b'10\xc2\xaa A01', response.data)
         self.assertNotIn(b'10\xc2\xaa B01', response.data)
         self.assertIn(b'>1<', response.data)
+
+    def test_grade_rectification_filters_progressively_and_requires_reason(self):
+        with patch('routes.director.get_db', return_value=self.db):
+            initial = self.client.get('/director/rectificar-notas')
+            filtered = self.client.get(
+                '/director/rectificar-notas'
+                '?classe_id=8&turma_id=1&subject_id=1&trimestre=1&student_id=1'
+            )
+            missing_reason = self.client.post('/director/rectificar-notas', data={
+                'csrf_token': 'test-csrf-token',
+                'grade_id': '1',
+                'av1': '15',
+                'av2': '15',
+                'av3': '15',
+                'av4': '15',
+                'exame': '',
+                'motivo': '',
+                'classe_id': '8',
+                'turma_id': '1',
+                'subject_id': '1',
+                'trimestre': '1',
+                'student_id': '1',
+            })
+
+        self.assertEqual(initial.status_code, 200)
+        self.assertIn(b'Rectifica', initial.data)
+        self.assertEqual(filtered.status_code, 200)
+        self.assertIn('Aluno Um'.encode(), filtered.data)
+        self.assertEqual(missing_reason.status_code, 302)
+        row = self.db.execute(
+            'SELECT av1, av2, av3, av4 FROM grades WHERE id = 1'
+        ).fetchone()
+        self.assertEqual(tuple(row), (10.0, 11.0, 12.0, 13.0))
+
+    def test_grade_rectification_updates_and_logs_old_and_new_values(self):
+        with (
+            patch('routes.director.get_db', return_value=self.db),
+            patch('routes.director.log_audit') as audit,
+        ):
+            response = self.client.post('/director/rectificar-notas', data={
+                'csrf_token': 'test-csrf-token',
+                'grade_id': '1',
+                'av1': '14',
+                'av2': '15',
+                'av3': '16',
+                'av4': '17',
+                'exame': '',
+                'motivo': 'Erro de transcrição confirmado pelo documento',
+                'classe_id': '8',
+                'turma_id': '1',
+                'subject_id': '1',
+                'trimestre': '1',
+                'student_id': '1',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        row = self.db.execute(
+            'SELECT av1, av2, av3, av4, media_trimestral, media_final '
+            'FROM grades WHERE id = 1'
+        ).fetchone()
+        self.assertEqual(tuple(row), (14.0, 15.0, 16.0, 17.0, 15.5, 15.5))
+        audit.assert_called_once()
+        audit_text = ' '.join(str(argument) for argument in audit.call_args.args)
+        audit_text += ' ' + ' '.join(
+            str(argument) for argument in audit.call_args.kwargs.values()
+        )
+        self.assertIn('10.0', audit_text)
+        self.assertIn('14.0', audit_text)
+        self.assertIn('Erro de transcrição', audit_text)
 
     def test_capacity_cannot_be_lowered_below_enrollment(self):
         with patch('routes.director.get_db', return_value=self.db):
