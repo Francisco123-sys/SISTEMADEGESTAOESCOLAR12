@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: sige-escolar
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /
+    disk:
+      name: sige-files
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        value: ""
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SIGE_INSTANCE_PATH
+        value: /var/data/instance
+      - key: SIGE_UPLOAD_DIRECTORY
+        value: /var/data/instance/student_uploads
+      - key: APP_BASE_URL
+        value: ""
+      - key: SMTP_HOST
+        value: ""
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        value: ""
+      - key: SMTP_PASSWORD
+        value: ""
+      - key: SMTP_FROM
+        value: ""
+      - key: SMTP_STARTTLS
+        value: "true"
+      - key: SMTP_USE_SSL
+        value: "false"
+      - key: SIGE_INITIAL_ADMIN_EMAIL
+        value: ""
+      - key: SIGE_INITIAL_ADMIN_PASSWORD
+        value: ""
+      - key: SIGE_INITIAL_ADMIN_NAME
+        value: ""
+      - key: SIGE_INITIAL_ADMIN_CONTACT
+        value: ""

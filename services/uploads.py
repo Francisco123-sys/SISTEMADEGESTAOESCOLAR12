@@ -6,7 +6,10 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 from werkzeug.datastructures import FileStorage
 
-UPLOAD_DIRECTORY = Path(__file__).resolve().parents[1] / 'instance' / 'student_uploads'
+UPLOAD_DIRECTORY = Path(
+    os.getenv('SIGE_UPLOAD_DIRECTORY')
+    or Path(__file__).resolve().parents[1] / 'instance' / 'student_uploads'
+)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
 

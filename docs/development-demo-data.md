@@ -1,36 +1,42 @@
-# SIGE Neon demonstration data
+# Dados escolares sintéticos para testes
 
-`scripts/seed_demo_data.py` is a development-only reset and data generator. It
-does not run `init-db`, alter the schema, send email, or contact external
-payment services.
+`scripts/seed_demo_data.py` apresenta primeiro um plano apenas de leitura. Por
+omissão prepara 1.000 alunos e permite seleccionar 2.000 ou 5.000. O plano
+abrange classes 8.ª a 12.ª, 30 turmas presenciais e à distância, avaliações,
+pagamentos internos e três professores adicionais. Não envia e-mail nem executa
+transacções externas.
 
-The command defaults to a read-only preview. Applying it requires all of the
-following:
+O script só aceita o PostgreSQL Neon `neondb/public` e exige confirmação dupla.
+Mesmo assim, confirme no painel Neon que o endpoint corresponde a uma base
+isolada de testes antes de qualquer `--apply`: uma ligação com o nome esperado
+não prova, por si só, que o banco não é de produção. O reset apaga os dados das
+tabelas escolares explicitamente permitidas, incluindo alunos, encarregados,
+turmas, pagamentos, notas, avaliações e associações. Não remove nem altera
+contas existentes na tabela `users`; verifica os registos das contas existentes
+antes de confirmar a transacção. As configurações de classes, disciplinas e ano
+lectivo são preservadas.
 
-- The PostgreSQL target is the explicitly confirmed Neon `neondb/public`
-  development database.
-- `SIGE_DEMO_RESET_CONFIRM=I_CONFIRM_DEVELOPMENT` is set in the process
-  environment and `--confirm-development-database neondb` is supplied.
-- A private full backup and its matching private manifest are provided.
-- The private credentials output path is outside the Git repository.
-
-Run the preview from the repository root as a module so project imports resolve:
+Pré-visualize a operação a partir da raiz do repositório:
 
 ```sh
 SIGE_DEMO_RESET_CONFIRM=I_CONFIRM_DEVELOPMENT \
   python -m scripts.seed_demo_data --confirm-development-database neondb
 ```
 
-The preview reports only the configured database/schema and row counts. It does
-not modify records.
+Para aplicar, forneça também um caminho de credenciais fora do repositório e
+com directório privado (permissões `0700`). Os dados são gravados numa única
+transacção; qualquer falha provoca rollback.
 
-The apply operation deletes only the allowlisted demonstration tables, in
-foreign-key order, and inserts the replacement data in the same transaction.
-If validation fails, the transaction is rolled back. School-year, class, and
-subject configuration tables are preserved. User credentials are individually
-generated, stored as password hashes in PostgreSQL, and written to a
-mode-`0600` file outside the repository.
+```sh
+SIGE_DEMO_RESET_CONFIRM=I_CONFIRM_DEVELOPMENT \
+  python -m scripts.seed_demo_data \
+  --confirm-development-database neondb \
+  --students 1000 \
+  --apply \
+  --credentials-output /caminho/privado/sige-test-credentials.json
+```
 
-The generated records use `.test` email addresses and `DEMO-` contact,
-document, payment, and record identifiers. They are fictitious and must not be
-used for real communication or payments.
+Não execute esse comando contra produção nem como parte do deployment. Os
+e-mails usam o domínio reservado `.invalid`; contactos são valores sintéticos
+não telefónicos. A senha temporária dos novos professores e encarregados fica
+somente no ficheiro privado indicado.

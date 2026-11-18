@@ -23,7 +23,10 @@ secret_key = os.getenv('SECRET_KEY', '').strip()
 if not secret_key:
     raise RuntimeError('Defina SECRET_KEY no ambiente antes de iniciar a aplicação.')
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    instance_path=os.getenv('SIGE_INSTANCE_PATH') or None,
+)
 app.secret_key = secret_key
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,

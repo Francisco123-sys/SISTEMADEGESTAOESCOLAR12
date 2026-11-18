@@ -25,6 +25,10 @@ O projecto está configurado para persistir todos os dados na nuvem através do 
 - Não publique `.env`, ficheiros da base de dados, credenciais ou portas de serviços de dados. Configure `SECRET_KEY`, `DATABASE_URL` e `SESSION_COOKIE_SECURE=true` no ambiente do Codespace, nunca no repositório.
 - Após a primeira implantação, aplique as migrações aditivas no ambiente pretendido com `python -m flask --app app init-db`. Este comando não elimina dados; faça uma cópia de segurança verificada antes de o executar em produção.
 
+## Deployment no Render
+- O Blueprint está em [`render.yaml`](./render.yaml); instruções de configuração, migração e publicação estão em [`docs/render-deployment.md`](./docs/render-deployment.md).
+- Não publique antes de revogar a credencial Neon anteriormente exposta e configurar `SECRET_KEY` e `DATABASE_URL` no Render.
+
 ## Funcionalidades Principais:
 1. **Persistência PostgreSQL (Neon) + Fallback SQLite:** Suporte nativo para Neon Pooler (`DATABASE_URL`) e ligação directa (`DATABASE_URL_UNPOOLED`) para migrações/DDL.
 2. **Bancos & Carteiras Móveis:** Seletor obrigatório com **Banco BCI, Millennium BIM, Standard Bank, M-Pesa e e-Mola**.

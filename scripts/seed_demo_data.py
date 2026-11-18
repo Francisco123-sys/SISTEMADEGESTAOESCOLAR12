@@ -1,18 +1,14 @@
 """Reset and seed the SIGE Neon development database with fictitious school data.
 
 This command is intentionally guarded: it accepts only the confirmed Neon
-development target, requires an explicit confirmation, and verifies a private
-backup before opening a write transaction.
+development target and requires explicit confirmation before a write transaction.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import re
 import secrets
-import stat
-import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,7 +58,6 @@ RESET_TABLES = (
     'students',
     'guardians',
     'turmas',
-    'users',
 )
 
 FIRST_NAMES = (
@@ -86,36 +81,6 @@ NATURALITIES = ('Beira', 'Dondo', 'Búzi', 'Nhamatanda', 'Manga')
 PROFESSIONS = (
     'Agricultor(a)', 'Comerciante', 'Professor(a)', 'Enfermeiro(a)',
     'Carpinteiro(a)', 'Motorista', 'Funcionário(a)', 'Pescador(a)',
-)
-
-STAFF_ACCOUNTS = (
-    ('admin', 'admin', 'DEMO-ADM-0001', 'admin@sige-demo.test', 'Administrador'),
-    ('director', 'director', 'DEMO-DIR-0001', 'director@sige-demo.test', 'Director'),
-    ('secretary', 'secretary', 'DEMO-SEC-0001', 'secretaria@sige-demo.test', 'Secretaria'),
-    (
-        'chief_secretary',
-        'chefe_secretaria',
-        'DEMO-CHS-0001',
-        'chefe.secretaria@sige-demo.test',
-        'Chefe da Secretaria',
-    ),
-    (
-        'pedagogical_1',
-        'pedagogico_1',
-        'DEMO-PED1-0001',
-        'pedagogico1@sige-demo.test',
-        'Direcção Pedagógica 1',
-    ),
-    (
-        'pedagogical_2',
-        'pedagogico_2',
-        'DEMO-PED2-0001',
-        'pedagogico2@sige-demo.test',
-        'Direcção Pedagógica 2',
-    ),
-    ('teacher_1', 'teacher', 'DEMO-PROF-0001', 'professor1@sige-demo.test', 'Professor 1'),
-    ('teacher_2', 'teacher', 'DEMO-PROF-0002', 'professor2@sige-demo.test', 'Professor 2'),
-    ('teacher_3', 'teacher', 'DEMO-PROF-0003', 'professor3@sige-demo.test', 'Professor 3'),
 )
 
 SUBJECT_TEACHERS = {
@@ -163,35 +128,37 @@ COMPLAINT_CATEGORIES = (
     'Outros Assuntos',
 )
 COMPLAINT_SUBJECTS = (
-    'Demonstração: esclarecimento sobre notas',
-    'Demonstração: dúvida sobre matrícula',
-    'Demonstração: consulta de assiduidade',
-    'Demonstração: pedido de documento escolar',
-    'Demonstração: esclarecimento sobre pagamentos',
+    'Esclarecimento sobre notas',
+    'Dúvida sobre matrícula',
+    'Consulta de assiduidade',
+    'Pedido de documento escolar',
+    'Esclarecimento sobre pagamentos',
 )
 
 
 def expected_turma_specs():
     specs = []
-    for class_number in range(8, 13):
-        for section_index, section in enumerate(('A', 'B', 'C')):
-            area = section if class_number >= 10 else None
-            name = (
-                f'{class_number}.ª {section}01'
-                if class_number >= 10
-                else f'{class_number}.ª {section}'
-            )
-            capacity = 35 + ((class_number + section_index) % 3)
-            specs.append({
-                'class_number': class_number,
-                'name': name,
-                'area': area,
-                'turno': 'Manhã' if (class_number + section_index) % 2 == 0 else 'Tarde',
-                'curso': 'Diurno',
-                'capacity': capacity,
-                'vacancies': capacity,
-                'room': f'Sala {class_number:02d}-{section}',
-            })
+    for course in ('Diurno', 'À Distância'):
+        for class_number in range(8, 13):
+            for section_index, section in enumerate(('A', 'B', 'C')):
+                area = section if class_number >= 10 else None
+                base_name = (
+                    f'{class_number}.ª {section}01'
+                    if class_number >= 10
+                    else f'{class_number}.ª {section}'
+                )
+                distance_suffix = ' EAD' if course == 'À Distância' else ''
+                capacity = 35 + ((class_number + section_index) % 3)
+                specs.append({
+                    'class_number': class_number,
+                    'name': base_name + distance_suffix,
+                    'area': area,
+                    'turno': 'Manhã' if (class_number + section_index) % 2 == 0 else 'Tarde',
+                    'curso': course,
+                    'capacity': capacity,
+                    'vacancies': capacity,
+                    'room': f'Sala {class_number:02d}-{section}{distance_suffix}',
+                })
     return specs
 
 
@@ -202,11 +169,11 @@ def student_identity(index):
     surname_1 = SURNAMES[(offset * 3) % len(SURNAMES)]
     surname_2 = SURNAMES[((offset // len(FIRST_NAMES)) * 7 + 4) % len(SURNAMES)]
     return {
-        'code': f'DEMO-ALU-{index:04d}',
+        'code': f'ALU-{index:04d}',
         'name': f'{first} {middle} {surname_1} {surname_2}',
-        'bi': f'DEMO-BI-2026-{index:04d}',
-        'guardian_email': f'encarregado.{index:04d}@sige-demo.test',
-        'contact': f'DEMO-CONTACTO-{index:04d}',
+        'bi': f'FICT-{2026}-{index:04d}',
+        'guardian_email': f'encarregado.{index:04d}@example.invalid',
+        'contact': f'FICT-CONTACTO-ALU-{index:06d}',
     }
 
 
@@ -243,12 +210,6 @@ def validate_target_values(database, schema, hostname, env_confirmation, cli_con
         )
 
 
-def target_fingerprint(database_url):
-    values = database_target_key(database_url)
-    payload = '\0'.join(str(value) for value in values).encode('utf-8')
-    return hashlib.sha256(payload).hexdigest()
-
-
 def deletion_order(tables, relationships):
     table_set = set(tables)
     children = {table: set() for table in table_set}
@@ -274,59 +235,19 @@ def deletion_order(tables, relationships):
     return list(reversed(parent_first))
 
 
-def _private_file(path, description):
-    resolved = Path(path).expanduser().resolve()
-    if not resolved.is_file() or not stat.S_ISREG(resolved.stat().st_mode):
-        raise RuntimeError(f'{description} não é um ficheiro regular existente.')
-    if resolved.stat().st_mode & 0o077:
-        raise RuntimeError(f'{description} não tem permissões privadas.')
-    return resolved
-
-
-def verify_backup(backup_path, manifest_path, database_url, repository_root):
-    backup = _private_file(backup_path, 'O backup')
-    manifest = _private_file(manifest_path, 'O manifesto do backup')
-    repository = Path(repository_root).resolve()
-    if os.path.commonpath((str(backup), str(repository))) == str(repository):
-        raise RuntimeError('O backup está dentro do repositório; limpeza recusada.')
-    if backup.parent != manifest.parent:
-        raise RuntimeError('Backup e manifesto devem estar no mesmo directório privado.')
-    if backup.stat().st_size == 0:
-        raise RuntimeError('O backup está vazio.')
-
-    try:
-        metadata = json.loads(manifest.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeError('O manifesto do backup é inválido.') from error
-    if (
-        metadata.get('backup_file') != backup.name
-        or metadata.get('target_fingerprint') != target_fingerprint(database_url)
-        or metadata.get('sha256') != hashlib.sha256(backup.read_bytes()).hexdigest()
-    ):
-        raise RuntimeError('O backup não corresponde ao destino actual ou ao manifesto.')
-
-    listing = subprocess.run(
-        ['pg_restore', '--list', str(backup)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    if listing.returncode or not listing.stdout.strip():
-        raise RuntimeError('pg_restore não conseguiu validar o backup.')
-    return backup
-
-
-def build_staff_credentials():
+def build_staff_credentials(count=3):
     credentials = []
-    for key, role, code, email, label in STAFF_ACCOUNTS:
+    for index in range(1, count + 1):
+        suffix = secrets.token_hex(4).upper()
+        key = f'new_teacher_{index}'
         credentials.append({
             'key': key,
             'type': 'staff',
-            'profile': role,
-            'code': code,
-            'name': f'{label} de Demonstração',
-            'email': email,
+            'profile': 'teacher',
+            'code': f'PROF-GEN-{suffix}',
+            'name': synthetic_name(index, offset=4),
+            'email': f'professor.{suffix.lower()}@example.invalid',
+            'contact': f'FICT-CONTACTO-PROF-{suffix}',
             'password': secrets.token_urlsafe(24),
         })
     return credentials
@@ -345,9 +266,11 @@ def build_guardian_credential(index):
     }
 
 
-def build_demo_credentials():
-    credentials = build_staff_credentials()
-    credentials.extend(build_guardian_credential(index) for index in range(1, 301))
+def build_demo_credentials(student_count=300, teacher_count=3):
+    if student_count < 1:
+        raise RuntimeError('A quantidade de estudantes deve ser positiva.')
+    credentials = build_staff_credentials(teacher_count)
+    credentials.extend(build_guardian_credential(index) for index in range(1, student_count + 1))
     passwords = [account['password'] for account in credentials]
     if len(set(passwords)) != len(credentials):
         raise RuntimeError('Foram geradas palavras-passe repetidas; tente novamente.')
@@ -373,6 +296,25 @@ def _row_counts(cursor, tables):
         cursor.execute(f'SELECT count(*) AS total FROM "{EXPECTED_SCHEMA}"."{table}"')
         counts[table] = cursor.fetchone()['total']
     return counts
+
+
+def _snapshot_users(cursor):
+    cursor.execute('''
+        SELECT id, code, nome, email, password_hash, role, contacto,
+               foto_path, ativo, created_at, failed_attempts, locked_until
+        FROM users ORDER BY id
+    ''')
+    return [tuple(row.values()) for row in cursor.fetchall()]
+
+
+def _verify_users_unchanged(cursor, snapshot):
+    current = _snapshot_users(cursor)
+    current_by_id = {row[0]: row for row in current}
+    for original in snapshot:
+        if current_by_id.get(original[0]) != original:
+            raise RuntimeError(
+                f'A conta existente com identificador {original[0]} foi alterada.'
+            )
 
 
 def _foreign_keys(cursor):
@@ -435,7 +377,7 @@ def _create_staff(cursor, credentials):
             account['email'],
             generate_password_hash(account['password']),
             account['profile'],
-            f"DEMO-CONTACTO-FUNCIONARIO-{account['key']}",
+            account['contact'],
         ))
         user_ids[account['key']] = cursor.lastrowid
     return user_ids
@@ -493,23 +435,23 @@ def _insert_student(
         identity['bi'],
         birth_date,
         'F' if index % 2 else 'M',
-        f'Morada de demonstração {index:04d}, Manga, Beira, Sofala',
+        f'Bairro da Manga, Beira, Sofala, residência {index:04d}',
         naturality,
         'Sofala',
         'Moçambicana',
         naturality,
         PROFESSIONS[index % len(PROFESSIONS)],
-        f'DEMO-PAI-{index:04d}',
+        f'FICT-CONTACTO-PAI-{index:06d}',
         naturality,
         PROFESSIONS[(index + 3) % len(PROFESSIONS)],
-        f'DEMO-MAE-{index:04d}',
+        f'FICT-CONTACTO-MAE-{index:06d}',
         guardian_name,
         parentesco,
         naturality,
         PROFESSIONS[(index + 5) % len(PROFESSIONS)],
         contact,
         None,
-        f'Morada de demonstração {index:04d}, Manga, Beira, Sofala',
+        f'Bairro da Manga, Beira, Sofala, residência {index:04d}',
         identity['guardian_email'],
         contact,
         None,
@@ -564,8 +506,8 @@ def _create_academic_data(cursor, students, specs_by_turma, year_id, user_ids, s
                 spec['id'],
                 subject_id,
                 '2026-03-10',
-                f'DEMONSTRAÇÃO: revisão de conteúdos de {subject_code}.',
-                'Registo fictício; não corresponde a uma aula real.',
+                f'Revisão de conteúdos de {subject_code}.',
+                'Registo de preparação académica.',
             ))
             summary_count += 1
 
@@ -584,12 +526,14 @@ def _create_academic_data(cursor, students, specs_by_turma, year_id, user_ids, s
             subjects[_grade_subjects_for(spec)[0]],
             '2026-03-10',
             attendance_type,
-            'Demonstração: motivo fictício.' if index % 7 == 0 else None,
+            'Motivo registado para avaliação.' if index % 7 == 0 else None,
         ))
         attendance_count += 1
 
         for term in (1, 2, 3):
             for subject_offset, subject_code in enumerate(_grade_subjects_for(spec)):
+                if (index + term + subject_offset) % 17 == 0:
+                    continue
                 scores = [
                     float(8 + ((index * 3 + term * 5 + subject_offset * 2 + part * 3) % 13))
                     for part in range(4)
@@ -630,14 +574,14 @@ def _create_academic_data(cursor, students, specs_by_turma, year_id, user_ids, s
                     0 if index % 4 else 1,
                     1 if index % 11 == 0 else 0,
                     1 if index % 11 == 0 else (0 if index % 4 else 1),
-                    'Demonstração: avaliação fictícia.',
+                    'Avaliação de preparação académica.',
                     status,
                 ))
                 grade_count += 1
 
         if index % 5 == 0:
             payment_count += 1
-            receipt = f'DEMO-REC-{payment_count:04d}'
+            receipt = f'REC-{payment_count:06d}'
             cursor.execute('''
                 INSERT INTO payments (
                     receipt_number, student_id, mes_pago, ano_lectivo_id,
@@ -652,19 +596,13 @@ def _create_academic_data(cursor, students, specs_by_turma, year_id, user_ids, s
                 ],
                 year_id,
                 float(250 + (index % 6) * 100),
-                'DEMONSTRAÇÃO — sem transacção',
-                f'DEMO-PAG-{payment_count:04d}',
+                'Conta escolar',
+                f'PAG-{payment_count:06d}',
                 '2026-03-10',
                 '2026-03-10',
                 user_ids['secretary'],
             ))
             payments_for[student['id']] = cursor.lastrowid
-
-    for spec in specs_by_turma.values():
-        cursor.execute(
-            'UPDATE turmas SET vagas_disponiveis = capacidade_maxima - 20 WHERE id = ?',
-            (spec['id'],),
-        )
 
     return {
         'grades': grade_count,
@@ -696,7 +634,7 @@ def _change_complaint_state(cursor, complaint_id, complaint, new_state, user_id,
         notify_state_change(
             cursor,
             complaint,
-            f'demo:complaint:{complaint_id}:state:{new_state}',
+            f'seed:complaint:{complaint_id}:state:{new_state}',
         )
     complaint['estado'] = new_state
 
@@ -720,10 +658,7 @@ def _seed_complaints(cursor, students, user_ids):
             number = student['number']
             category = COMPLAINT_CATEGORIES[(number - 1) % len(COMPLAINT_CATEGORIES)]
             subject = COMPLAINT_SUBJECTS[(number - 1) % len(COMPLAINT_SUBJECTS)]
-            body = (
-                f'DEMONSTRAÇÃO: solicito esclarecimento fictício relacionado com '
-                f'{category.lower()}.'
-            )
+            body = f'Solicito esclarecimento relacionado com {category.lower()}.'
             cursor.execute('''
                 INSERT INTO reclamacoes_encarregados (
                     student_id, guardian_id, nome_encarregado, contacto,
@@ -741,7 +676,7 @@ def _seed_complaints(cursor, students, user_ids):
                 category,
                 subject,
                 secretary_id,
-                f'demo-submission-{number:04d}',
+                f'seed-submission-{number:04d}',
             ))
             complaint_id = cursor.lastrowid
             complaint = {
@@ -758,7 +693,7 @@ def _seed_complaints(cursor, students, user_ids):
                 sender_type='guardian',
                 guardian_id=student['guardian_id'],
                 body=body,
-                message_key=f'demo:complaint:{complaint_id}:initial',
+                message_key=f'seed:complaint:{complaint_id}:initial',
             )
             record_state_change(
                 cursor,
@@ -767,7 +702,7 @@ def _seed_complaints(cursor, students, user_ids):
                 new_state='Nova',
                 actor_type='guardian',
                 guardian_id=student['guardian_id'],
-                note='Mensagem inicial fictícia de demonstração.',
+                note='Mensagem inicial do encarregado.',
             )
             notify_new_complaint(cursor, complaint_id, initial_message_id)
             created.append((complaint_id, complaint, desired_state, student_index))
@@ -790,21 +725,19 @@ def _seed_complaints(cursor, students, user_ids):
                 new_state='Em Tratamento',
                 actor_type='secretary',
                 user_id=secretary_id,
-                note='Demonstração: reclamação em acompanhamento.',
+                note='Pedido em acompanhamento.',
             )
             complaint['estado'] = 'Em Tratamento'
             continue
 
-        secretary_message = (
-            'Demonstração: a Secretaria analisou o pedido fictício.'
-        )
+        secretary_message = 'A Secretaria analisou o pedido.'
         secretary_message_id = add_message(
             cursor,
             complaint_id=complaint_id,
             sender_type='secretary',
             user_id=secretary_id,
             body=secretary_message,
-            message_key=f'demo:complaint:{complaint_id}:secretary',
+            message_key=f'seed:complaint:{complaint_id}:secretary',
         )
         cursor.execute('''
             UPDATE reclamacoes_encarregados
@@ -824,14 +757,14 @@ def _seed_complaints(cursor, students, user_ids):
         notify_state_change(
             cursor,
             complaint,
-            f'demo:complaint:{complaint_id}:secretary-state',
+            f'seed:complaint:{complaint_id}:secretary-state',
         )
         notify_new_message(
             cursor,
             complaint,
             secretary_message_id,
             'secretary',
-            f'demo:complaint:{complaint_id}:secretary-message',
+            f'seed:complaint:{complaint_id}:secretary-message',
         )
         complaint['estado'] = 'Respondida'
 
@@ -842,17 +775,17 @@ def _seed_complaints(cursor, students, user_ids):
                 complaint,
                 'Resolvida',
                 secretary_id,
-                'Demonstração: pedido fictício resolvido.',
+                'Pedido resolvido.',
             )
         elif desired_state == 'Reaberta':
-            followup = 'Demonstração: pedido fictício reaberto pelo encarregado.'
+            followup = 'Peço a reabertura do pedido.'
             followup_id = add_message(
                 cursor,
                 complaint_id=complaint_id,
                 sender_type='guardian',
                 guardian_id=student['guardian_id'],
                 body=followup,
-                message_key=f'demo:complaint:{complaint_id}:guardian-followup',
+                message_key=f'seed:complaint:{complaint_id}:guardian-followup',
             )
             cursor.execute('''
                 UPDATE reclamacoes_encarregados
@@ -867,14 +800,14 @@ def _seed_complaints(cursor, students, user_ids):
                 new_state='Reaberta',
                 actor_type='guardian',
                 guardian_id=student['guardian_id'],
-                note='Demonstração: nova mensagem fictícia do encarregado.',
+                note='Nova mensagem do encarregado.',
             )
             notify_new_message(
                 cursor,
                 complaint,
                 followup_id,
                 'guardian',
-                f'demo:complaint:{complaint_id}:guardian-message',
+                f'seed:complaint:{complaint_id}:guardian-message',
             )
             complaint['estado'] = 'Reaberta'
 
@@ -889,7 +822,7 @@ def _seed_complaints(cursor, students, user_ids):
                 WHERE id = ?
             ''', (
                 secretary_id,
-                'Demonstração: encaminhamento fictício à Direcção.',
+                'Encaminhamento para análise da Direcção.',
                 secretary_id,
                 complaint_id,
             ))
@@ -900,23 +833,23 @@ def _seed_complaints(cursor, students, user_ids):
                 new_state='Em Tratamento',
                 actor_type='secretary',
                 user_id=secretary_id,
-                note='Demonstração: encaminhada à Direcção.',
+                note='Encaminhada à Direcção.',
             )
             notify_directors(
                 cursor,
                 complaint_id,
-                f'demo:complaint:{complaint_id}:forwarded',
+                f'seed:complaint:{complaint_id}:forwarded',
             )
             complaint['estado'] = 'Em Tratamento'
 
-            director_message = 'Demonstração: a Direcção analisou o pedido fictício.'
+            director_message = 'A Direcção analisou o pedido.'
             director_message_id = add_message(
                 cursor,
                 complaint_id=complaint_id,
                 sender_type='director',
                 user_id=director_id,
                 body=director_message,
-                message_key=f'demo:complaint:{complaint_id}:director',
+                message_key=f'seed:complaint:{complaint_id}:director',
             )
             cursor.execute('''
                 UPDATE reclamacoes_encarregados
@@ -931,19 +864,19 @@ def _seed_complaints(cursor, students, user_ids):
                 new_state='Respondida',
                 actor_type='director',
                 user_id=director_id,
-                note='Demonstração: resposta fictícia da Direcção.',
+                note='Resposta da Direcção.',
             )
             notify_state_change(
                 cursor,
                 complaint,
-                f'demo:complaint:{complaint_id}:director-state',
+                f'seed:complaint:{complaint_id}:director-state',
             )
             notify_new_message(
                 cursor,
                 complaint,
                 director_message_id,
                 'director',
-                f'demo:complaint:{complaint_id}:director-message',
+                f'seed:complaint:{complaint_id}:director-message',
             )
             complaint['estado'] = 'Respondida'
 
@@ -971,7 +904,10 @@ def _write_credentials_temp(path, credentials):
                     {
                         key: value
                         for key, value in account.items()
-                        if key in ('type', 'profile', 'student_code', 'name', 'email', 'password')
+                        if key in (
+                            'type', 'profile', 'code', 'contact', 'student_code',
+                            'name', 'email', 'password',
+                        )
                     }
                     for account in credentials
                 ],
@@ -1039,12 +975,45 @@ def _preflight(cursor):
     return existing, tables, foreign_keys, counts, class_ids, year_id, subjects
 
 
-def _insert_school_data(cursor, class_ids, year_id, subjects, credentials):
+def _insert_school_data(cursor, class_ids, year_id, subjects, credentials, student_count=300):
     staff_credentials = [row for row in credentials if row['type'] == 'staff']
     guardian_credentials = {
         row['key']: row for row in credentials if row['type'] == 'guardian'
     }
-    user_ids = _create_staff(cursor, staff_credentials)
+    cursor.execute('SELECT id, role, ativo FROM users ORDER BY id')
+    existing_users = cursor.fetchall()
+    users_by_role = {}
+    for row in existing_users:
+        if row['ativo']:
+            users_by_role.setdefault(row['role'], []).append(row['id'])
+
+    def first_user(role_names):
+        for role_name in role_names:
+            if users_by_role.get(role_name):
+                return users_by_role[role_name][0]
+        raise RuntimeError(
+            'Não existe uma conta activa para o perfil necessário: '
+            + ', '.join(role_names)
+        )
+
+    user_ids = {
+        'admin': first_user(('admin', 'administrador')),
+        'director': first_user(('director', 'directora', 'director_escolar')),
+        'secretary': first_user(('secretary', 'secretaria', 'chefe_secretaria')),
+        'pedagogical_1': first_user(('pedagogico_1', 'pedagogico')),
+        'pedagogical_2': first_user(('pedagogico_2', 'pedagogico')),
+    }
+    cursor.execute(
+        "SELECT id FROM users WHERE role = 'teacher' AND ativo = 1 AND code LIKE 'PROF-GEN-%' ORDER BY id"
+    )
+    generated_teacher_ids = [row['id'] for row in cursor.fetchall()]
+    created_teacher_ids = _create_staff(cursor, staff_credentials)
+    generated_teacher_ids.extend(created_teacher_ids.values())
+    teacher_ids = generated_teacher_ids + users_by_role.get('teacher', [])
+    if not teacher_ids:
+        raise RuntimeError('Não existe nenhum professor activo para atribuir disciplinas.')
+    for index in range(3):
+        user_ids[f'teacher_{index + 1}'] = teacher_ids[index % len(teacher_ids)]
     specs = expected_turma_specs()
     specs_by_turma = {}
 
@@ -1070,8 +1039,17 @@ def _insert_school_data(cursor, class_ids, year_id, subjects, credentials):
 
     all_students = []
     student_number = 0
-    for spec in specs:
-        for _student_in_class in range(20):
+    base_per_turma, remainder = divmod(student_count, len(specs))
+    for spec_index, spec in enumerate(specs):
+        students_in_turma = base_per_turma + (1 if spec_index < remainder else 0)
+        spec['capacity'] = max(spec['capacity'], students_in_turma)
+        spec['vacancies'] = spec['capacity']
+        cursor.execute('''
+            UPDATE turmas
+            SET capacidade_maxima = ?, vagas_disponiveis = ?
+            WHERE id = ?
+        ''', (spec['capacity'], spec['vacancies'], spec['id']))
+        for _student_in_class in range(students_in_turma):
             student_number += 1
             credential = guardian_credentials[f'guardian_{student_number:04d}']
             identity = student_identity(student_number)
@@ -1097,6 +1075,10 @@ def _insert_school_data(cursor, class_ids, year_id, subjects, credentials):
                 'contact': identity['contact'],
             }
             all_students.append(student_record)
+        cursor.execute(
+            'UPDATE turmas SET vagas_disponiveis = capacidade_maxima - ? WHERE id = ?',
+            (students_in_turma, spec['id']),
+        )
 
     academic = _create_academic_data(
         cursor,
@@ -1107,18 +1089,19 @@ def _insert_school_data(cursor, class_ids, year_id, subjects, credentials):
         subjects,
     )
     _seed_complaints(cursor, all_students, user_ids)
-    _verify_seed(cursor, specs, all_students, academic)
+    _verify_seed(cursor, specs, all_students, academic, student_count)
     cursor.execute('''
         INSERT INTO audit_logs (user_id, operacao, detalhes, ip_address)
         VALUES (?, ?, ?, ?)
     ''', (
         user_ids['admin'],
-        'PREPARAR_DEMONSTRACAO',
-        'Criados dados escolares fictícios para validação do SIGE Neon.',
+        'PREPARAR_DADOS_ESCOLARES',
+        'Criados dados escolares sintéticos para validação do sistema.',
         '127.0.0.1',
     ))
     return {
-        'staff': len(staff_credentials),
+        'preserved_staff': len(existing_users),
+        'new_teachers': len(created_teacher_ids),
         'guardians': len(guardian_credentials),
         'students': len(all_students),
         'classes': len(class_ids),
@@ -1131,17 +1114,16 @@ def _insert_school_data(cursor, class_ids, year_id, subjects, credentials):
     }
 
 
-def _verify_seed(cursor, specs, students, academic):
+def _verify_seed(cursor, specs, students, academic, student_count=300):
     expected = {
-        'users': len(STAFF_ACCOUNTS),
-        'guardians': 300,
-        'students': 300,
-        'turmas': 15,
-        'teacher_assignments': 108,
-        'grades': 2700,
-        'attendance': 300,
-        'lesson_summaries': 45,
-        'payments': 60,
+        'guardians': student_count,
+        'students': student_count,
+        'turmas': len(specs),
+        'teacher_assignments': sum(len(_curriculum_for(spec)) for spec in specs),
+        'grades': academic['grades'],
+        'attendance': academic['attendance'],
+        'lesson_summaries': sum(len(_grade_subjects_for(spec)) for spec in specs),
+        'payments': academic['payments'],
         'reclamacoes_encarregados': 15,
         'complaint_messages': 30,
     }
@@ -1163,14 +1145,12 @@ def _verify_seed(cursor, specs, students, academic):
         ORDER BY t.nome
     ''')
     turma_rows = cursor.fetchall()
-    if len(turma_rows) != 15:
+    if len(turma_rows) != len(specs):
         raise RuntimeError('A validação encontrou turmas duplicadas ou em falta.')
     for row in turma_rows:
-        if row['active_students'] != 20:
-            raise RuntimeError(f'A turma {row["nome"]} não contém exactamente 20 alunos activos.')
         if row['active_students'] > row['capacidade_maxima']:
-            raise RuntimeError(f'A capacidade da turma {row["nome"]} foi excedida.')
-        if row['vagas_disponiveis'] != row['capacidade_maxima'] - 20:
+            raise RuntimeError(f'A turma {row["nome"]} excede a capacidade configurada.')
+        if row['vagas_disponiveis'] != row['capacidade_maxima'] - row['active_students']:
             raise RuntimeError(f'As vagas da turma {row["nome"]} não correspondem à lotação.')
 
     cursor.execute('''
@@ -1179,7 +1159,7 @@ def _verify_seed(cursor, specs, students, academic):
         JOIN students s ON s.id = gs.student_id
         WHERE gs.principal = 1
     ''')
-    if cursor.fetchone()['total'] != 300:
+    if cursor.fetchone()['total'] != student_count:
         raise RuntimeError('Nem todos os educandos têm um encarregado principal.')
 
     cursor.execute('''
@@ -1236,6 +1216,11 @@ def run(args):
             raise RuntimeError('O gerador de demonstração só opera sobre PostgreSQL.')
 
         existing, tables, foreign_keys, counts, class_ids, year_id, subjects = _preflight(cursor)
+        protected_users = _snapshot_users(cursor)
+        cursor.execute(
+            "SELECT count(*) AS total FROM users WHERE role = 'teacher' AND ativo = 1 AND code LIKE 'PROF-GEN-%'"
+        )
+        new_teacher_count = max(0, 3 - cursor.fetchone()['total'])
         deletion = deletion_order(tables, [
             (child, parent) for child, _child_column, parent, _parent_column in foreign_keys
         ])
@@ -1248,23 +1233,16 @@ def run(args):
             for table in deletion
         ))
         print(
-            'Plano de demonstração: 9 contas de funcionários, 300 encarregados, '
-            '15 turmas e 300 alunos; sem mensagens externas.'
+            f'Plano de dados escolares: {args.students} encarregados, '
+            f'{len(expected_turma_specs())} turmas, {new_teacher_count} novos professores '
+            f'e {args.students} alunos; contas existentes preservadas.'
         )
         if not args.apply:
             print('Pré-visualização apenas; nenhum dado foi alterado.')
             return
-        if not args.backup or not args.backup_manifest or not args.credentials_output:
-            raise RuntimeError(
-                '--apply requer --backup, --backup-manifest e --credentials-output.'
-            )
-        verify_backup(
-            args.backup,
-            args.backup_manifest,
-            ddl_url,
-            Path.cwd(),
-        )
-        credentials = build_demo_credentials()
+        if not args.credentials_output:
+            raise RuntimeError('--apply requer --credentials-output.')
+        credentials = build_demo_credentials(args.students, new_teacher_count)
         temp_credentials, final_credentials = _write_credentials_temp(
             args.credentials_output,
             credentials,
@@ -1293,8 +1271,10 @@ def run(args):
             year_id,
             subjects,
             credentials,
+            args.students,
         )
-        if len(credentials) != len(STAFF_ACCOUNTS) + 300:
+        _verify_users_unchanged(cursor, protected_users)
+        if len(credentials) != new_teacher_count + args.students:
             raise RuntimeError('A lista privada de credenciais está incompleta.')
         os.replace(temp_credentials, final_credentials)
         published_credentials = True
@@ -1302,7 +1282,7 @@ def run(args):
         committed = True
         temp_credentials = None
         print(
-            'Demonstração criada e validada: '
+            'Dados escolares criados e validados: '
             + ', '.join(f'{key}={value}' for key, value in result.items())
         )
         print(f'Credenciais temporárias guardadas em ficheiro privado: {final_credentials}')
@@ -1327,12 +1307,17 @@ def main():
     )
     parser.add_argument('--apply', action='store_true', help='Executa a limpeza e a criação dentro de uma transacção.')
     parser.add_argument(
+        '--students',
+        type=int,
+        default=1000,
+        choices=(1000, 2000, 5000),
+        help='Quantidade de alunos a preparar (por omissão: 1000).',
+    )
+    parser.add_argument(
         '--confirm-development-database',
         default='',
         help=f'Confirma explicitamente o destino {EXPECTED_DATABASE}.',
     )
-    parser.add_argument('--backup', help='Caminho do backup completo privado previamente validado.')
-    parser.add_argument('--backup-manifest', help='Manifesto privado que vincula backup e destino.')
     parser.add_argument('--credentials-output', help='Caminho privado, fora do repositório, para as credenciais.')
     args = parser.parse_args()
     run(args)

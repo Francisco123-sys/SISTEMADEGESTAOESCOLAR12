@@ -3,6 +3,7 @@ import unittest
 from scripts.seed_demo_data import (
     COMPLAINT_STATES,
     EXPECTED_CONFIRMATION,
+    RESET_TABLES,
     _insert_student,
     build_demo_credentials,
     expected_turma_specs,
@@ -32,40 +33,50 @@ class DemoDataSeedTests(unittest.TestCase):
         specs = expected_turma_specs()
         self.assertEqual(
             sum(len(_curriculum_for(spec)) for spec in specs),
-            108,
+            216,
         )
 
-    def test_seed_plan_creates_fifteen_distinct_turmas_for_classes_eight_to_twelve(self):
+    def test_seed_plan_creates_presential_and_distance_turmas(self):
         specs = expected_turma_specs()
 
-        self.assertEqual(len(specs), 15)
-        self.assertEqual(len({spec['name'] for spec in specs}), 15)
+        self.assertEqual(len(specs), 30)
+        self.assertEqual(len({spec['name'] for spec in specs}), 30)
+        self.assertEqual({spec['curso'] for spec in specs}, {'Diurno', 'À Distância'})
         self.assertEqual(
             {number: sum(spec['class_number'] == number for spec in specs)
              for number in range(8, 13)},
-            {number: 3 for number in range(8, 13)},
+            {number: 6 for number in range(8, 13)},
         )
         self.assertTrue(all(spec['capacity'] > 20 for spec in specs))
         self.assertTrue(all(spec['area'] is None for spec in specs if spec['class_number'] < 10))
         self.assertTrue(all(spec['area'] in 'ABC' for spec in specs if spec['class_number'] >= 10))
 
     def test_student_demo_identifiers_are_unique_and_non_routable(self):
-        identities = [student_identity(index) for index in range(1, 301)]
+        identities = [student_identity(index) for index in range(1, 1001)]
 
-        self.assertEqual(len({row['code'] for row in identities}), 300)
-        self.assertEqual(len({row['bi'] for row in identities}), 300)
-        self.assertEqual(len({row['guardian_email'] for row in identities}), 300)
-        self.assertTrue(all(row['guardian_email'].endswith('.test') for row in identities))
-        self.assertTrue(all(row['contact'].startswith('DEMO-') for row in identities))
+        self.assertEqual(len({row['code'] for row in identities}), 1000)
+        self.assertEqual(len({row['bi'] for row in identities}), 1000)
+        self.assertEqual(len({row['guardian_email'] for row in identities}), 1000)
+        self.assertTrue(all(row['guardian_email'].endswith('.invalid') for row in identities))
+        self.assertTrue(all(row['contact'].startswith('FICT-') for row in identities))
+
+    def test_cleanup_preserves_all_staff_accounts(self):
+        self.assertNotIn('users', RESET_TABLES)
+
+    def test_credentials_support_configurable_student_count(self):
+        credentials = build_demo_credentials(1000)
+        guardians = [account for account in credentials if account['type'] == 'guardian']
+        self.assertEqual(len(guardians), 1000)
 
     def test_staff_and_guardian_credentials_are_unique_and_match_student_records(self):
         credentials = build_demo_credentials()
         passwords = [account['password'] for account in credentials]
         guardians = [account for account in credentials if account['type'] == 'guardian']
 
-        self.assertEqual(len(credentials), 309)
+        self.assertEqual(len(credentials), 303)
         self.assertEqual(len(set(passwords)), len(passwords))
         self.assertEqual(len(guardians), 300)
+        self.assertEqual(sum(account['profile'] == 'teacher' for account in credentials), 3)
         for index, account in enumerate(guardians, start=1):
             self.assertEqual(account['student_code'], student_identity(index)['code'])
             self.assertEqual(account['email'], student_identity(index)['guardian_email'])
