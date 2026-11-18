@@ -154,6 +154,36 @@ class SecretaryStudentBrowsingTests(unittest.TestCase):
         self.assertIn('Consultar perfil', html)
         self.assertIn('Declaração de frequência', html)
 
+    def test_nominal_list_loads_shared_styles_and_keeps_actions_and_active_students(self):
+        response = self._get(
+            f'/secretary/lista-nominal/{self.turma_ids["8.ª A"]}'
+        )
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(html.count('class="sige-topbar"'), 1)
+        self.assertIn('css/style.css?v=lista-nominal-1', html)
+        self.assertIn('Lista Nominal de Alunos', html)
+        self.assertIn('PDF para vitrine', html)
+        self.assertIn('Baixar em Word (.DOCX)', html)
+        self.assertIn('nominal-search-input', html)
+        self.assertIn('nominal-pagination', html)
+        self.assertEqual(html.count('<tr data-student-row>'), 12)
+        self.assertNotIn('Matrícula inactiva', html)
+        self.assertNotIn('Maria Catarina Carlos Penicela', html)
+        self.assertIn('nominal-print-header', html)
+
+        css_response = self.client.get('/static/css/style.css?v=lista-nominal-1')
+        self.assertEqual(css_response.status_code, 200)
+        css = css_response.get_data(as_text=True)
+        css_response.close()
+        self.assertIn('.sige-topbar', css)
+        self.assertIn('.sige-sidebar-link svg', css)
+
+        image_response = self.client.get('/static/img/emblema_moz.png')
+        self.assertEqual(image_response.status_code, 200)
+        image_response.close()
+
     def test_bi_search_and_turma_class_mismatch_do_not_leak_other_students(self):
         response = self._get(
             f'/secretary/students?classe_id={self.class_ids[8]}'
