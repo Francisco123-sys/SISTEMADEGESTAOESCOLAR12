@@ -3,295 +3,612 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SIGE - Matrícula de Aluno (Etapa 1 de 2)</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>SIGE | Nova Matrícula</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=enrollment-1">
+    <style>
+        .enrollment-page { width: min(100% - 32px, 1360px); max-width: 1360px; margin: 28px auto 48px; padding: 0; }
+        .enrollment-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px; }
+        .enrollment-heading h1 { margin:0; color:var(--navy-dark); font-size:clamp(1.5rem,3vw,2rem); }
+        .enrollment-heading p { margin:6px 0 0; color:#667085; }
+        .enrollment-steps { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+        .enrollment-step { display:flex; align-items:center; gap:12px; min-height:58px; padding:12px 16px; background:#fff; border:1px solid var(--border-color); border-radius:9px; color:#667085; }
+        .enrollment-step.is-current { color:var(--navy-dark); border-color:var(--navy-brand); box-shadow:0 0 0 2px rgba(36,91,143,.1); }
+        .enrollment-step-number { display:grid; width:30px; height:30px; flex:none; place-items:center; border-radius:50%; color:#fff; background:var(--navy-brand); font-weight:700; }
+        .enrollment-card { padding:clamp(16px,3vw,28px); }
+        .enrollment-section { margin:0; padding:0 0 22px; border:0; }
+        .enrollment-section + .enrollment-section { padding-top:22px; border-top:1px solid #EAECF0; }
+        .enrollment-section h2 { margin:0 0 4px; color:var(--navy-dark); font-size:1.15rem; }
+        .enrollment-section > p { margin:0 0 16px; color:#667085; font-size:.9rem; }
+        .enrollment-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 18px; }
+        .enrollment-grid-three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+        .enrollment-grid-four { grid-template-columns:repeat(4,minmax(0,1fr)); }
+        .enrollment-grid .form-group { min-width:0; }
+        .enrollment-grid input, .enrollment-grid select, .enrollment-grid textarea { min-height:42px; background:#fff; }
+        .enrollment-grid textarea { min-height:auto; }
+        .enrollment-hint { display:block; margin-top:5px; color:#667085; font-size:.8rem; font-weight:400; }
+        .enrollment-required { color:#B42318; }
+        .enrollment-family-card { margin-bottom:14px; padding:16px; background:#F8FAFC; border:1px solid #EAECF0; border-radius:9px; }
+        .enrollment-family-card h3 { margin:0 0 12px; color:var(--navy-dark); font-size:1rem; }
+        .enrollment-responsible-summary { padding:13px 15px; border-left:3px solid var(--navy-brand); background:#F0F6FC; border-radius:5px; }
+        .enrollment-responsible-summary p { margin:4px 0 0; color:#475467; }
+        .enrollment-photo-picker { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+        .enrollment-photo-picker img { width:92px; height:112px; object-fit:cover; border:1px solid var(--border-color); border-radius:8px; }
+        .enrollment-photo-error { margin:6px 0 0; color:#B42318; font-size:.85rem; }
+        .enrollment-check-panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px; background:#F8FAFC; border:1px solid #EAECF0; border-radius:9px; }
+        .enrollment-check-panel label { margin-bottom:8px; }
+        .enrollment-check-panel input[type="checkbox"] { width:18px; height:18px; vertical-align:middle; }
+        .enrollment-actions { display:flex; justify-content:flex-end; padding-top:18px; border-top:1px solid #EAECF0; }
+        .enrollment-submit { min-height:46px; padding:11px 20px; }
+        .enrollment-note { margin:10px 0 0; color:#667085; font-size:.85rem; }
+        @media (max-width:1000px) {
+            .enrollment-grid-four { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .enrollment-grid-three { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        }
+        @media (max-width:640px) {
+            .enrollment-page { width:min(100% - 24px,1360px); margin-top:18px; }
+            .enrollment-heading { margin-bottom:14px; }
+            .enrollment-steps { gap:8px; }
+            .enrollment-step { align-items:flex-start; gap:8px; padding:10px; font-size:.82rem; }
+            .enrollment-step-number { width:25px; height:25px; }
+            .enrollment-grid, .enrollment-grid-three, .enrollment-grid-four, .enrollment-check-panel { grid-template-columns:1fr; }
+            .enrollment-actions, .enrollment-submit { width:100%; }
+        }
+    </style>
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Matrícula de Aluno') }}
-    <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Matrícula de Aluno</div>
-        <a href="/secretary/dashboard">Voltar ao Painel</a>
-    </div>
-    <div class="container">
+
+    <main class="container enrollment-page">
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
+            <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
             {% endfor %}
-          {% endif %}
         {% endwith %}
-        <div class="card">
-            <h3 class="card-title">Etapa 1 de 2: Dados do Estudante (Obrigatório Pagamento na Etapa Seguinte)</h3>
-            <form action="/secretary/students/new" method="POST" enctype="multipart/form-data">
+
+        <header class="enrollment-heading">
+            <div>
+                <p class="secretary-eyebrow">Alunos e matrículas</p>
+                <h1>Nova Matrícula</h1>
+                <p>Preencha os dados do estudante e do encarregado de educação para iniciar o processo de matrícula.</p>
+            </div>
+        </header>
+
+        <nav class="enrollment-steps" aria-label="Etapas da matrícula">
+            <div class="enrollment-step is-current" aria-current="step">
+                <span class="enrollment-step-number">1</span>
+                <span><strong>Etapa 1 de 2</strong><br>Dados do Estudante</span>
+            </div>
+            <div class="enrollment-step">
+                <span class="enrollment-step-number">2</span>
+                <span><strong>Etapa 2 de 2</strong><br>Dados de Pagamento</span>
+            </div>
+        </nav>
+
+        <div class="card enrollment-card">
+            <form action="{{ url_for('secretary.student_form') }}" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label>Nome Completo do Aluno:*</label>
-                        <input type="text" name="nome" required placeholder="Ex: Edson Alberto">
-                    </div>
-                    <div class="form-group">
-                        <label>Data de Nascimento:*</label>
-                        <input type="date" name="data_nascimento" id="dob" onchange="updateRegistrationHints()" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Nome do Pai:</label>
-                        <input type="text" name="nome_pai">
-                    </div>
-                    <div class="form-group">
-                        <label>Nome da Mãe:</label>
-                        <input type="text" name="nome_mae">
-                    </div>
-                    <div class="form-group">
-                        <label>Nº BI / Cédula Pessoal (ÚNICO):*</label>
-                        <input type="text" name="bi_cedula" required placeholder="Ex: 07019988A">
-                    </div>
-                    <div class="form-group">
-                        <label>Sexo:*</label>
-                        <select name="sexo" required>
-                            <option value="M">Masculino</option>
-                            <option value="F">Feminino</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="naturalidade">Naturalidade</label>
-                        <input id="naturalidade" type="text" name="naturalidade" maxlength="120">
-                    </div>
-                    <div class="form-group">
-                        <label for="provincia_nascimento">Província de nascimento</label>
-                        <input id="provincia_nascimento" type="text" name="provincia_nascimento" maxlength="120">
-                    </div>
-                    <div class="form-group">
-                        <label for="nacionalidade">Nacionalidade</label>
-                        <input id="nacionalidade" type="text" name="nacionalidade" value="Moçambicana" maxlength="80">
-                    </div>
-                    <div class="form-group">
-                        <label for="fotografia">Fotografia (JPG, JPEG ou PNG; máximo 5 MB)</label>
-                        <input id="fotografia" type="file" name="fotografia" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
-                        <img id="photo_preview" alt="Pré-visualização da fotografia" hidden
-                             style="margin-top:8px; width:110px; height:130px; object-fit:cover; border-radius:6px;">
-                    </div>
-                </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label>Contacto Encarregado 1 (Principal):*</label>
-                        <input type="text" name="contacto_1" required placeholder="84/85/82/86/87...">
-                    </div>
-                    <div class="form-group">
-                        <label>Contacto Encarregado 2:</label>
-                        <input type="text" name="contacto_2">
-                    </div>
-                </div>
-
-                <hr style="border:0; border-top:1px solid #EEE; margin:20px 0;">
-
-                <h4>Dados familiares</h4>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
-                    <div class="form-group"><label>Naturalidade do Pai</label><input name="pai_naturalidade" maxlength="120"></div>
-                    <div class="form-group"><label>Profissão do Pai</label><input name="pai_profissao" maxlength="120"></div>
-                    <div class="form-group"><label>Contacto do Pai</label><input name="pai_contacto" maxlength="40"></div>
-                    <div class="form-group"><label>Naturalidade da Mãe</label><input name="mae_naturalidade" maxlength="120"></div>
-                    <div class="form-group"><label>Profissão da Mãe</label><input name="mae_profissao" maxlength="120"></div>
-                    <div class="form-group"><label>Contacto da Mãe</label><input name="mae_contacto" maxlength="40"></div>
-                </div>
-                <div class="form-group">
-                    <label for="encarregado_parentesco">Encarregado de Educação</label>
-                    <select id="encarregado_parentesco" name="encarregado_parentesco" required>
-                        <option value="">Seleccione</option>
-                        <option value="Pai">Pai</option>
-                        <option value="Mãe">Mãe</option>
-                        <option value="Outro">Outro responsável</option>
-                    </select>
-                </div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
-                    <div class="form-group"><label>Nome do Encarregado</label><input name="encarregado_nome" maxlength="160" required></div>
-                    <div class="form-group"><label>Naturalidade do Encarregado</label><input name="encarregado_naturalidade" maxlength="120"></div>
-                    <div class="form-group"><label>Profissão do Encarregado</label><input name="encarregado_profissao" maxlength="120"></div>
-                    <div class="form-group"><label>Contacto principal</label><input name="encarregado_contacto_principal" maxlength="40" required></div>
-                    <div class="form-group"><label>Contacto alternativo</label><input name="encarregado_contacto_alternativo" maxlength="40"></div>
-                    <div class="form-group"><label>E-mail</label><input type="email" name="encarregado_email" maxlength="254"></div>
-                    <div class="form-group"><label>Morada</label><input name="encarregado_morada" maxlength="240"></div>
-                </div>
-                <div class="form-group">
-                    <label for="ingresso_situacao">Situação de ingresso</label>
-                    <select id="ingresso_situacao" name="ingresso_situacao" required>
-                        <option value="Interno">Aluno interno</option>
-                        <option value="Transferido">Aluno transferido</option>
-                    </select>
-                </div>
-                <section id="transfer_section" hidden>
-                    <h4>Dados da escola de origem e transferência</h4>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;">
-                        <div class="form-group"><label>Escola de origem</label><input name="escola_origem" maxlength="180"></div>
-                        <div class="form-group"><label>Província</label><input name="provincia_origem" maxlength="120"></div>
-                        <div class="form-group"><label>Distrito</label><input name="distrito_origem" maxlength="120"></div>
-                        <div class="form-group"><label>Classe anterior</label><input type="number" name="classe_anterior" min="1" max="12"></div>
-                        <div class="form-group"><label>Ano lectivo anterior</label><input type="number" name="ano_lectivo_anterior" min="2000" max="2100"></div>
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Identificação do estudante</legend>
+                    <h2>Identificação do Estudante</h2>
+                    <p>Dados pessoais e documento de identificação.</p>
+                    <div class="enrollment-grid">
                         <div class="form-group">
-                            <label>Documento de transferência (PDF; máximo 5 MB)</label>
-                            <input type="file" name="documento_transferencia" accept=".pdf,application/pdf">
+                            <label for="student-name">Nome completo <span class="enrollment-required">*</span></label>
+                            <input id="student-name" type="text" name="nome" maxlength="160" required
+                                   value="{{ form_data.get('nome', '') }}" autocomplete="name">
+                        </div>
+                        <div class="form-group">
+                            <label for="student-dob">Data de nascimento <span class="enrollment-required">*</span></label>
+                            <input id="student-dob" type="date" name="data_nascimento" required
+                                   value="{{ form_data.get('data_nascimento', '') }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="student-sex">Sexo <span class="enrollment-required">*</span></label>
+                            <select id="student-sex" name="sexo" required>
+                                <option value="">Seleccione</option>
+                                <option value="M" {% if form_data.get('sexo') == 'M' %}selected{% endif %}>Masculino</option>
+                                <option value="F" {% if form_data.get('sexo') == 'F' %}selected{% endif %}>Feminino</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="nationality-type">Nacionalidade <span class="enrollment-required">*</span></label>
+                            <select id="nationality-type" name="nacionalidade_tipo" required>
+                                <option value="Moçambicana" {% if form_data.get('nacionalidade_tipo', 'Moçambicana') == 'Moçambicana' %}selected{% endif %}>Moçambicana</option>
+                                <option value="Estrangeira" {% if form_data.get('nacionalidade_tipo') == 'Estrangeira' %}selected{% endif %}>Estrangeira</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="nationality-country-group" hidden>
+                            <label for="nationality-country">País de nacionalidade <span class="enrollment-required">*</span></label>
+                            <input id="nationality-country" name="nacionalidade_pais" maxlength="80"
+                                   value="{{ form_data.get('nacionalidade_pais', '') }}" autocomplete="country-name">
+                        </div>
+                        <div class="form-group">
+                            <label for="document-type">Tipo de documento <span class="enrollment-required">*</span></label>
+                            <select id="document-type" name="documento_identificacao_tipo" required
+                                    data-current="{{ form_data.get('documento_identificacao_tipo', '') }}">
+                                <option value="">Seleccione</option>
+                                {% for document_type in mozambique_document_types %}
+                                <option value="{{ document_type }}" data-nationality="Moçambicana"
+                                        {% if form_data.get('documento_identificacao_tipo') == document_type %}selected{% endif %}>{{ document_type }}</option>
+                                {% endfor %}
+                                {% for document_type in foreign_document_types %}
+                                <option value="{{ document_type }}" data-nationality="Estrangeira"
+                                        {% if form_data.get('documento_identificacao_tipo') == document_type %}selected{% endif %}>{{ document_type }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="document-country">País emissor <span class="enrollment-required">*</span></label>
+                            <input id="document-country" name="documento_identificacao_pais" maxlength="80"
+                                   value="{{ form_data.get('documento_identificacao_pais', form_data.get('nacionalidade_pais', '') if form_data.get('nacionalidade_tipo') == 'Estrangeira' else 'Moçambique') }}"
+                                   autocomplete="country-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="document-number">Número do documento <span class="enrollment-required">*</span></label>
+                            <input id="document-number" name="documento_identificacao_numero"
+                                   value="{{ form_data.get('documento_identificacao_numero', form_data.get('bi_cedula', '')) }}"
+                                   maxlength="100" required autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="fotografia">Fotografia do estudante</label>
+                            <div class="enrollment-photo-picker">
+                                <input id="fotografia" type="file" name="fotografia"
+                                       accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+                                <img id="photo_preview" alt="Pré-visualização da fotografia" hidden>
+                            </div>
+                            <span class="enrollment-hint">JPG, JPEG ou PNG · máximo 5 MB. O ficheiro inválido deve ser seleccionado novamente.</span>
+                            <p id="photo-error" class="enrollment-photo-error" role="alert" hidden></p>
                         </div>
                     </div>
-                    <div class="form-group"><label>Observações</label><textarea name="observacoes_transferencia" rows="3" maxlength="2000"></textarea></div>
-                </section>
+                </fieldset>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px;">
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Naturalidade e residência</legend>
+                    <h2>Naturalidade e Residência</h2>
+                    <p>Naturalidade/localidade e residência são informações distintas.</p>
+                    <div class="enrollment-grid enrollment-grid-three">
+                        <div class="form-group">
+                            <label for="birth-country">País de nascimento <span class="enrollment-required">*</span></label>
+                            <select id="birth-country" name="pais_nascimento" required>
+                                <option value="Moçambique" {% if form_data.get('pais_nascimento', 'Moçambique') == 'Moçambique' %}selected{% endif %}>Moçambique</option>
+                                <option value="Outro país" {% if form_data.get('pais_nascimento') and form_data.get('pais_nascimento') != 'Moçambique' %}selected{% endif %}>Outro país</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="birth-foreign-country-group" hidden>
+                            <label for="birth-foreign-country">País de nascimento</label>
+                            <input id="birth-foreign-country" name="pais_nascimento_outro" maxlength="80"
+                                   value="{{ form_data.get('pais_nascimento_outro', '') }}">
+                        </div>
+                        <div class="form-group" id="birth-province-group">
+                            <label for="birth-province">Província de nascimento <span class="enrollment-required">*</span></label>
+                            <select id="birth-province" name="provincia_nascimento"
+                                    data-current="{{ form_data.get('provincia_nascimento', '') }}">
+                                <option value="">Seleccione a província</option>
+                                {% for province in provinces %}
+                                <option value="{{ province }}" {% if form_data.get('provincia_nascimento') == province %}selected{% endif %}>{{ province }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group" id="birth-district-group">
+                            <label for="birth-district">Distrito de nascimento <span class="enrollment-required">*</span></label>
+                            <select id="birth-district" name="distrito_nascimento"
+                                    data-current="{{ form_data.get('distrito_nascimento', '') }}">
+                                <option value="">Seleccione o distrito</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="birth-locality">Naturalidade ou localidade</label>
+                            <input id="birth-locality" name="naturalidade" maxlength="120"
+                                   value="{{ form_data.get('naturalidade', '') }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="residence-country">País de residência</label>
+                            <select id="residence-country" name="pais_residencia">
+                                <option value="Moçambique" {% if form_data.get('pais_residencia', 'Moçambique') == 'Moçambique' %}selected{% endif %}>Moçambique</option>
+                                <option value="Outro país" {% if form_data.get('pais_residencia') and form_data.get('pais_residencia') != 'Moçambique' %}selected{% endif %}>Outro país</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="residence-province-group">
+                            <label for="residence-province">Província de residência</label>
+                            <select id="residence-province" name="provincia_residencia"
+                                    data-current="{{ form_data.get('provincia_residencia', '') }}">
+                                <option value="">Seleccione a província</option>
+                                {% for province in provinces %}
+                                <option value="{{ province }}" {% if form_data.get('provincia_residencia') == province %}selected{% endif %}>{{ province }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group" id="residence-district-group">
+                            <label for="residence-district">Distrito de residência</label>
+                            <select id="residence-district" name="distrito_residencia"
+                                    data-current="{{ form_data.get('distrito_residencia', '') }}">
+                                <option value="">Seleccione o distrito</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="residence-foreign-country-group" hidden>
+                            <label for="residence-foreign-country">País de residência</label>
+                            <input id="residence-foreign-country" name="pais_residencia_outro" maxlength="80"
+                                   value="{{ form_data.get('pais_residencia_outro', '') }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="student-address">Morada / residência</label>
+                            <input id="student-address" name="morada" maxlength="240"
+                                   value="{{ form_data.get('morada', '') }}" autocomplete="street-address">
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Dados familiares</legend>
+                    <h2>Dados Familiares</h2>
+                    <p>Os dados do pai e da mãe são introduzidos uma única vez.</p>
+                    <section class="enrollment-family-card" aria-labelledby="father-heading">
+                        <h3 id="father-heading">Dados do Pai</h3>
+                        <div class="enrollment-grid enrollment-grid-four">
+                            <div class="form-group"><label for="father-name">Nome completo</label><input id="father-name" name="nome_pai" maxlength="160" value="{{ form_data.get('nome_pai', '') }}"></div>
+                            <div class="form-group"><label for="father-birth">Naturalidade</label><input id="father-birth" name="pai_naturalidade" maxlength="120" value="{{ form_data.get('pai_naturalidade', '') }}"></div>
+                            <div class="form-group"><label for="father-job">Profissão</label><input id="father-job" name="pai_profissao" maxlength="120" value="{{ form_data.get('pai_profissao', '') }}"></div>
+                            <div class="form-group"><label for="father-phone">Contacto telefónico</label><input id="father-phone" name="pai_contacto" maxlength="40" value="{{ form_data.get('pai_contacto', '') }}" inputmode="tel"></div>
+                        </div>
+                    </section>
+                    <section class="enrollment-family-card" aria-labelledby="mother-heading">
+                        <h3 id="mother-heading">Dados da Mãe</h3>
+                        <div class="enrollment-grid enrollment-grid-four">
+                            <div class="form-group"><label for="mother-name">Nome completo</label><input id="mother-name" name="nome_mae" maxlength="160" value="{{ form_data.get('nome_mae', '') }}"></div>
+                            <div class="form-group"><label for="mother-birth">Naturalidade</label><input id="mother-birth" name="mae_naturalidade" maxlength="120" value="{{ form_data.get('mae_naturalidade', '') }}"></div>
+                            <div class="form-group"><label for="mother-job">Profissão</label><input id="mother-job" name="mae_profissao" maxlength="120" value="{{ form_data.get('mae_profissao', '') }}"></div>
+                            <div class="form-group"><label for="mother-phone">Contacto telefónico</label><input id="mother-phone" name="mae_contacto" maxlength="40" value="{{ form_data.get('mae_contacto', '') }}" inputmode="tel"></div>
+                        </div>
+                    </section>
+                </fieldset>
+
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Encarregado de educação</legend>
+                    <h2>Encarregado de Educação</h2>
+                    <p>Quem será o Encarregado de Educação?</p>
                     <div class="form-group">
-                        <label for="ano_lectivo_id">Ano lectivo:*</label>
-                        <select id="ano_lectivo_id" name="ano_lectivo_id" required>
-                            {% for year in academic_years %}
-                            <option value="{{ year.id }}">{{ year.ano }}</option>
+                        <label for="guardian-relation">Responsável <span class="enrollment-required">*</span></label>
+                        <select id="guardian-relation" name="encarregado_parentesco" required>
+                            <option value="">Seleccione</option>
+                            {% for relation in ('Pai', 'Mãe', 'Outro') %}
+                            <option value="{{ relation }}" {% if form_data.get('encarregado_parentesco') == relation %}selected{% endif %}>
+                                {{ 'Outro responsável' if relation == 'Outro' else relation }}
+                            </option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Classe (8.ª à 12.ª):*</label>
-                        <select name="classe" id="classe_select" onchange="updateRegistrationHints()" required>
-                            {% for c in range(8, 13) %}
-                                <option value="{{ c }}">{{ c }}ª Classe</option>
+                    <div id="parent-guardian-summary" class="enrollment-responsible-summary" hidden>
+                        <strong id="parent-guardian-name"></strong>
+                        <p id="parent-guardian-details"></p>
+                    </div>
+                    <section id="other-guardian-fields" class="enrollment-family-card" hidden>
+                        <h3>Dados do Outro Responsável</h3>
+                        <div class="enrollment-grid enrollment-grid-three">
+                            <div class="form-group"><label for="other-name">Nome completo <span class="enrollment-required">*</span></label><input id="other-name" name="encarregado_nome" maxlength="160" value="{{ form_data.get('encarregado_nome', '') }}"></div>
+                            <div class="form-group"><label for="other-birth">Naturalidade</label><input id="other-birth" name="encarregado_naturalidade" maxlength="120" value="{{ form_data.get('encarregado_naturalidade', '') }}"></div>
+                            <div class="form-group"><label for="other-job">Profissão</label><input id="other-job" name="encarregado_profissao" maxlength="120" value="{{ form_data.get('encarregado_profissao', '') }}"></div>
+                            <div class="form-group"><label for="other-phone">Contacto principal <span class="enrollment-required">*</span></label><input id="other-phone" name="encarregado_contacto_principal" maxlength="40" value="{{ form_data.get('encarregado_contacto_principal', '') }}" inputmode="tel"></div>
+                            <div class="form-group"><label for="other-phone-alt">Contacto alternativo</label><input id="other-phone-alt" name="encarregado_contacto_alternativo" maxlength="40" value="{{ form_data.get('encarregado_contacto_alternativo', '') }}" inputmode="tel"></div>
+                            <div class="form-group"><label for="other-email">E-mail</label><input id="other-email" type="email" name="encarregado_email" maxlength="254" value="{{ form_data.get('encarregado_email', '') }}" autocomplete="email"></div>
+                            <div class="form-group"><label for="other-address">Morada ou residência</label><input id="other-address" name="encarregado_morada" maxlength="240" value="{{ form_data.get('encarregado_morada', '') }}"></div>
+                        </div>
+                    </section>
+                </fieldset>
+
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Informações académicas</legend>
+                    <h2>Informações Académicas</h2>
+                    <p>A turma é atribuída de acordo com as vagas disponíveis após a validação.</p>
+                    <div class="enrollment-grid enrollment-grid-four">
+                        <div class="form-group">
+                            <label for="ingresso_situacao">Situação de ingresso <span class="enrollment-required">*</span></label>
+                            <select id="ingresso_situacao" name="ingresso_situacao" required>
+                                <option value="Interno" {% if form_data.get('ingresso_situacao', 'Interno') == 'Interno' %}selected{% endif %}>Aluno interno</option>
+                                <option value="Transferido" {% if form_data.get('ingresso_situacao') == 'Transferido' %}selected{% endif %}>Aluno transferido</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ano_lectivo_id">Ano lectivo <span class="enrollment-required">*</span></label>
+                            <select id="ano_lectivo_id" name="ano_lectivo_id" required>
+                                {% for year in academic_years %}
+                                <option value="{{ year.id }}" {% if form_data.get('ano_lectivo_id', '')|string == year.id|string %}selected{% endif %}>{{ year.ano }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="classe_select">Classe <span class="enrollment-required">*</span></label>
+                            <select name="classe" id="classe_select" required>
+                                {% for class_num in range(8, 13) %}
+                                <option value="{{ class_num }}" {% if form_data.get('classe', '8')|string == class_num|string %}selected{% endif %}>{{ class_num }}.ª Classe</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="shift">Turno <span class="enrollment-required">*</span></label>
+                            <select id="shift" name="turno" required>
+                                {% for shift in ('Manhã', 'Tarde') %}
+                                <option value="{{ shift }}" {% if form_data.get('turno', 'Manhã') == shift %}selected{% endif %}>{{ shift }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="course">Modalidade / curso <span class="enrollment-required">*</span></label>
+                            <select id="course" name="curso" required>
+                                {% for course in ('Diurno', 'À Distância') %}
+                                <option value="{{ course }}" {% if form_data.get('curso', 'Diurno') == course %}selected{% endif %}>{{ course }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <section id="transfer_section" class="enrollment-family-card" hidden>
+                        <h3>Dados da escola de origem e transferência</h3>
+                        <div class="enrollment-grid enrollment-grid-three">
+                            <div class="form-group"><label>Escola de origem <span class="enrollment-required">*</span></label><input name="escola_origem" maxlength="180" value="{{ form_data.get('escola_origem', '') }}"></div>
+                            <div class="form-group"><label>Província de origem <span class="enrollment-required">*</span></label><input name="provincia_origem" maxlength="120" value="{{ form_data.get('provincia_origem', '') }}"></div>
+                            <div class="form-group"><label>Distrito de origem <span class="enrollment-required">*</span></label><input name="distrito_origem" maxlength="120" value="{{ form_data.get('distrito_origem', '') }}"></div>
+                            <div class="form-group"><label>Classe anterior <span class="enrollment-required">*</span></label><input type="number" name="classe_anterior" min="1" max="12" value="{{ form_data.get('classe_anterior', '') }}"></div>
+                            <div class="form-group"><label>Ano lectivo anterior <span class="enrollment-required">*</span></label><input type="number" name="ano_lectivo_anterior" min="2000" max="2100" value="{{ form_data.get('ano_lectivo_anterior', '') }}"></div>
+                            <div class="form-group"><label>Documento de transferência (PDF; máximo 5 MB) <span class="enrollment-required">*</span></label><input type="file" name="documento_transferencia" accept=".pdf,application/pdf"></div>
+                        </div>
+                        <div class="form-group"><label>Observações</label><textarea name="observacoes_transferencia" rows="3" maxlength="2000">{{ form_data.get('observacoes_transferencia', '') }}</textarea></div>
+                    </section>
+
+                    <div class="form-group" id="area_curricular_group" hidden>
+                        <label for="area_curricular">Área curricular (10.ª à 12.ª Classe) <span class="enrollment-required">*</span></label>
+                        <select name="area_curricular" id="area_curricular">
+                            <option value="">Seleccione a área</option>
+                            {% for area, label in (('A', 'Área A — Letras e Ciências Sociais'), ('B', 'Área B — Ciências Naturais e Exactas'), ('C', 'Área C — Artes Visuais e Cénicas / Ciências com Desenho')) %}
+                            <option value="{{ area }}" {% if form_data.get('area_curricular') == area %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Período (Turno):*</label>
-                        <select name="turno" required>
-                            <option value="Manhã">Manhã</option>
-                            <option value="Tarde">Tarde</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Modalidade / Curso:*</label>
-                        <select name="curso" required>
-                            <option value="Diurno">Diurno</option>
-                            <option value="À Distância">À Distância</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Morada / Residência:</label>
-                        <input type="text" name="morada">
-                    </div>
-                </div>
-                <div class="form-group" id="area_curricular_group" hidden>
-                    <label for="area_curricular">Área curricular (10.ª à 12.ª Classe):*</label>
-                    <select name="area_curricular" id="area_curricular">
-                        <option value="">Seleccione a área</option>
-                        <option value="A">Área A — Letras e Ciências Sociais</option>
-                        <option value="B">Área B — Ciências Naturais e Exactas</option>
-                        <option value="C">Área C — Artes Visuais e Cénicas / Ciências com Desenho</option>
-                    </select>
-                </div>
-                <p id="age_notice" class="alert alert-info" aria-live="polite" hidden></p>
+                    <p id="age_notice" class="alert alert-info" aria-live="polite" hidden></p>
+                </fieldset>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background:#F8F9FA; padding:15px; border-radius:6px; margin-bottom:15px;">
-                    <div>
-                        <label><input type="checkbox" name="isento_taxa" value="1"> <strong>Aluno Isento de Propinas/Taxas</strong></label>
-                        <input type="text" name="justificacao_isencao" placeholder="Motivo da isenção (ex: Órfão, Bolsa)..." style="margin-top:5px;">
+                <fieldset class="enrollment-section">
+                    <legend class="sr-only">Informações complementares</legend>
+                    <h2>Informações Complementares</h2>
+                    <div class="enrollment-check-panel">
+                        <div>
+                            <label><input type="checkbox" name="isento_taxa" value="1" {% if form_data.get('isento_taxa') %}checked{% endif %}> <strong>Isenção de propinas ou taxas</strong></label>
+                            <label for="justificacao_isencao">Justificação da isenção</label>
+                            <input id="justificacao_isencao" type="text" name="justificacao_isencao" maxlength="240"
+                                   value="{{ form_data.get('justificacao_isencao', '') }}" placeholder="Motivo da isenção">
+                        </div>
+                        <div>
+                            <label for="nee_tipo">Necessidades Educativas Especiais (NEE)</label>
+                            <select id="nee_tipo" name="nee_tipo">
+                                {% for need in ('Nenhuma', 'Deficiência Visual / Baixa Visão', 'Deficiência Auditiva', 'Deficiência Motora / Física', 'Outra Necessidade Especial') %}
+                                <option value="{{ need }}" {% if form_data.get('nee_tipo', 'Nenhuma') == need %}selected{% endif %}>{{ need }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="enrollment-hint">Informação sujeita às permissões de acesso do sistema.</span>
+                        </div>
                     </div>
-                    <div>
-                        <label>Necessidade Educativa Especial (NEE):</label>
-                        <select name="nee_tipo">
-                            <option value="Nenhuma">Nenhuma</option>
-                            <option value="Deficiência Visual / Baixa Visão">Deficiência Visual / Baixa Visão</option>
-                            <option value="Deficiência Auditiva">Deficiência Auditiva</option>
-                            <option value="Deficiência Motora / Física">Deficiência Motora / Física</option>
-                            <option value="Outra Necessidade Especial">Outra Necessidade Especial</option>
-                        </select>
+                    <div class="form-group" style="margin-top:16px">
+                        <label for="justificacao_alteracao">Justificação para alteração de classe, quando aplicável</label>
+                        <textarea id="justificacao_alteracao" name="justificacao_alteracao" rows="3">{{ form_data.get('justificacao_alteracao', '') }}</textarea>
                     </div>
-                </div>
+                </fieldset>
 
-                <div class="form-group">
-                    <label>Justificação para alteração de classe (caso difira da idade):</label>
-                    <textarea name="justificacao_alteracao" rows="2"></textarea>
+                <div class="enrollment-actions">
+                    <button type="submit" class="btn btn-primary enrollment-submit">Avançar para Dados de Pagamento (Etapa 2) →</button>
                 </div>
-                <button type="submit" class="btn btn-primary" style="width:100%;">Avançar para Dados de Pagamento (Etapa 2) &rarr;</button>
+                <p class="enrollment-note">Os dados são mantidos durante a validação. Os rascunhos temporários são cifrados no servidor e expiram após duas horas.</p>
             </form>
         </div>
-    </div>
+    </main>
+
     <script>
-        function updateRegistrationHints() {
-            var classSelect = document.getElementById('classe_select');
-            var classNumber = parseInt(classSelect.value, 10);
-            var areaGroup = document.getElementById('area_curricular_group');
-            var areaSelect = document.getElementById('area_curricular');
-            var ageNotice = document.getElementById('age_notice');
-            var requiresArea = classNumber >= 10;
+        (() => {
+            const districts = {{ provinces|tojson }};
+            const nationalityType = document.getElementById('nationality-type');
+            const nationalityCountryGroup = document.getElementById('nationality-country-group');
+            const nationalityCountry = document.getElementById('nationality-country');
+            const documentType = document.getElementById('document-type');
+            const documentCountry = document.getElementById('document-country');
+            let lastNationality = nationalityType.value;
+            const birthCountry = document.getElementById('birth-country');
+            const birthCountryOther = document.getElementById('birth-foreign-country-group');
+            const residenceCountry = document.getElementById('residence-country');
+            const residenceCountryOther = document.getElementById('residence-foreign-country-group');
+            const birthProvince = document.getElementById('birth-province');
+            const birthDistrict = document.getElementById('birth-district');
+            const residenceProvince = document.getElementById('residence-province');
+            const residenceDistrict = document.getElementById('residence-district');
 
-            areaGroup.hidden = !requiresArea;
-            areaSelect.required = requiresArea;
-
-            var dob = document.getElementById('dob').value;
-            if (!dob) {
-                ageNotice.hidden = true;
-                return;
+            function refillDistrict(province, district, preserve) {
+                const previousValue = preserve ? district.dataset.current : '';
+                district.replaceChildren(new Option('Seleccione o distrito', ''));
+                (districts[province.value] || []).forEach((name) => {
+                    district.add(new Option(name, name));
+                });
+                district.value = (districts[province.value] || []).includes(previousValue)
+                    ? previousValue : '';
+                district.disabled = !province.value;
+                district.dataset.current = '';
             }
 
-            var birthDate = new Date(dob + 'T00:00:00');
-            var today = new Date();
-            var age = today.getFullYear() - birthDate.getFullYear();
-            if (today.getMonth() < birthDate.getMonth() ||
-                (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) {
-                age--;
+            function updateNationality() {
+                const foreign = nationalityType.value === 'Estrangeira';
+                nationalityCountryGroup.hidden = !foreign;
+                nationalityCountry.required = foreign;
+                documentType.querySelectorAll('option[data-nationality]').forEach((option) => {
+                    option.hidden = option.dataset.nationality !== nationalityType.value;
+                    option.disabled = option.hidden;
+                });
+                if (!documentType.selectedOptions[0] ||
+                    documentType.selectedOptions[0].dataset.nationality !== nationalityType.value) {
+                    documentType.value = '';
+                }
+                if (foreign) {
+                    if (!documentCountry.value ||
+                        (lastNationality !== 'Estrangeira' && documentCountry.value === 'Moçambique')) {
+                        documentCountry.value = nationalityCountry.value;
+                    }
+                } else {
+                    nationalityCountry.value = '';
+                    documentCountry.value = 'Moçambique';
+                }
+                lastNationality = nationalityType.value;
             }
-            var suggestedClass = Math.max(1, Math.min(12, age - 5));
-            if (classNumber !== suggestedClass) {
-                ageNotice.textContent = 'A idade corresponde à classe de referência ' +
-                    suggestedClass + '.ª. A classe seleccionada mantém-se; pode prosseguir com a matrícula.';
-                ageNotice.hidden = false;
-            } else {
-                ageNotice.hidden = true;
+
+            function updateBirthCountry() {
+                const foreign = birthCountry.value !== 'Moçambique';
+                birthCountryOther.hidden = !foreign;
+                document.getElementById('birth-province-group').hidden = foreign;
+                document.getElementById('birth-district-group').hidden = foreign;
+                birthProvince.required = !foreign;
+                birthDistrict.required = !foreign;
+                birthProvince.disabled = foreign;
+                birthDistrict.disabled = foreign;
+                if (foreign) {
+                    birthProvince.value = '';
+                    refillDistrict(birthProvince, birthDistrict, false);
+                    birthCountryOther.querySelector('input').required = true;
+                } else {
+                    birthCountryOther.querySelector('input').required = false;
+                }
             }
-        }
 
-        updateRegistrationHints();
+            function updateResidenceCountry() {
+                const foreign = residenceCountry.value !== 'Moçambique';
+                residenceCountryOther.hidden = !foreign;
+                document.getElementById('residence-province-group').hidden = foreign;
+                document.getElementById('residence-district-group').hidden = foreign;
+                residenceProvince.disabled = foreign;
+                residenceDistrict.disabled = foreign;
+                if (foreign) {
+                    residenceProvince.value = '';
+                    refillDistrict(residenceProvince, residenceDistrict, false);
+                    residenceCountryOther.querySelector('input').required = true;
+                } else {
+                    residenceCountryOther.querySelector('input').required = false;
+                }
+            }
 
-        const ingressSelect = document.getElementById('ingresso_situacao');
-        const transferSection = document.getElementById('transfer_section');
-        function updateTransferFields() {
-            const isTransfer = ingressSelect.value === 'Transferido';
-            transferSection.hidden = !isTransfer;
-            transferSection.querySelectorAll('input').forEach(function (field) {
-                field.required = isTransfer && field.name !== 'observacoes_transferencia' &&
-                    field.name !== 'fotografia';
+            birthProvince.addEventListener('change', () => refillDistrict(birthProvince, birthDistrict, false));
+            residenceProvince.addEventListener('change', () => refillDistrict(residenceProvince, residenceDistrict, false));
+            nationalityType.addEventListener('change', updateNationality);
+            nationalityCountry.addEventListener('input', () => {
+                if (nationalityType.value === 'Estrangeira' && !documentCountry.value) {
+                    documentCountry.value = nationalityCountry.value;
+                }
             });
-        }
-        ingressSelect.addEventListener('change', updateTransferFields);
-        updateTransferFields();
+            birthCountry.addEventListener('change', updateBirthCountry);
+            residenceCountry.addEventListener('change', updateResidenceCountry);
+            refillDistrict(birthProvince, birthDistrict, true);
+            refillDistrict(residenceProvince, residenceDistrict, true);
+            updateNationality();
+            updateBirthCountry();
+            updateResidenceCountry();
 
-        document.getElementById('encarregado_parentesco').addEventListener('change', function (event) {
-            const relation = event.target.value;
-            const name = document.querySelector('[name="encarregado_nome"]');
-            const contact = document.querySelector('[name="encarregado_contacto_principal"]');
-            const legacyContact = document.querySelector('[name="contacto_1"]');
-            if (relation === 'Pai') {
-                name.value = document.querySelector('[name="nome_pai"]').value;
-                contact.value = document.querySelector('[name="pai_contacto"]').value;
-            } else if (relation === 'Mãe') {
-                name.value = document.querySelector('[name="nome_mae"]').value;
-                contact.value = document.querySelector('[name="mae_contacto"]').value;
+            const classSelect = document.getElementById('classe_select');
+            const areaGroup = document.getElementById('area_curricular_group');
+            const areaSelect = document.getElementById('area_curricular');
+            const ageNotice = document.getElementById('age_notice');
+            const dob = document.getElementById('student-dob');
+            function updateRegistrationHints() {
+                const classNumber = Number.parseInt(classSelect.value, 10);
+                const requiresArea = classNumber >= 10;
+                areaGroup.hidden = !requiresArea;
+                areaSelect.required = requiresArea;
+                if (!dob.value) {
+                    ageNotice.hidden = true;
+                    return;
+                }
+                const birthDate = new Date(`${dob.value}T00:00:00`);
+                const today = new Date();
+                let age = today.getFullYear() - birthDate.getFullYear();
+                if (today.getMonth() < birthDate.getMonth() ||
+                    (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) age--;
+                const suggestedClass = Math.max(1, Math.min(12, age - 5));
+                ageNotice.textContent = classNumber !== suggestedClass
+                    ? `A idade corresponde à classe de referência ${suggestedClass}.ª. A classe seleccionada mantém-se.`
+                    : '';
+                ageNotice.hidden = classNumber === suggestedClass;
             }
-            if (relation === 'Pai' || relation === 'Mãe') {
-                legacyContact.value = contact.value;
-            }
-        });
+            classSelect.addEventListener('change', updateRegistrationHints);
+            dob.addEventListener('change', updateRegistrationHints);
+            updateRegistrationHints();
 
-        document.getElementById('fotografia').addEventListener('change', function (event) {
-            const file = event.target.files[0];
-            const preview = document.getElementById('photo_preview');
-            if (!file) {
-                preview.hidden = true;
-                preview.removeAttribute('src');
-                return;
+            const transferSelect = document.getElementById('ingresso_situacao');
+            const transferSection = document.getElementById('transfer_section');
+            function updateTransferFields() {
+                const isTransfer = transferSelect.value === 'Transferido';
+                transferSection.hidden = !isTransfer;
+                transferSection.querySelectorAll('input').forEach((field) => {
+                    field.required = isTransfer && field.name !== 'observacoes_transferencia';
+                });
+                transferSection.querySelector('textarea').required = false;
             }
-            if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-                event.target.value = '';
-                preview.hidden = true;
-                alert('Seleccione uma imagem JPG ou PNG com até 5 MB.');
-                return;
+            transferSelect.addEventListener('change', updateTransferFields);
+            updateTransferFields();
+
+            const guardianRelation = document.getElementById('guardian-relation');
+            const parentSummary = document.getElementById('parent-guardian-summary');
+            const otherGuardianFields = document.getElementById('other-guardian-fields');
+            const otherName = document.getElementById('other-name');
+            const otherPhone = document.getElementById('other-phone');
+            function updateGuardian() {
+                const relation = guardianRelation.value;
+                const isOther = relation === 'Outro';
+                const isParent = relation === 'Pai' || relation === 'Mãe';
+                otherGuardianFields.hidden = !isOther;
+                otherGuardianFields.querySelectorAll('input').forEach((field) => {
+                    field.disabled = !isOther;
+                    field.required = isOther && ['encarregado_nome', 'encarregado_contacto_principal'].includes(field.name);
+                });
+                parentSummary.hidden = !isParent;
+                if (isParent) {
+                    const prefix = relation === 'Pai' ? 'pai' : 'mae';
+                    const name = document.querySelector(`[name="nome_${prefix}"]`).value;
+                    const naturality = document.querySelector(`[name="${prefix}_naturalidade"]`).value;
+                    const profession = document.querySelector(`[name="${prefix}_profissao"]`).value;
+                    const phone = document.querySelector(`[name="${prefix}_contacto"]`).value;
+                    document.getElementById('parent-guardian-name').textContent = name || `Dados do ${relation.toLowerCase()} ainda não preenchidos`;
+                    document.getElementById('parent-guardian-details').textContent =
+                        [naturality, profession, phone].filter(Boolean).join(' · ');
+                }
             }
-            preview.src = URL.createObjectURL(file);
-            preview.hidden = false;
-        });
+            guardianRelation.addEventListener('change', updateGuardian);
+            document.querySelectorAll('[name="nome_pai"], [name="pai_naturalidade"], [name="pai_profissao"], [name="pai_contacto"], [name="nome_mae"], [name="mae_naturalidade"], [name="mae_profissao"], [name="mae_contacto"]').forEach((field) => {
+                field.addEventListener('input', updateGuardian);
+            });
+            updateGuardian();
+
+            const photoInput = document.getElementById('fotografia');
+            const photoPreview = document.getElementById('photo_preview');
+            const photoError = document.getElementById('photo-error');
+            let previewUrl = null;
+            photoInput.addEventListener('change', () => {
+                const file = photoInput.files[0];
+                photoError.hidden = true;
+                photoError.textContent = '';
+                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                if (!file) {
+                    photoPreview.hidden = true;
+                    photoPreview.removeAttribute('src');
+                    return;
+                }
+                const validType = ['image/jpeg', 'image/png'].includes(file.type);
+                if (!validType || file.size > 5 * 1024 * 1024) {
+                    photoInput.value = '';
+                    photoPreview.hidden = true;
+                    photoError.textContent = file.size > 5 * 1024 * 1024
+                        ? 'A fotografia excede o limite máximo de 5 MB.'
+                        : 'Seleccione uma fotografia JPG, JPEG ou PNG válida.';
+                    photoError.hidden = false;
+                    return;
+                }
+                previewUrl = URL.createObjectURL(file);
+                photoPreview.src = previewUrl;
+                photoPreview.hidden = false;
+            });
+        })();
     </script>
 </body>
 </html>

@@ -3,77 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SIGE - Pagamento de Matrícula (Etapa 2 de 2)</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>SIGE | Pagamento da Matrícula</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=enrollment-1">
+    <style>
+        .payment-page { width:min(100% - 32px,920px); max-width:920px; margin:28px auto 48px; padding:0; }
+        .payment-heading { margin-bottom:18px; }
+        .payment-heading h1 { margin:0; color:var(--navy-dark); font-size:clamp(1.5rem,3vw,2rem); }
+        .payment-heading p { margin:6px 0 0; color:#667085; }
+        .payment-steps { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+        .payment-step { display:flex; align-items:center; gap:12px; min-height:58px; padding:12px 16px; color:#667085; background:#fff; border:1px solid var(--border-color); border-radius:9px; }
+        .payment-step.is-current { color:var(--navy-dark); border-color:var(--navy-brand); box-shadow:0 0 0 2px rgba(36,91,143,.1); }
+        .payment-step-number { display:grid; width:30px; height:30px; flex:none; place-items:center; border-radius:50%; color:#fff; background:var(--navy-brand); font-weight:700; }
+        .payment-student { margin-bottom:20px; padding:16px; color:#344054; background:#F0F9FF; border:1px solid #B9E6FE; border-radius:9px; overflow-wrap:anywhere; }
+        .payment-student p { margin:5px 0 0; }
+        .payment-student-note { display:block; margin-top:10px; color:#B42318; font-size:.86rem; }
+        .payment-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 18px; }
+        .payment-grid input,.payment-grid select { min-height:42px; background:#fff; }
+        .payment-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; padding-top:16px; border-top:1px solid #EAECF0; }
+        .payment-actions .btn { min-height:44px; padding:10px 18px; }
+        .payment-back { color:var(--navy-brand); font-weight:600; }
+        @media(max-width:640px) {
+            .payment-page { width:min(100% - 24px,920px); margin-top:18px; }
+            .payment-steps { gap:8px; }
+            .payment-step { align-items:flex-start; gap:8px; padding:10px; font-size:.82rem; }
+            .payment-step-number { width:25px; height:25px; }
+            .payment-grid { grid-template-columns:1fr; }
+            .payment-actions { align-items:stretch; flex-direction:column-reverse; }
+            .payment-actions .btn { width:100%; }
+        }
+    </style>
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Pagamento de Matrícula') }}
-    <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Pagamento Obrigatório de Inscrição</div>
-        <a href="/secretary/students/new">Cancelar Inscrição</a>
-    </div>
-    <div class="container" style="max-width:650px;">
+    <main class="container payment-page">
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
+            <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
             {% endfor %}
-          {% endif %}
         {% endwith %}
-        <div class="card">
-            <h3 class="card-title">Etapa 2 de 2: Pagamento Obrigatório da Matrícula</h3>
-            <div style="background:#F0F9FF; border:1px solid #B9E6FE; padding:15px; border-radius:6px; margin-bottom:20px;">
-                <strong>Estudante em Processo de Inscrição:</strong> {{ aluno.nome }}<br>
-                <strong>BI / Cédula:</strong> {{ aluno.bi_cedula }} &nbsp;|&nbsp;
-                <strong>Classe:</strong> {{ aluno.classe }}ª Classe &nbsp;|&nbsp;
-                {% if aluno.area_curricular %}<strong>Área:</strong> {{ areas_curriculares.get(aluno.area_curricular, aluno.area_curricular) }} &nbsp;|&nbsp;{% endif %}
-                <strong>Curso:</strong> {{ aluno.curso }} ({{ aluno.turno }})<br>
-                <span style="color:#B42318; font-size:0.85rem;">* Nota: Sem o registo válido do pagamento bancário/móvel, o sistema não concluirá a inscrição do estudante.</span>
+        <header class="payment-heading">
+            <p class="secretary-eyebrow">Nova matrícula</p>
+            <h1>Dados de Pagamento</h1>
+            <p>Confirme os dados do depósito para concluir a matrícula.</p>
+        </header>
+        <nav class="payment-steps" aria-label="Etapas da matrícula">
+            <div class="payment-step">
+                <span class="payment-step-number">1</span>
+                <span><strong>Etapa 1 de 2</strong><br>Dados do Estudante</span>
             </div>
-
-            <form action="/secretary/students/new/payment" method="POST">
+            <div class="payment-step is-current" aria-current="step">
+                <span class="payment-step-number">2</span>
+                <span><strong>Etapa 2 de 2</strong><br>Dados de Pagamento</span>
+            </div>
+        </nav>
+        <section class="card">
+            <div class="payment-student">
+                <strong>Estudante em processo de inscrição:</strong> {{ aluno.nome }}
+                <p><strong>Documento:</strong>
+                    {{ aluno.documento_identificacao_numero or aluno.bi_cedula }}
+                    · <strong>Classe:</strong> {{ aluno.classe }}.ª
+                    · <strong>Curso:</strong> {{ aluno.curso }} ({{ aluno.turno }})
+                </p>
+                {% if aluno.area_curricular %}
+                <p><strong>Área:</strong> {{ areas_curriculares.get(aluno.area_curricular, aluno.area_curricular) }}</p>
+                {% endif %}
+                <span class="payment-student-note">A matrícula só será concluída após o registo válido do pagamento.</span>
+            </div>
+            <form action="{{ url_for('secretary.student_registration_payment') }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="form-group">
-                    <label>Banco ou Carteira Móvel onde o Depósito foi Efectuado:*</label>
-                    <select name="banco_plataforma" required>
-                        <option value="">-- Selecione o Banco / Plataforma --</option>
-                        {% for b in bancos %}
-                        <option value="{{ b }}">{{ b }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Número de Referência do Talão (EXATAMENTE 9 DÍGITOS):*</label>
-                    <input type="text" name="referencia_talao" pattern="\d{9}" maxlength="9" minlength="9" required placeholder="Ex: 987654321" title="A referência deve conter exatamente 9 dígitos numéricos">
-                </div>
-
-                <div class="payment-field-grid">
+                <div class="payment-grid">
                     <div class="form-group">
-                        <label>Valor Pago (MZN):*</label>
-                        <input type="number" step="0.01" min="1" name="valor_pago" required placeholder="Ex: 500.00">
+                        <label for="payment-platform">Banco ou carteira móvel <span class="enrollment-required">*</span></label>
+                        <select id="payment-platform" name="banco_plataforma" required>
+                            <option value="">Seleccione</option>
+                            {% for bank in bancos %}
+                            <option value="{{ bank }}" {% if payment_form.get('banco_plataforma') == bank %}selected{% endif %}>{{ bank }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="form-group">
-                        <label>Data em que o Depósito foi Efectuado:*</label>
-                        <input type="date" name="data_deposito" max="{{ hoje }}" required>
-                    </div>
-                </div>
-
-                <div class="payment-field-grid">
-                    <div class="form-group">
-                        <label>Descrição / Período Pago:*</label>
-                        <input type="text" name="mes_pago" value="Matrícula / Inscrição 2026" required>
+                        <label for="payment-reference">Referência do talão (9 dígitos) <span class="enrollment-required">*</span></label>
+                        <input id="payment-reference" type="text" name="referencia_talao"
+                               pattern="[0-9]{9}" maxlength="9" minlength="9" required
+                               inputmode="numeric" autocomplete="off"
+                               value="{{ payment_form.get('referencia_talao', '') }}">
                     </div>
                     <div class="form-group">
-                        <label>Data do Registo no Sistema (Automática):</label>
-                        <input type="date" value="{{ hoje }}" disabled style="background:#EAECF0;">
+                        <label for="payment-amount">Valor pago (MZN) <span class="enrollment-required">*</span></label>
+                        <input id="payment-amount" type="number" step="0.01" min="1" name="valor_pago"
+                               required value="{{ payment_form.get('valor_pago', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-date">Data do depósito <span class="enrollment-required">*</span></label>
+                        <input id="payment-date" type="date" name="data_deposito" max="{{ hoje }}" required
+                               value="{{ payment_form.get('data_deposito', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-period">Descrição / período pago <span class="enrollment-required">*</span></label>
+                        <input id="payment-period" type="text" name="mes_pago" maxlength="120" required
+                               value="{{ payment_form.get('mes_pago', 'Matrícula / Inscrição 2026') }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Data do registo no sistema</label>
+                        <input type="date" value="{{ hoje }}" disabled>
                     </div>
                 </div>
-
-                <button type="submit" class="btn btn-success" style="width:100%; font-size:1rem;">Confirmar Pagamento e Concluir Matrícula do Aluno</button>
+                <div class="payment-actions">
+                    <a class="payment-back" href="{{ url_for('secretary.student_form') }}">← Voltar aos dados do estudante</a>
+                    <button type="submit" class="btn btn-success">Confirmar pagamento e concluir matrícula</button>
+                </div>
             </form>
-        </div>
-    </div>
+        </section>
+    </main>
 </body>
 </html>

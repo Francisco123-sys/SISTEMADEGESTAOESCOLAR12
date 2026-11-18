@@ -25,7 +25,7 @@
         </div>
 
         <div class="content">
-            <p>Para os devidos efeitos, declara-se que <strong>{{ aluno.nome }}</strong>, portador do documento de identificação Nº <strong>{{ aluno.bi_cedula }}</strong> e Código Único <strong>{{ aluno.code }}</strong>, encontra-se regularmente matriculado e a frequentar o ano lectivo de 2026 nesta instituição de ensino, na <strong>{{ aluno.classe_num }}ª Classe</strong>, Turma <strong>{{ aluno.turma_nome }}</strong>, Curso <strong>{{ aluno.curso }}</strong>.</p>
+            <p>Para os devidos efeitos, declara-se que <strong>{{ aluno.nome }}</strong>, portador do documento de identificação Nº <strong>{{ aluno.documento_identificacao_numero or aluno.bi_cedula }}</strong> e Código Único <strong>{{ aluno.code }}</strong>, encontra-se regularmente matriculado e a frequentar o ano lectivo de 2026 nesta instituição de ensino, na <strong>{{ aluno.classe_num }}ª Classe</strong>, Turma <strong>{{ aluno.turma_nome }}</strong>, Curso <strong>{{ aluno.curso }}</strong>.</p>
             <p>Por ser verdade e ter sido solicitada, passa-se a presente declaração que vai assinada e autenticada com o carimbo em uso nesta escola.</p>
             <p style="text-align:right; margin-top:40px;">Beira, aos {{ data_hoje }}</p>
         </div>

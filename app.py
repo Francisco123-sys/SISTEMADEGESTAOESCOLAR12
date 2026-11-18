@@ -16,6 +16,7 @@ from services.db import close_db, get_db
 from services.csrf import generate_csrf_token, validate_csrf_token
 from database.init_db import init_db
 from database.complaint_migrations import migrate_complaints
+from database.enrollment_migrations import migrate_enrollment_data
 from services.monitoring import SESSION_TIMEOUT_SECONDS, remove_active_session
 
 secret_key = os.getenv('SECRET_KEY', '').strip()
@@ -29,7 +30,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=os.getenv('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes'),
     PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_TIMEOUT_SECONDS),
-    MAX_CONTENT_LENGTH=5 * 1024 * 1024,
+    MAX_CONTENT_LENGTH=11 * 1024 * 1024,
 )
 
 app.register_blueprint(auth_bp)
@@ -94,6 +95,12 @@ def init_db_command():
 def migrate_complaints_command():
     """Aplica apenas as migrações aditivas do fluxo de reclamações."""
     migrate_complaints()
+
+
+@app.cli.command('migrate-enrollment')
+def migrate_enrollment_command():
+    """Aplica as migrações aditivas dos dados de matrícula."""
+    migrate_enrollment_data()
 
 
 if __name__ == '__main__':

@@ -22,6 +22,14 @@ from services.student_service import (
 from datetime import datetime
 from werkzeug.security import generate_password_hash
 from services.uploads import UPLOAD_DIRECTORY, save_student_photo, save_transfer_document
+from services.enrollment_drafts import (
+    EnrollmentDraftError,
+    delete_draft,
+    load_draft,
+    new_draft_id,
+    save_draft,
+)
+from services.mozambique_admin import MOZAMBIQUE_PROVINCES
 from services.complaints import (
     COMPLAINT_CATEGORIES,
     COMPLAINT_STATES,
@@ -56,6 +64,13 @@ from reportlab.platypus import (
 secretary_bp = Blueprint('secretary', __name__, url_prefix='/secretary')
 
 BANCOS_PERMITIDOS = ['Banco BCI', 'Millennium BIM', 'Standard Bank', 'M-Pesa', 'e-Mola']
+FOREIGN_DOCUMENT_TYPES = (
+    'Passaporte',
+    'Documento nacional de identificação estrangeiro',
+    'Título de residência',
+    'Outro documento (validar pela Secretaria)',
+)
+MOZAMBIQUE_DOCUMENT_TYPES = ('Bilhete de Identidade', 'Cédula Pessoal', 'Passaporte')
 MESES_PAGAMENTO = {
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -67,6 +82,44 @@ def check_secretary():
 
 def validar_referencia_9_digitos(ref):
     return bool(re.fullmatch(r'[0-9]{9}', ref))
+
+
+def _registration_draft_id():
+    legacy_data = session.pop('pending_matricula', None)
+    draft_id = session.get('enrollment_draft_id')
+    if not draft_id:
+        draft_id = new_draft_id()
+        session['enrollment_draft_id'] = draft_id
+    if legacy_data:
+        save_draft(draft_id, {'matricula': legacy_data, 'form': {}})
+    return draft_id
+
+
+def _registration_draft_data(draft_id):
+    data = load_draft(draft_id)
+    return data if isinstance(data, dict) else {}
+
+
+def _render_student_registration_form(db, form_data=None):
+    cursor = db.cursor()
+    cursor.execute('SELECT id, ano FROM academic_years WHERE ativo = 1 ORDER BY ano DESC')
+    return render_template(
+        'secretary/student_form.html',
+        academic_years=cursor.fetchall(),
+        form_data=form_data or {},
+        provinces=MOZAMBIQUE_PROVINCES,
+        mozambique_document_types=MOZAMBIQUE_DOCUMENT_TYPES,
+        foreign_document_types=FOREIGN_DOCUMENT_TYPES,
+    )
+
+
+def _valid_phone(value):
+    if not value:
+        return True
+    if not re.fullmatch(r'[+0-9 ()-]{7,24}', value):
+        return False
+    digits = re.sub(r'\D', '', value)
+    return 7 <= len(digits) <= 15
 
 
 def _valid_payment_amount(value):
@@ -348,9 +401,12 @@ def students_list():
         student_conditions.append('s.ano_lectivo_id = ?')
         student_params.append(selected_year_id)
     if busca:
-        student_conditions.append('(s.nome LIKE ? OR s.code LIKE ? OR s.bi_cedula LIKE ?)')
+        student_conditions.append(
+            '(s.nome LIKE ? OR s.code LIKE ? OR s.bi_cedula LIKE ? '
+            'OR s.documento_identificacao_numero LIKE ?)'
+        )
         pattern = f'%{busca}%'
-        student_params.extend((pattern, pattern, pattern))
+        student_params.extend((pattern, pattern, pattern, pattern))
     if filtro_especial == 'isentos':
         student_conditions.append('COALESCE(s.isento_taxa, 0) = 1')
     elif filtro_especial == 'nee':
@@ -638,12 +694,22 @@ def student_profile(student_id):
         )),
         ('Identificação', (
             ('Nome completo', aluno['nome']),
-            ('BI / Cédula', aluno['bi_cedula']),
+            (
+                'Documento de identificação',
+                aluno['documento_identificacao_numero'] or aluno['bi_cedula'],
+            ),
+            ('Tipo de documento', aluno['documento_identificacao_tipo']),
+            ('País emissor', aluno['documento_identificacao_pais']),
             ('Sexo', 'Masculino' if aluno['sexo'] == 'M' else 'Feminino' if aluno['sexo'] == 'F' else '—'),
             ('Data de nascimento', aluno['data_nascimento']),
             ('Naturalidade', aluno['naturalidade']),
             ('Província de nascimento', aluno['provincia_nascimento']),
+            ('Distrito de nascimento', aluno['distrito_nascimento']),
+            ('País de nascimento', aluno['pais_nascimento']),
             ('Nacionalidade', aluno['nacionalidade']),
+            ('País de residência', aluno['pais_residencia']),
+            ('Província de residência', aluno['provincia_residencia']),
+            ('Distrito de residência', aluno['distrito_residencia']),
             ('Morada', aluno['morada']),
         )),
         ('Pai e mãe', (
@@ -822,11 +888,25 @@ def manage_guardians():
 def student_form():
     if not check_secretary():
         return redirect(url_for('auth.login_landing'))
-        
+
     db = get_db()
+    try:
+        draft_id = _registration_draft_id()
+        draft_data = _registration_draft_data(draft_id)
+    except EnrollmentDraftError as error:
+        flash(str(error), 'danger')
+        return redirect(url_for('secretary.dashboard'))
+    previous_matricula = draft_data.get('matricula', {})
+
     if request.method == 'POST':
+        form_values = request.form.to_dict()
+        draft_data['form'] = form_values
+        save_draft(draft_id, draft_data)
         nome = request.form.get('nome', '').strip()
-        bi_cedula = request.form.get('bi_cedula', '').strip()
+        document_number = request.form.get('documento_identificacao_numero', '').strip()
+        document_type = request.form.get('documento_identificacao_tipo', '').strip()
+        document_country = request.form.get('documento_identificacao_pais', '').strip()
+        bi_cedula = document_number
         data_nasc = request.form.get('data_nascimento')
         
         cursor = db.cursor()
@@ -851,11 +931,68 @@ def student_form():
             return redirect(url_for('secretary.student_form'))
         selected_year = active_year['id']
         
-        # VALIDAÇÃO 1: VERIFICAR DUPLICAÇÃO DE BI
-        cursor.execute('SELECT id, nome, classe_ingresso FROM students WHERE bi_cedula = ?', (bi_cedula,))
+        is_foreign_nationality = request.form.get('nacionalidade_tipo') == 'Estrangeira'
+        nationality_country = request.form.get('nacionalidade_pais', '').strip()
+        if is_foreign_nationality and not nationality_country:
+            flash('Indique o país da nacionalidade estrangeira.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if not is_foreign_nationality:
+            nationality_country = 'Moçambicana'
+            if document_country := request.form.get('documento_identificacao_pais', '').strip():
+                if document_country != 'Moçambique':
+                    flash('O documento de um aluno moçambicano deve ter Moçambique como país emissor.', 'danger')
+                    return redirect(url_for('secretary.student_form'))
+
+        if not document_number:
+            document_number = request.form.get('bi_cedula', '').strip()
+        if not document_type:
+            document_type = 'Bilhete de Identidade'
+        if not document_country:
+            document_country = 'Moçambique'
+        same_draft_identity = bool(
+            previous_matricula
+            and previous_matricula.get('documento_identificacao_numero') == document_number
+            and previous_matricula.get('documento_identificacao_tipo') == document_type
+            and previous_matricula.get('documento_identificacao_pais') == document_country
+        )
+        allowed_document_types = (
+            FOREIGN_DOCUMENT_TYPES
+            if is_foreign_nationality
+            else MOZAMBIQUE_DOCUMENT_TYPES
+        )
+        if document_type not in allowed_document_types:
+            flash('Seleccione um tipo de documento válido para a nacionalidade indicada.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if not document_number or not document_country:
+            flash('O tipo, país emissor e número do documento são obrigatórios.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        if is_foreign_nationality and document_type == 'Outro documento (validar pela Secretaria)':
+            flash(
+                'Este documento requer validação presencial da Secretaria antes de concluir a matrícula.',
+                'warning',
+            )
+        if is_foreign_nationality:
+            bi_cedula = f'EXT-{secrets.token_hex(16)}'
+        else:
+            bi_cedula = document_number
+
+        cursor.execute('''
+            SELECT id, nome, classe_ingresso
+            FROM students
+            WHERE bi_cedula = ?
+               OR (
+                   documento_identificacao_pais = ?
+                   AND documento_identificacao_tipo = ?
+                   AND documento_identificacao_numero = ?
+               )
+        ''', (bi_cedula, document_country, document_type, document_number))
         existente_bi = cursor.fetchone()
         if existente_bi:
-            flash(f'ERRO: O aluno com o BI/Cédula {bi_cedula} já se encontra matriculado no sistema (Nome: {existente_bi["nome"]}, {existente_bi["classe_ingresso"]}ª Classe)! Não são permitidas duplicações.', 'danger')
+            flash(
+                'O documento indicado já está associado a um aluno matriculado '
+                f'({existente_bi["nome"]}, {existente_bi["classe_ingresso"]}.ª Classe).',
+                'danger',
+            )
             return redirect(url_for('secretary.student_form'))
             
         # VALIDAÇÃO 2: BLOQUEAR NOME DE FUNCIONÁRIO
@@ -887,7 +1024,7 @@ def student_form():
         if classe_atribuida <= 9:
             area_curricular = None
 
-        if not nome or not bi_cedula or not data_nasc:
+        if not nome or not document_number or not data_nasc:
             flash('Nome, documento de identificação e data de nascimento são obrigatórios.', 'danger')
             return redirect(url_for('secretary.student_form'))
         try:
@@ -902,29 +1039,90 @@ def student_form():
             flash('A data de nascimento não pode estar no futuro.', 'danger')
             return redirect(url_for('secretary.student_form'))
 
+        birth_country = request.form.get('pais_nascimento', 'Moçambique').strip()
+        if birth_country != 'Moçambique':
+            birth_country = request.form.get('pais_nascimento_outro', '').strip()
+            if not birth_country:
+                flash('Indique o país de nascimento do aluno.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+        birth_province = request.form.get('provincia_nascimento', '').strip()
+        birth_district = request.form.get('distrito_nascimento', '').strip()
+        if birth_country == 'Moçambique':
+            if (
+                birth_province not in MOZAMBIQUE_PROVINCES
+                or birth_district not in MOZAMBIQUE_PROVINCES.get(birth_province, ())
+            ):
+                flash('Seleccione uma província e um distrito de nascimento válidos.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+        elif birth_province or birth_district:
+            flash(
+                'Para nascimento fora de Moçambique, indique a localidade sem seleccionar distrito moçambicano.',
+                'danger',
+            )
+            return redirect(url_for('secretary.student_form'))
+
+        residence_country = request.form.get('pais_residencia', 'Moçambique').strip()
+        if residence_country != 'Moçambique':
+            residence_country = request.form.get('pais_residencia_outro', '').strip()
+        residence_province = request.form.get('provincia_residencia', '').strip()
+        residence_district = request.form.get('distrito_residencia', '').strip()
+        if residence_country == 'Moçambique':
+            if bool(residence_province) != bool(residence_district):
+                flash('Seleccione a província e o distrito da residência.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+            if residence_province and (
+                residence_province not in MOZAMBIQUE_PROVINCES
+                or residence_district not in MOZAMBIQUE_PROVINCES.get(residence_province, ())
+            ):
+                flash('O distrito de residência não pertence à província seleccionada.', 'danger')
+                return redirect(url_for('secretary.student_form'))
+        elif not residence_country:
+            flash('Indique o país de residência.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+
         encarregado_parentesco = request.form.get('encarregado_parentesco', '').strip()
         if encarregado_parentesco not in ('Pai', 'Mãe', 'Outro'):
             flash('Seleccione o grau de parentesco do encarregado.', 'danger')
             return redirect(url_for('secretary.student_form'))
         if encarregado_parentesco == 'Pai':
-            encarregado_nome = request.form.get('encarregado_nome', '').strip() or request.form.get('nome_pai', '').strip()
-            encarregado_contacto = (
-                request.form.get('encarregado_contacto_principal', '').strip()
-                or request.form.get('pai_contacto', '').strip()
-            )
+            encarregado_nome = request.form.get('nome_pai', '').strip()
+            encarregado_naturalidade = request.form.get('pai_naturalidade', '').strip()
+            encarregado_profissao = request.form.get('pai_profissao', '').strip()
+            encarregado_contacto = request.form.get('pai_contacto', '').strip()
+            encarregado_contacto_alternativo = ''
+            encarregado_email = ''
+            encarregado_morada = request.form.get('morada', '').strip()
         elif encarregado_parentesco == 'Mãe':
-            encarregado_nome = request.form.get('encarregado_nome', '').strip() or request.form.get('nome_mae', '').strip()
-            encarregado_contacto = (
-                request.form.get('encarregado_contacto_principal', '').strip()
-                or request.form.get('mae_contacto', '').strip()
-            )
+            encarregado_nome = request.form.get('nome_mae', '').strip()
+            encarregado_naturalidade = request.form.get('mae_naturalidade', '').strip()
+            encarregado_profissao = request.form.get('mae_profissao', '').strip()
+            encarregado_contacto = request.form.get('mae_contacto', '').strip()
+            encarregado_contacto_alternativo = ''
+            encarregado_email = ''
+            encarregado_morada = request.form.get('morada', '').strip()
         else:
             encarregado_nome = request.form.get('encarregado_nome', '').strip()
+            encarregado_naturalidade = request.form.get('encarregado_naturalidade', '').strip()
+            encarregado_profissao = request.form.get('encarregado_profissao', '').strip()
             encarregado_contacto = request.form.get('encarregado_contacto_principal', '').strip()
+            encarregado_contacto_alternativo = request.form.get('encarregado_contacto_alternativo', '').strip()
+            encarregado_email = request.form.get('encarregado_email', '').strip()
+            encarregado_morada = request.form.get('encarregado_morada', '').strip()
         if not encarregado_nome:
             flash('Informe o nome do Encarregado de Educação.', 'danger')
             return redirect(url_for('secretary.student_form'))
-        encarregado_email = request.form.get('encarregado_email', '').strip()
+        if not encarregado_contacto:
+            flash('Informe o contacto principal do Encarregado de Educação.', 'danger')
+            return redirect(url_for('secretary.student_form'))
+        for contact in (
+            request.form.get('pai_contacto', '').strip(),
+            request.form.get('mae_contacto', '').strip(),
+            encarregado_contacto,
+            encarregado_contacto_alternativo,
+        ):
+            if not _valid_phone(contact):
+                flash('Um dos contactos telefónicos indicados não é válido.', 'danger')
+                return redirect(url_for('secretary.student_form'))
         if encarregado_email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', encarregado_email):
             flash('O e-mail do encarregado não é válido.', 'danger')
             return redirect(url_for('secretary.student_form'))
@@ -965,38 +1163,71 @@ def student_form():
                 flash('O ano lectivo anterior indicado não é válido.', 'danger')
                 return redirect(url_for('secretary.student_form'))
             document = request.files.get('documento_transferencia')
-            if not document or not document.filename:
+            has_saved_document = bool(
+                same_draft_identity and previous_matricula.get('documento_transferencia_path')
+            )
+            if (not document or not document.filename) and not has_saved_document:
                 flash('Anexe o documento de transferência em PDF.', 'danger')
                 return redirect(url_for('secretary.student_form'))
 
+        photo_path = None
+        transfer_path = None
         try:
             photo = request.files.get('fotografia')
-            photo_path = save_student_photo(photo) if photo and photo.filename else None
             transfer_file = request.files.get('documento_transferencia')
             transfer_path = (
                 save_transfer_document(transfer_file)
                 if ingresso_situacao == 'Transferido' and transfer_file and transfer_file.filename
-                else None
+                else (
+                    previous_matricula.get('documento_transferencia_path')
+                    if ingresso_situacao == 'Transferido'
+                    and same_draft_identity
+                    else None
+                )
+            )
+            photo_path = (
+                save_student_photo(photo)
+                if photo and photo.filename
+                else (
+                    previous_matricula.get('foto_path')
+                    if same_draft_identity
+                    else None
+                )
             )
         except ValueError as exc:
+            for saved_path in (photo_path, transfer_path):
+                previous_paths = {
+                    previous_matricula.get('foto_path'),
+                    previous_matricula.get('documento_transferencia_path'),
+                }
+                if saved_path and saved_path not in previous_paths:
+                    (UPLOAD_DIRECTORY / saved_path).unlink(missing_ok=True)
             flash(str(exc), 'danger')
             return redirect(url_for('secretary.student_form'))
 
         justificacao = request.form.get('justificacao_alteracao') if classe_atribuida != classe_sugerida else ""
         justificacao_isencao = request.form.get('justificacao_isencao') if isento else ""
         
-        # Guarda temporariamente os dados da matrícula na sessão para avançar ao passo de pagamento
+        # Rascunhos com dados pessoais ficam cifrados no armazenamento privado do servidor.
         dados_matricula = {
             'nome': nome,
             'nome_pai': request.form.get('nome_pai', '').strip(),
             'nome_mae': request.form.get('nome_mae', '').strip(),
             'bi_cedula': bi_cedula,
+            'documento_identificacao_tipo': document_type,
+            'documento_identificacao_pais': document_country,
+            'documento_identificacao_numero': document_number,
             'data_nascimento': data_nasc,
             'sexo': request.form.get('sexo'),
             'morada': request.form.get('morada', '').strip(),
             'naturalidade': request.form.get('naturalidade', '').strip(),
-            'provincia_nascimento': request.form.get('provincia_nascimento', '').strip(),
-            'nacionalidade': request.form.get('nacionalidade', '').strip() or 'Moçambicana',
+            'provincia_nascimento': birth_province,
+            'distrito_nascimento': birth_district,
+            'pais_nascimento': birth_country,
+            'pais_residencia': residence_country,
+            'provincia_residencia': residence_province,
+            'distrito_residencia': residence_district,
+            'nacionalidade': nationality_country,
             'foto_path': photo_path,
             'pai_naturalidade': request.form.get('pai_naturalidade', '').strip(),
             'pai_profissao': request.form.get('pai_profissao', '').strip(),
@@ -1004,20 +1235,19 @@ def student_form():
             'mae_naturalidade': request.form.get('mae_naturalidade', '').strip(),
             'mae_profissao': request.form.get('mae_profissao', '').strip(),
             'mae_contacto': request.form.get('mae_contacto', '').strip(),
-            'encarregado_nome': request.form.get('encarregado_nome', '').strip(),
+            'encarregado_nome': encarregado_nome,
             'encarregado_parentesco': encarregado_parentesco,
-            'encarregado_naturalidade': request.form.get('encarregado_naturalidade', '').strip(),
-            'encarregado_profissao': request.form.get('encarregado_profissao', '').strip(),
+            'encarregado_naturalidade': encarregado_naturalidade,
+            'encarregado_profissao': encarregado_profissao,
             'encarregado_contacto_principal': encarregado_contacto,
-            'encarregado_contacto_alternativo': request.form.get('encarregado_contacto_alternativo', '').strip(),
-            'encarregado_morada': request.form.get('encarregado_morada', '').strip(),
+            'encarregado_contacto_alternativo': encarregado_contacto_alternativo,
+            'encarregado_morada': encarregado_morada,
             'encarregado_email': encarregado_email,
             'ingresso_situacao': ingresso_situacao,
             **transfer_data,
             'documento_transferencia_path': transfer_path,
-            'contacto_1': request.form.get('contacto_1', '').strip()
-                or request.form.get('encarregado_contacto_principal', '').strip(),
-            'contacto_2': request.form.get('contacto_2', '').strip(),
+            'contacto_1': encarregado_contacto,
+            'contacto_2': encarregado_contacto_alternativo,
             'classe': classe_atribuida,
             'ano_lectivo_id': selected_year,
             'area_curricular': area_curricular,
@@ -1029,32 +1259,55 @@ def student_form():
             'classe_sugerida': classe_sugerida,
             'justificacao': justificacao
         }
+
+        draft_data.update({'matricula': dados_matricula, 'form': form_values})
+        save_draft(draft_id, draft_data)
         
         # Se o aluno for ISENTO de taxas, regista imediatamente sem pagamento
         if isento == 1:
-            return _concluir_matricula_no_banco(db, dados_matricula, None)
+            try:
+                response = _concluir_matricula_no_banco(db, dados_matricula, None)
+            except ValueError as error:
+                flash(str(error), 'danger')
+                return redirect(url_for('secretary.student_form'))
+            except DB_INTEGRITY_ERRORS:
+                db.rollback()
+                flash(
+                    'O documento deste aluno já foi registado. Reveja os dados antes de tentar novamente.',
+                    'danger',
+                )
+                return redirect(url_for('secretary.student_form'))
+            delete_draft(draft_id)
+            session.pop('enrollment_draft_id', None)
+            return response
             
         # Se NÃO for isento, redireciona para a etapa obrigatória de pagamento
-        session['pending_matricula'] = dados_matricula
         flash('Dados do aluno validados! Agora preencha os dados do pagamento/talão bancário para finalizar a inscrição.', 'info')
         return redirect(url_for('secretary.student_registration_payment'))
         
-    cursor = db.cursor()
-    cursor.execute('SELECT id, ano FROM academic_years WHERE ativo = 1 ORDER BY ano DESC')
-    academic_years = cursor.fetchall()
-    return render_template('secretary/student_form.html', academic_years=academic_years)
+    return _render_student_registration_form(db, draft_data.get('form', {}))
 
 @secretary_bp.route('/students/new/payment', methods=['GET', 'POST'])
 def student_registration_payment():
     if not check_secretary():
         return redirect(url_for('auth.login_landing'))
-        
-    dados_matricula = session.get('pending_matricula')
+
+    try:
+        draft_id = _registration_draft_id()
+        draft_data = _registration_draft_data(draft_id)
+    except EnrollmentDraftError as error:
+        flash(str(error), 'danger')
+        return redirect(url_for('secretary.student_form'))
+
+    dados_matricula = draft_data.get('matricula')
     if not dados_matricula:
         flash('Nenhuma pré-inscrição pendente encontrada. Preencha os dados do aluno primeiro.', 'warning')
         return redirect(url_for('secretary.student_form'))
         
     if request.method == 'POST':
+        payment_form = request.form.to_dict()
+        draft_data['payment_form'] = payment_form
+        save_draft(draft_id, draft_data)
         banco = request.form.get('banco_plataforma', '').strip()
         referencia = request.form.get('referencia_talao', '').strip()
         valor_pago = request.form.get('valor_pago', '').strip()
@@ -1098,8 +1351,23 @@ def student_registration_payment():
             'mes_pago': mes_pago
         }
         
-        session.pop('pending_matricula', None)
-        return _concluir_matricula_no_banco(db, dados_matricula, dados_pagamento)
+        try:
+            response = _concluir_matricula_no_banco(db, dados_matricula, dados_pagamento)
+        except DB_INTEGRITY_ERRORS:
+            db.rollback()
+            flash(
+                'Não foi possível concluir a matrícula porque os dados já foram registados. '
+                'Verifique o documento do aluno e a referência do pagamento.',
+                'danger',
+            )
+            return redirect(url_for('secretary.student_registration_payment'))
+        except ValueError as error:
+            db.rollback()
+            flash(str(error), 'danger')
+            return redirect(url_for('secretary.student_form'))
+        delete_draft(draft_id)
+        session.pop('enrollment_draft_id', None)
+        return response
         
     return render_template(
         'secretary/student_registration_payment.html',
@@ -1107,6 +1375,7 @@ def student_registration_payment():
         bancos=BANCOS_PERMITIDOS,
         hoje=datetime.now().strftime('%Y-%m-%d'),
         areas_curriculares=AREAS_CURRICULARES,
+        payment_form=draft_data.get('payment_form', {}),
     )
 
 def _concluir_matricula_no_banco(db, m, pag):
@@ -1130,7 +1399,10 @@ def _concluir_matricula_no_banco(db, m, pag):
             encarregado_contacto_1, encarregado_contacto_2,
             classe_ingresso, turma_id, ano_lectivo_id, turno, curso, data_matricula, isento_taxa, justificacao_isencao, nee_tipo,
             classe_sugerida, justificacao_alteracao, funcionario_id,
-            provincia_nascimento, nacionalidade, foto_path,
+            provincia_nascimento, distrito_nascimento, pais_nascimento,
+            pais_residencia, provincia_residencia, distrito_residencia,
+            nacionalidade, documento_identificacao_tipo,
+            documento_identificacao_pais, documento_identificacao_numero, foto_path,
             pai_naturalidade, pai_profissao, pai_contacto,
             mae_naturalidade, mae_profissao, mae_contacto,
             encarregado_nome, encarregado_parentesco, encarregado_naturalidade,
@@ -1140,13 +1412,17 @@ def _concluir_matricula_no_banco(db, m, pag):
             classe_anterior, ano_lectivo_anterior, documento_transferencia_path,
             observacoes_transferencia
         ) VALUES ({})
-    '''.format(', '.join('?' for _ in range(48))), (
+    '''.format(', '.join('?' for _ in range(56))), (
         codigo_aluno, m['nome'], m['nome_pai'], m['nome_mae'],
         m['bi_cedula'], m['data_nascimento'], m['sexo'], m['morada'], m['naturalidade'],
         m['contacto_1'], m['contacto_2'],
         m['classe'], turma_id, ano_lectivo_id, m['turno'], m['curso'], data_hoje, m['isento'], m['justificacao_isencao'], m['nee_tipo'],
         m['classe_sugerida'], m['justificacao'], session['user_id'],
-        m['provincia_nascimento'], m['nacionalidade'], m['foto_path'],
+        m['provincia_nascimento'], m['distrito_nascimento'], m['pais_nascimento'],
+        m['pais_residencia'], m['provincia_residencia'], m['distrito_residencia'],
+        m['nacionalidade'], m['documento_identificacao_tipo'],
+        m['documento_identificacao_pais'], m['documento_identificacao_numero'],
+        m['foto_path'],
         m['pai_naturalidade'], m['pai_profissao'], m['pai_contacto'],
         m['mae_naturalidade'], m['mae_profissao'], m['mae_contacto'],
         m['encarregado_nome'], m['encarregado_parentesco'], m['encarregado_naturalidade'],
@@ -1205,15 +1481,43 @@ def student_edit(student_id):
 
     if request.method == 'POST':
         nome = request.form.get('nome', '').strip()
-        bi_cedula = request.form.get('bi_cedula', '').strip()
-        cursor.execute('SELECT id FROM students WHERE bi_cedula = ? AND id != ?', (bi_cedula, student_id))
+        document_number = request.form.get(
+            'documento_identificacao_numero',
+            request.form.get('bi_cedula', ''),
+        ).strip()
+        document_type = request.form.get(
+            'documento_identificacao_tipo',
+            aluno['documento_identificacao_tipo'] or 'Bilhete de Identidade',
+        ).strip()
+        document_country = request.form.get(
+            'documento_identificacao_pais',
+            aluno['documento_identificacao_pais'] or 'Moçambique',
+        ).strip()
+        bi_cedula = (
+            document_number
+            if document_country == 'Moçambique'
+            else f'EXT-{secrets.token_hex(16)}'
+        )
+        cursor.execute('''
+            SELECT id FROM students
+            WHERE id != ? AND (
+                bi_cedula = ?
+                OR (
+                    documento_identificacao_pais = ?
+                    AND documento_identificacao_tipo = ?
+                    AND documento_identificacao_numero = ?
+                )
+            )
+        ''', (student_id, bi_cedula, document_country, document_type, document_number))
         if cursor.fetchone():
-            flash(f'ERRO: O BI {bi_cedula} já pertence a outro aluno.', 'danger')
+            flash('O documento indicado já pertence a outro aluno.', 'danger')
             return redirect(url_for('secretary.student_edit', student_id=student_id))
             
         fields = (
             'nome', 'nome_pai', 'nome_mae', 'bi_cedula', 'data_nascimento', 'sexo',
-            'morada', 'naturalidade', 'provincia_nascimento', 'nacionalidade',
+            'morada', 'naturalidade', 'provincia_nascimento', 'distrito_nascimento',
+            'pais_nascimento', 'pais_residencia', 'provincia_residencia',
+            'distrito_residencia', 'nacionalidade',
             'encarregado_contacto_1', 'encarregado_contacto_2', 'pai_naturalidade',
             'pai_profissao', 'pai_contacto', 'mae_naturalidade', 'mae_profissao',
             'mae_contacto', 'encarregado_nome', 'encarregado_parentesco',
@@ -1224,6 +1528,10 @@ def student_edit(student_id):
             'observacoes_transferencia',
         )
         values = {field: request.form.get(field, '').strip() or None for field in fields}
+        values['bi_cedula'] = bi_cedula
+        values['documento_identificacao_tipo'] = document_type
+        values['documento_identificacao_pais'] = document_country
+        values['documento_identificacao_numero'] = document_number
         values['encarregado_contacto_1'] = (
             request.form.get('contacto_1', '').strip()
             or aluno['encarregado_contacto_1']
@@ -1299,6 +1607,8 @@ def student_edit(student_id):
             return redirect(url_for('secretary.student_edit', student_id=student_id))
 
         update_fields = fields + (
+            'documento_identificacao_tipo', 'documento_identificacao_pais',
+            'documento_identificacao_numero',
             'isento_taxa', 'justificacao_isencao', 'nee_tipo',
             'classe_anterior', 'ano_lectivo_anterior', 'foto_path',
             'documento_transferencia_path',
@@ -1791,7 +2101,9 @@ def exportar_lista_doc(turma_id):
         
     active_students = active_student_condition(cursor)
     cursor.execute(f'''
-        SELECT code, nome, bi_cedula, sexo, data_nascimento, encarregado_contacto_1
+        SELECT code, nome,
+               COALESCE(NULLIF(documento_identificacao_numero, ''), bi_cedula) AS bi_cedula,
+               sexo, data_nascimento, encarregado_contacto_1
         FROM students
         WHERE turma_id = ? AND {active_students}
         ORDER BY nome ASC

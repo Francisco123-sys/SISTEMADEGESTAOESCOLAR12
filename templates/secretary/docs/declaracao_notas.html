@@ -27,7 +27,7 @@
         </div>
 
         <div class="content">
-            <p><strong>{{ funcionario_atendeu }}</strong>, declara-se que <strong>{{ aluno.nome }}</strong>, filho de {{ aluno.nome_pai or '----------------' }} e de {{ aluno.nome_mae or '----------------' }}, nascido a {{ aluno.data_nascimento }}, fez nesta Escola a <strong>{{ aluno.classe_num }}ª Classe</strong>, Turma <strong>{{ aluno.turma_nome }}</strong>, em 2026, com o número de BI {{ aluno.bi_cedula }} e obteve as seguintes classificações por disciplina:</p>
+            <p><strong>{{ funcionario_atendeu }}</strong>, declara-se que <strong>{{ aluno.nome }}</strong>, filho de {{ aluno.nome_pai or '----------------' }} e de {{ aluno.nome_mae or '----------------' }}, nascido a {{ aluno.data_nascimento }}, fez nesta Escola a <strong>{{ aluno.classe_num }}ª Classe</strong>, Turma <strong>{{ aluno.turma_nome }}</strong>, em 2026, com o documento de identificação n.º {{ aluno.documento_identificacao_numero or aluno.bi_cedula }} e obteve as seguintes classificações por disciplina:</p>
 
             <table>
                 <tbody>

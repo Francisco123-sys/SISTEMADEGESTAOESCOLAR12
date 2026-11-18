@@ -3,6 +3,7 @@ import sqlite3
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 from database.complaint_migrations import migrate_complaint_schema
+from database.enrollment_migrations import migrate_enrollment_schema
 from services.db import ensure_same_database_target, get_database_url
 
 load_dotenv()
@@ -121,6 +122,7 @@ def init_db():
 
         with open('database/schema_pg.sql', 'r', encoding='utf-8') as f:
             cursor.execute(f.read())
+        migrate_enrollment_schema(cursor, is_postgres=True)
         cursor.execute('''
             ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS module TEXT
         ''')
@@ -268,6 +270,7 @@ def init_db():
 
         with open('database/schema.sql', 'r', encoding='utf-8') as f:
             cursor.executescript(f.read())
+        migrate_enrollment_schema(cursor, is_postgres=False)
         audit_columns = {
             row[1] for row in cursor.execute('PRAGMA table_info(audit_logs)')
         }
