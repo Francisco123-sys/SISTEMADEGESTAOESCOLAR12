@@ -205,24 +205,29 @@ class ActiveUserEndpointTests(unittest.TestCase):
         with self.client.session_transaction() as browser_session:
             self.assertNotIn('user_id', browser_session)
 
-    def test_idle_pedagogical_session_redirects_before_csrf_validation(self):
-        self._staff_login('pedagogico_1', 'PED1-TEST')
-        csrf_token = self._csrf_token()
-        with self.client.session_transaction() as browser_session:
-            browser_session['last_seen_at'] = (
-                time.time() - SESSION_TIMEOUT_SECONDS - 1
-            )
+    def test_idle_pedagogical_sessions_redirect_before_csrf_validation(self):
+        for profile, code in (
+            ('pedagogico_1', 'PED1-TEST'),
+            ('pedagogico_2', 'PED2-TEST'),
+        ):
+            with self.subTest(profile=profile):
+                self._staff_login(profile, code)
+                csrf_token = self._csrf_token()
+                with self.client.session_transaction() as browser_session:
+                    browser_session['last_seen_at'] = (
+                        time.time() - SESSION_TIMEOUT_SECONDS - 1
+                    )
 
-        response = self.client.post(
-            '/logout',
-            data={'csrf_token': csrf_token},
-        )
+                response = self.client.post(
+                    '/logout',
+                    data={'csrf_token': csrf_token},
+                )
 
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.headers['Location'].endswith('/'))
-        with self.client.session_transaction() as browser_session:
-            self.assertNotIn('user_id', browser_session)
-            self.assertNotIn('_csrf_token', browser_session)
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(response.headers['Location'].endswith('/'))
+                with self.client.session_transaction() as browser_session:
+                    self.assertNotIn('user_id', browser_session)
+                    self.assertNotIn('_csrf_token', browser_session)
 
     def test_counts_are_authenticated_details_are_authorized_and_tabs_deduplicate(self):
         self._staff_login('admin', 'ADM-TEST')
