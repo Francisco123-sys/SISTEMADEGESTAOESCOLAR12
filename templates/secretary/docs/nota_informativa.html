@@ -4,52 +4,94 @@
     <meta charset="UTF-8">
     <title>Nota Informativa - {{ aluno.nome }}</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 30px; background: white; }
-        .card { border: 2px solid #245B8F; padding: 25px; max-width: 820px; margin: auto; }
-        .header { text-align: center; background: #142B4A; color: white; padding: 15px; margin: -25px -25px 20px -25px; }
+        body { font-family: Arial, sans-serif; padding: 28px; background: #EEF1F5; }
+        .document-toolbar { max-width: 820px; margin: 0 auto 12px; display:flex; gap:8px; }
+        .document-toolbar button,.document-toolbar a { border:0; border-radius:6px; padding:9px 14px; background:#1849A9; color:#fff; text-decoration:none; font:600 0.88rem 'Segoe UI',sans-serif; cursor:pointer; }
+        .card { border: 2px solid #000; padding: 25px; max-width: 820px; margin: auto; background:white; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 18px; }
+        .header img { width:65px;height:65px;object-fit:contain; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
-        th, td { border: 1px solid #CCC; padding: 8px; text-align: center; }
-        th { background: #F3F5F8; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+        th { background: #F3F5F8; text-transform:uppercase; }
+        td:first-child { text-align:left; }
+        .student-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 18px; }
+        .lower-fields { margin-top:18px; line-height:2; }
+        @media print {
+            body { padding:0; background:white; }
+            .document-toolbar { display:none; }
+            .card { max-width:none; width:auto; margin:0; }
+            @page { size:A4 portrait; margin:14mm; }
+        }
     </style>
 </head>
 <body>
+    <div class="document-toolbar">
+        <a href="{{ url_for('secretary.students_list') }}">Voltar</a>
+        <button type="button" onclick="window.print()">Imprimir</button>
+        <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='boletim', download=1) }}">Descarregar PDF</a>
+    </div>
     <div class="card">
         <div class="header">
-            <h3 style="margin:0;">ESCOLA SECUNDÁRIA DA MANGA - BEIRA</h3>
-            <h2 style="margin:5px 0 0 0;">BOLETIM INFORMATIVO DO EDUCANDO</h2>
+            <img src="{{ url_for('static', filename='img/emblema_moz.png') }}" alt="Emblema da República de Moçambique">
+            <h3 style="margin:4px 0 2px;">REPÚBLICA DE MOÇAMBIQUE</h3>
+            <h4 style="margin:0;">GOVERNO DA PROVÍNCIA DE SOFALA</h4>
+            <h3 style="margin:5px 0 0;">ESCOLA SECUNDÁRIA DA MANGA</h3>
+            <h2 style="margin:12px 0 0;">NOTA INFORMATIVA</h2>
         </div>
 
-        <p><strong>Aluno:</strong> {{ aluno.nome }} ({{ aluno.code }})</p>
-        <p><strong>Classe/Turma:</strong> {{ aluno.classe_num }}ª Classe - {{ aluno.turma_nome }}</p>
+        <div class="student-fields">
+            <p><strong>ANO LECTIVO:</strong> {{ aluno.ano_lectivo or 'Por indicar' }}</p>
+            <p><strong>CLASSE:</strong> {{ aluno.classe_num or 'Por indicar' }}ª Classe</p>
+            <p><strong>ÁREA:</strong> {{ area_curricular_nome or 'Não aplicável' }}</p>
+            <p><strong>N.º:</strong> {{ aluno.code }}</p>
+            <p><strong>TURMA:</strong> {{ aluno.turma_nome or 'Por indicar' }}</p>
+            <p><strong>MODALIDADE:</strong> {% if aluno.turma_curso == 'À Distância' %}ENSINO À DISTÂNCIA{% else %}ENSINO PRESENCIAL{% endif %}</p>
+            <p style="grid-column:1/-1;"><strong>NOME COMPLETO:</strong> {{ aluno.nome }}</p>
+            <p><strong>DATA DE NASCIMENTO:</strong> {{ aluno.data_nascimento or 'Por indicar' }}</p>
+            <p><strong>NATURALIDADE:</strong> {{ aluno.naturalidade or 'Por indicar' }}</p>
+            <p><strong>DISTRITO:</strong> {{ aluno.distrito_nascimento or 'Por indicar' }}</p>
+            <p><strong>DOCUMENTO DE IDENTIFICAÇÃO N.º:</strong> {{ aluno.documento_identificacao_numero or aluno.bi_cedula or 'Por indicar' }}</p>
+            <p><strong>FILHO DE:</strong> {{ aluno.nome_pai or 'Por indicar' }}</p>
+            <p><strong>E DE:</strong> {{ aluno.nome_mae or 'Por indicar' }}</p>
+        </div>
 
         <table>
             <thead>
                 <tr>
                     <th>Disciplina</th>
-                    <th>AV1</th>
-                    <th>AV2</th>
-                    <th>AV3</th>
-                    <th>AV4</th>
-                    <th>Média Final</th>
-                    <th>Faltas (FJ / FNJ / Total)</th>
-                    <th>Parecer do Professor</th>
+                    <th>1.º Trimestre</th>
+                    <th>2.º Trimestre</th>
+                    <th>3.º Trimestre</th>
+                    <th>Média</th>
+                    <th>Resultado</th>
                 </tr>
             </thead>
             <tbody>
                 {% for n in notas %}
                 <tr>
                     <td style="text-align:left;"><strong>{{ n.disciplina_nome }}</strong></td>
-                    <td>{{ n.av1 }}</td>
-                    <td>{{ n.av2 }}</td>
-                    <td>{{ n.av3 }}</td>
-                    <td>{{ n.av4 }}</td>
-                    <td><strong>{{ "%.1f"|format(n.media_final) }}</strong></td>
-                    <td>{{ n.faltas_justificadas or 0 }} / {{ n.faltas_nao_justificadas or 0 }} / <strong>{{ n.total_faltas or 0 }}</strong></td>
-                    <td style="text-align:left; font-size:0.85rem;">{{ n.comentario_professor or '-' }}</td>
+                    <td>{% if n.nota_1 is not none %}{{ "%.1f"|format(n.nota_1) }}{% else %}—{% endif %}</td>
+                    <td>{% if n.nota_2 is not none %}{{ "%.1f"|format(n.nota_2) }}{% else %}—{% endif %}</td>
+                    <td>{% if n.nota_3 is not none %}{{ "%.1f"|format(n.nota_3) }}{% else %}—{% endif %}</td>
+                    <td>{% if n.media_final is not none %}<strong>{{ "%.1f"|format(n.media_final) }}</strong>{% else %}—{% endif %}</td>
+                    <td>{{ n.resultado or 'Pendente' }}</td>
                 </tr>
+                {% else %}
+                <tr><td colspan="6">Não existem classificações registadas para este aluno.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
+        <div class="lower-fields">
+            <p><strong>MÉDIA:</strong> ________________________________</p>
+            <p><strong>SITUAÇÃO FINAL:</strong> __________________________</p>
+            <p><strong>OBSERVAÇÕES:</strong> ______________________________</p>
+            <p style="text-align:right;margin-top:24px;">Beira, aos {{ data_hoje }}</p>
+            <p style="text-align:center;margin-top:45px;">
+                O DIRECTOR ADJUNTO PEDAGÓGICO<br><br>
+                ____________________________________<br>
+                Assinatura
+            </p>
+        </div>
     </div>
     <div style="text-align:center; margin-top:20px;">
         <button onclick="window.print()" style="padding:8px 16px; cursor:pointer;">Imprimir Boletim</button>

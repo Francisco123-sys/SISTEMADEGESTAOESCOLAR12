@@ -64,6 +64,16 @@ from reportlab.platypus import (
 secretary_bp = Blueprint('secretary', __name__, url_prefix='/secretary')
 
 BANCOS_PERMITIDOS = ['Banco BCI', 'Millennium BIM', 'Standard Bank', 'M-Pesa', 'e-Mola']
+
+MESES_PORTUGUES = (
+    '', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+)
+
+
+def _data_portuguesa(data=None):
+    data = data or datetime.now()
+    return f'{data.day:02d} de {MESES_PORTUGUES[data.month]} de {data.year}'
 FOREIGN_DOCUMENT_TYPES = (
     'Passaporte',
     'Documento nacional de identificação estrangeiro',
@@ -2209,10 +2219,14 @@ def emitir_documento(student_id, tipo):
     db = get_db()
     cursor = db.cursor()
     cursor.execute('''
-        SELECT s.*, t.nome as turma_nome, c.numero as classe_num 
-        FROM students s 
-        LEFT JOIN turmas t ON s.turma_id = t.id 
+        SELECT s.*, t.nome AS turma_nome, t.sala AS turma_sala,
+               t.curso AS turma_curso, t.turno AS turma_turno,
+               t.area_curricular, c.numero AS classe_num,
+               ay.ano AS ano_lectivo
+        FROM students s
+        LEFT JOIN turmas t ON s.turma_id = t.id
         LEFT JOIN classes c ON t.classe_id = c.id
+        LEFT JOIN academic_years ay ON ay.id = s.ano_lectivo_id
         WHERE s.id = ?
     ''', (student_id,))
     aluno = cursor.fetchone()
@@ -2221,22 +2235,135 @@ def emitir_documento(student_id, tipo):
         flash('Aluno não encontrado.', 'danger')
         return redirect(url_for('secretary.students_list'))
         
-    cursor.execute('''
-        SELECT g.*, sub.nome as disciplina_nome 
-        FROM grades g JOIN subjects sub ON g.subject_id = sub.id 
+    ano_lectivo_id = request.args.get('ano_lectivo_id', type=int)
+    grade_params = [student_id]
+    grade_sql = '''
+        SELECT g.*, sub.nome AS disciplina_nome
+        FROM grades g
+        JOIN subjects sub ON g.subject_id = sub.id
+        JOIN turmas gt ON gt.id = g.turma_id
+        JOIN academic_years ay ON ay.id = gt.ano_lectivo_id
         WHERE g.student_id = ?
-    ''', (student_id,))
-    notas = cursor.fetchall()
-    
-    data_hoje = datetime.now().strftime('%d de %B de %Y')
+    '''
+    if ano_lectivo_id:
+        grade_sql += ' AND ay.id = ?'
+        grade_params.append(ano_lectivo_id)
+    grade_sql += ' ORDER BY sub.nome ASC, g.trimestre ASC'
+    cursor.execute(grade_sql, tuple(grade_params))
+
+    notas_por_disciplina = {}
+    for grade in cursor.fetchall():
+        subject_id = grade['subject_id']
+        if subject_id not in notas_por_disciplina:
+            notas_por_disciplina[subject_id] = {
+                'disciplina_nome': grade['disciplina_nome'],
+                'nota_1': None,
+                'nota_2': None,
+                'nota_3': None,
+                'media_final': None,
+                'resultado': None,
+            }
+        item = notas_por_disciplina[subject_id]
+        trimestre = grade['trimestre']
+        if trimestre in (1, 2, 3):
+            item[f'nota_{trimestre}'] = (
+                grade['media_trimestral']
+                if grade['media_trimestral'] is not None
+                else grade['media_final']
+            )
+        if grade['trimestre'] == 3:
+            item['media_final'] = grade['media_final']
+            item['resultado'] = 'Resultado registado' if grade['media_final'] is not None else 'Pendente'
+        elif item['media_final'] is None and grade['media_final'] is not None:
+            item['media_final'] = grade['media_final']
+    notas = list(notas_por_disciplina.values())
+
+    data_hoje = _data_portuguesa()
     funcionario_atendeu = session.get('user_nome')
-    
+
+    if tipo not in ('frequencia', 'notas', 'boletim', 'matricula'):
+        flash('Tipo de documento inválido.', 'danger')
+        return redirect(url_for('secretary.students_list'))
+
+    if request.args.get('download') == '1':
+        output = io.BytesIO()
+        document = SimpleDocTemplate(
+            output, pagesize=A4, rightMargin=cm, leftMargin=cm,
+            topMargin=cm, bottomMargin=cm,
+        )
+        styles = getSampleStyleSheet()
+        title = {
+            'frequencia': 'DECLARAÇÃO DE FREQUÊNCIA',
+            'notas': 'DECLARAÇÃO ESCOLAR',
+            'boletim': 'NOTA INFORMATIVA',
+            'matricula': 'BOLETIM DE INSCRIÇÃO / MATRÍCULA',
+        }[tipo]
+        story = [
+            Paragraph('REPÚBLICA DE MOÇAMBIQUE', styles['Title']),
+            Paragraph('ESCOLA SECUNDÁRIA DA MANGA', styles['Heading2']),
+            Paragraph(title, styles['Heading1']),
+            Spacer(1, cm * 0.5),
+            Paragraph(f"<b>Aluno:</b> {aluno['nome']} ({aluno['code']})", styles['BodyText']),
+            Paragraph(
+                f"<b>Classe:</b> {aluno['classe_num'] or '—'} · "
+                f"<b>Turma:</b> {aluno['turma_nome'] or '—'} · "
+                f"<b>Modalidade:</b> {aluno['turma_curso'] or aluno['curso']}",
+                styles['BodyText'],
+            ),
+        ]
+        if notas:
+            table_data = [['Disciplina', '1.º Tri.', '2.º Tri.', '3.º Tri.', 'Média', 'Resultado']]
+            for nota in notas:
+                table_data.append([
+                    nota['disciplina_nome'],
+                    '' if nota['nota_1'] is None else f"{nota['nota_1']:.1f}",
+                    '' if nota['nota_2'] is None else f"{nota['nota_2']:.1f}",
+                    '' if nota['nota_3'] is None else f"{nota['nota_3']:.1f}",
+                    '' if nota['media_final'] is None else f"{nota['media_final']:.1f}",
+                    nota['resultado'] or 'Pendente',
+                ])
+            story.append(Spacer(1, cm * 0.4))
+            story.append(Table(table_data, repeatRows=1, hAlign='LEFT'))
+        story.extend([
+            Spacer(1, cm),
+            Paragraph(f"Beira, aos {data_hoje}", styles['BodyText']),
+            Spacer(1, cm),
+            Paragraph(
+                f"O(A) RESPONSÁVEL AUTORIZADO(A)<br/><br/>{funcionario_atendeu or 'Nome a indicar'}",
+                styles['BodyText'],
+            ),
+        ])
+        document.build(story)
+        output.seek(0)
+        safe_name = f"{tipo}_{aluno['code']}.pdf"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=safe_name,
+            mimetype='application/pdf',
+        )
+
     if tipo == 'frequencia':
         return render_template('secretary/docs/declaracao_frequencia.html', aluno=aluno, data_hoje=data_hoje, funcionario_atendeu=funcionario_atendeu)
     elif tipo == 'notas':
         return render_template('secretary/docs/declaracao_notas.html', aluno=aluno, notas=notas, data_hoje=data_hoje, funcionario_atendeu=funcionario_atendeu)
     elif tipo == 'boletim':
-        return render_template('secretary/docs/nota_informativa.html', aluno=aluno, notas=notas, data_hoje=data_hoje, funcionario_atendeu=funcionario_atendeu)
+        return render_template(
+            'secretary/docs/nota_informativa.html',
+            aluno=aluno,
+            notas=notas,
+            data_hoje=data_hoje,
+            funcionario_atendeu=funcionario_atendeu,
+            area_curricular_nome=AREAS_CURRICULARES.get(aluno['area_curricular']) if aluno['area_curricular'] else None,
+        )
+    elif tipo == 'matricula':
+        return render_template(
+            'secretary/docs/boletim_matricula.html',
+            aluno=aluno,
+            data_hoje=data_hoje,
+            funcionario_atendeu=funcionario_atendeu,
+            areas_curriculares=AREAS_CURRICULARES,
+        )
         
     flash('Tipo de documento inválido.', 'danger')
     return redirect(url_for('secretary.students_list'))

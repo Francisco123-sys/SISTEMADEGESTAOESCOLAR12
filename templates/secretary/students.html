@@ -324,7 +324,9 @@
                                         <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='notas') }}"
                                            target="_blank" rel="noopener">Declaração de notas</a>
                                         <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='boletim') }}"
-                                           target="_blank" rel="noopener">Boletim</a>
+                                           target="_blank" rel="noopener">Nota Informativa / Boletim</a>
+                                        <a href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='matricula') }}"
+                                           target="_blank" rel="noopener">Boletim de matrícula</a>
                                         {% if not aluno.pedido_eliminacao_pendente %}
                                         <form method="POST"
                                               action="{{ url_for('secretary.request_student_deletion', student_id=aluno.id) }}"

@@ -20,6 +20,21 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY, ano INTEGER, ativo INTEGER
             );
             CREATE TABLE subjects (id INTEGER PRIMARY KEY, nome TEXT);
+            CREATE TABLE grades (
+                id INTEGER PRIMARY KEY,
+                student_id INTEGER,
+                subject_id INTEGER,
+                turma_id INTEGER,
+                trimestre INTEGER,
+                av1 REAL DEFAULT 0,
+                av2 REAL DEFAULT 0,
+                av3 REAL DEFAULT 0,
+                av4 REAL DEFAULT 0,
+                media_trimestral REAL,
+                exame REAL,
+                media_final REAL,
+                status TEXT DEFAULT 'Submetida'
+            );
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY, nome TEXT, role TEXT, ativo INTEGER
             );
@@ -33,6 +48,7 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY, code TEXT, nome TEXT, sexo TEXT,
                 data_nascimento TEXT, foto_path TEXT, turma_id INTEGER,
                 classe_ingresso INTEGER,
+                ano_lectivo_id INTEGER,
                 ativo INTEGER NOT NULL DEFAULT 1, eliminado_em TIMESTAMP,
                 eliminado_por INTEGER, encarregado_nome TEXT,
                 encarregado_contacto_principal TEXT, encarregado_contacto_1 TEXT
@@ -59,6 +75,13 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
             INSERT INTO users VALUES (2, 'Secretaria de Teste', 'secretary', 1);
             INSERT INTO turmas VALUES
                 (1, '8ª A', 'Sala 01', 'Manhã', 'Diurno', 4, 2, NULL, 8, 1, NULL);
+            INSERT INTO grades (
+                id, student_id, subject_id, turma_id, trimestre,
+                media_trimestral, media_final, status
+            ) VALUES
+                (1, 1, 1, 1, 1, 13.0, 13.0, 'Submetida'),
+                (2, 1, 1, 1, 2, 14.0, 14.0, 'Submetida'),
+                (3, 1, 1, 1, 3, 14.0, 14.0, 'Submetida');
             INSERT INTO students (
                 id, code, nome, sexo, data_nascimento, turma_id, classe_ingresso, ativo,
                 encarregado_nome, encarregado_contacto_principal
@@ -120,6 +143,29 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
         self.assertIn(b'data-modalidade="presencial"', response.data)
         self.assertIn(b'Ensino Presencial', response.data)
         self.assertIn(b'Limpar filtros', response.data)
+
+    def test_academic_document_preview_is_individual_and_deduplicates_subjects(self):
+        for tipo in ('boletim', 'notas', 'frequencia', 'matricula'):
+            with self.subTest(tipo=tipo):
+                with patch('routes.secretary.get_db', return_value=self.db):
+                    response = self.client.get(f'/secretary/documentos/1/{tipo}')
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b'Ana de Teste', response.data)
+                self.assertIn(b'Descarregar PDF', response.data)
+                self.assertIn(b'Imprimir', response.data)
+
+        with patch('routes.secretary.get_db', return_value=self.db):
+            declaration = self.client.get('/secretary/documentos/1/notas')
+
+        self.assertEqual(declaration.data.count(b'Matem\xc3\xa1tica'), 1)
+        self.assertNotIn(b'November', declaration.data)
+
+        with patch('routes.secretary.get_db', return_value=self.db):
+            pdf = self.client.get('/secretary/documentos/1/boletim?download=1')
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf.mimetype, 'application/pdf')
+        self.assertIn(b'%PDF-', pdf.data[:8])
 
     def test_secretary_can_request_deletion_but_cannot_delete_student_or_duplicate_request(self):
         with (

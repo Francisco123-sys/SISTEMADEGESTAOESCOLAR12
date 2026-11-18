@@ -308,7 +308,9 @@ def pauta_oficial_impressao(turma_id, subject_id):
     return render_template('teacher/pauta_oficial.html', info=info, alunos=alunos_notas,
                            is_exame_class=is_exame_class, prof_nome=session.get('user_nome'),
                            limite_fnj=LIMITE_FALTAS_INJUSTIFICADAS,
-                           data_emissao=datetime.now().strftime('%d/%m/%Y'))
+                           data_emissao=datetime.now().strftime('%d/%m/%Y'),
+                           turma_id=turma_id,
+                           subject_id=subject_id)
 
 @teacher_bp.route('/grades/<int:turma_id>/<int:subject_id>', methods=['GET', 'POST'])
 def launch_grades(turma_id, subject_id):

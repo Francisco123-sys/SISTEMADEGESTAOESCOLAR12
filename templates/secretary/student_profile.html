@@ -55,7 +55,10 @@
                    href="{{ url_for('secretary.student_edit', student_id=aluno.id) }}">Editar matrícula</a>
                 <a class="btn btn-secondary"
                    href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='boletim') }}"
-                   target="_blank" rel="noopener">Emitir boletim</a>
+                   target="_blank" rel="noopener">Imprimir Nota Informativa</a>
+                <a class="btn btn-secondary"
+                   href="{{ url_for('secretary.emitir_documento', student_id=aluno.id, tipo='matricula') }}"
+                   target="_blank" rel="noopener">Boletim de Matrícula</a>
                 {% endif %}
             </div>
         </section>
