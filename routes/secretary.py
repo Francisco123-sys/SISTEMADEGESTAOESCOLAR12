@@ -2245,7 +2245,7 @@ def emitir_documento(student_id, tipo):
     ano_lectivo_id = request.args.get('ano_lectivo_id', type=int)
     curriculum_params = [aluno['turma_id']]
     curriculum_sql = '''
-        SELECT DISTINCT sub.id AS subject_id, sub.nome AS disciplina_nome
+        SELECT sub.id AS subject_id, sub.nome AS disciplina_nome
         FROM teacher_assignments ta
         JOIN subjects sub ON sub.id = ta.subject_id
         WHERE ta.turma_id = ?
@@ -2261,7 +2261,10 @@ def emitir_documento(student_id, tipo):
                 AND curricular_year.id = ?
           )
         '''
-    curriculum_sql += ' ORDER BY ta.id ASC, sub.nome ASC'
+    curriculum_sql += '''
+        GROUP BY sub.id, sub.nome
+        ORDER BY MIN(ta.id) ASC, sub.nome ASC
+    '''
     cursor.execute(curriculum_sql, tuple(curriculum_params))
     disciplinas = cursor.fetchall()
 
