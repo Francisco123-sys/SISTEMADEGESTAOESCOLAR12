@@ -7,9 +7,11 @@ não é adequado para produção.
 
 ## Antes de publicar
 
-1. Revogue a palavra-passe Neon que foi exposta e crie uma nova credencial.
-2. No Render, ligue o repositório GitHub e use o Blueprint `render.yaml`.
-3. Configure `DATABASE_URL` com a nova ligação PostgreSQL. Configure
+1. Se ainda estiver activa, revogue qualquer credencial Neon que tenha sido
+   exposta e crie uma nova credencial.
+2. No Render, ligue o repositório GitHub e crie/sincronize o Blueprint
+   `render.yaml` a partir da branch de deployment.
+3. Configure `DATABASE_URL` com a ligação PostgreSQL. Configure
    `DATABASE_URL_UNPOOLED` com a ligação directa ao mesmo banco, se as migrações
    precisarem de uma ligação sem pooler.
 4. Configure `APP_BASE_URL` com o endereço HTTPS público da aplicação.
@@ -19,10 +21,21 @@ não é adequado para produção.
    se for necessário criar a primeira conta administrativa. Use uma senha forte
    e remova essas variáveis após a criação.
 
-O `SECRET_KEY` é gerado pelo Render. Não substitua por um valor de exemplo e não
-reutilize a credencial Neon comprometida. O disco persistente Render tem custo
-associado e é montado em `/var/data`; não armazene uploads privados no disco
-efémero do container.
+O Blueprint declara `SECRET_KEY` com `generateValue: true`; o Render gera o
+valor uma vez e mantém-no nos deployments normais. Não gere uma chave por
+arranque nem substitua o valor por um exemplo. `DATABASE_URL` é uma variável
+externa (`sync: false`) e deve ser configurada no painel Render, sem credenciais
+no repositório. O disco persistente Render tem custo associado e é montado em
+`/var/data`; não armazene uploads privados no disco efémero do container.
+
+Se o Web Service existente foi criado manualmente, alterar `render.yaml` no
+GitHub não lhe adiciona automaticamente estas variáveis. Sincronize/crie o
+serviço através do Blueprint para o Render gerir as definições do ficheiro ou,
+enquanto o serviço continuar manual, defina `SECRET_KEY` uma única vez na
+página **Environment** desse serviço usando um valor aleatório forte e mantenha
+o mesmo valor nos deployments seguintes. O repositório não permite determinar
+se o serviço existente foi criado manualmente ou por Blueprint; confirme essa
+informação no dashboard Render.
 
 ## Migrações e arranque
 
@@ -45,7 +58,8 @@ autenticação, acesso à base PostgreSQL e uploads após o primeiro deploy.
 
 ## Publicação via GitHub
 
-Faça push da branch de trabalho para GitHub, conecte o repositório no dashboard
-Render e crie o Blueprint a partir de `render.yaml`. Não envie `.env` nem
-credenciais para GitHub. Só disponibilize o serviço depois de rotacionar a
-credencial Neon exposta e configurar as variáveis obrigatórias no Render.
+Faça push da branch de deployment para GitHub, conecte o repositório no
+dashboard Render e crie/sincronize o Blueprint a partir de `render.yaml`. Não
+envie `.env` nem credenciais para GitHub. Só disponibilize o serviço depois de
+rotacionar qualquer credencial Neon exposta e configurar as variáveis externas
+obrigatórias no Render.

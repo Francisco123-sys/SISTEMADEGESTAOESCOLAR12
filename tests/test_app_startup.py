@@ -27,6 +27,31 @@ class AppStartupTests(unittest.TestCase):
         finally:
             sys.modules.pop('app', None)
 
+    def test_application_uses_environment_secret_for_signed_sessions(self):
+        app_module = importlib.import_module('app')
+        self.assertEqual(app_module.app.secret_key, 'test-secret-key')
+
+        client = app_module.app.test_client()
+        with client.session_transaction() as flask_session:
+            flask_session['session_probe'] = 'signed'
+
+        response = client.get('/')
+        self.assertEqual(response.status_code, 200)
+        with client.session_transaction() as flask_session:
+            self.assertEqual(flask_session['session_probe'], 'signed')
+
+    def test_missing_secret_key_fails_with_clear_message(self):
+        sys.modules.pop('app', None)
+        try:
+            with patch.dict(os.environ, {'SECRET_KEY': ''}), patch('dotenv.load_dotenv'):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    'Defina SECRET_KEY no ambiente antes de iniciar a aplicação.',
+                ):
+                    importlib.import_module('app')
+        finally:
+            sys.modules.pop('app', None)
+
     def test_changed_templates_compile(self):
         app_module = importlib.import_module('app')
         for template in (
