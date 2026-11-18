@@ -9,7 +9,7 @@
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Consulta de Alunos') }}
-    <header class="navbar secretary-navbar class-detail-navbar">
+    <nav class="navbar secretary-navbar class-detail-navbar" aria-label="Navegação da Secretaria">
         <div class="secretary-brand">
             <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
                  alt="Emblema da República de Moçambique">
@@ -23,7 +23,7 @@
             <a href="{{ url_for('secretary.student_form') }}">Matricular aluno</a>
             <a href="{{ url_for('secretary.dashboard') }}">Painel da Secretaria</a>
         </div>
-    </header>
+    </nav>
 
     <main class="container secretary-dashboard secretary-student-browser">
         {% with messages = get_flashed_messages(with_categories=true) %}

@@ -116,6 +116,9 @@ class SecretaryStudentBrowsingTests(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(html.count('<header'), 1)
+        self.assertIn('aria-label="Navegação da Secretaria"', html)
+        self.assertIn('Matricular aluno', html)
         self.assertIn('student-browser-class-card', html)
         self.assertIn('8.ª Classe', html)
         self.assertIn('12.ª Classe', html)

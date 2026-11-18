@@ -76,10 +76,12 @@ class AppStartupTests(unittest.TestCase):
         self.assertIn(b'educa', image_response.data.lower())
 
     def test_shared_dashboard_header_renders_for_director_and_admin(self):
-        from flask import render_template
+        from flask import render_template, session
 
         app_module = importlib.import_module('app')
         with app_module.app.test_request_context('/director/dashboard'):
+            session['user_role'] = 'pedagogico_1'
+            session['user_nome'] = 'Direcção de Teste'
             director_html = render_template(
                 'director/dashboard.html',
                 total_alunos=0,
@@ -104,6 +106,8 @@ class AppStartupTests(unittest.TestCase):
 
         self.assertIn('sige-topbar', director_html)
         self.assertIn('Direcção Escolar', director_html)
+        self.assertIn('Direcção Pedagógica I', director_html)
+        self.assertIn('sige-topbar-menu', director_html)
         self.assertIn('sige-topbar', admin_html)
         self.assertIn('Histórico de Actividades', admin_html)
 

@@ -1,4 +1,15 @@
 {% macro institutional_header(section, home_url, nav_items=(), user_name=None, password_url=None, logout_url=None, logout_action=None) -%}
+{% set profile_key = session.get('user_role') or ('guardian' if session.get('guardian_id') else none) %}
+{% set profile_labels = {
+    'admin': 'Administrador',
+    'director': 'Director',
+    'secretary': 'Secretaria',
+    'chefe_secretaria': 'Chefe da Secretaria',
+    'pedagogico_1': 'Direcção Pedagógica I',
+    'pedagogico_2': 'Direcção Pedagógica II',
+    'teacher': 'Professor',
+    'guardian': 'Encarregado de Educação'
+} %}
 <header class="sige-topbar">
     <a class="sige-institutional-brand" href="{{ home_url }}">
         <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"
@@ -10,6 +21,13 @@
         </span>
     </a>
     <div class="sige-topbar-tools">
+        {% if nav_items or user_name or password_url or logout_url %}
+        <details class="sige-topbar-menu">
+            <summary aria-label="Abrir menu de navegação">
+                <span>Menu</span>
+            </summary>
+            <div class="sige-topbar-menu-content">
+        {% endif %}
         {% if nav_items %}
         <nav class="sige-topbar-nav" aria-label="Navegação principal">
             {% for item in nav_items %}
@@ -18,7 +36,10 @@
         </nav>
         {% endif %}
         {% if user_name %}
-        <span class="sige-user-name">{{ user_name }}</span>
+        <span class="sige-user-identity">
+            <span class="sige-user-name">{{ user_name }}</span>
+            <span class="sige-user-profile">{{ profile_labels.get(profile_key, 'Utilizador autenticado') }}</span>
+        </span>
         {% endif %}
         {% if password_url %}
         <a href="{{ password_url }}">Trocar palavra-passe</a>
@@ -31,6 +52,10 @@
             {% endif %}
             <button type="submit">Sair</button>
         </form>
+        {% endif %}
+        {% if nav_items or user_name or password_url or logout_url %}
+            </div>
+        </details>
         {% endif %}
     </div>
 </header>
