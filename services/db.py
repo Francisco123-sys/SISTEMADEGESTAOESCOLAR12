@@ -81,6 +81,7 @@ def _adapt_sql_for_postgres(sql):
 
 
 TABLES_WITHOUT_ID = {
+    'active_sessions',
     'auth_rate_limits',
     'code_counters',
     'guardian_password_resets',

@@ -191,5 +191,23 @@ class ActiveUserEndpointTests(unittest.TestCase):
         self.assertNotIn(self.password, str(details.json))
 
 
+class PostgreSQLCursorWrapperTests(unittest.TestCase):
+    def test_active_session_insert_does_not_request_nonexistent_id(self):
+        class RecordingCursor:
+            def execute(self, sql, params=None):
+                self.sql = sql
+                self.params = params
+
+        raw_cursor = RecordingCursor()
+        cursor = db_service.PgCursorWrapper(raw_cursor)
+        cursor.execute(
+            'INSERT INTO active_sessions (account_key, role) VALUES (?, ?)',
+            ('staff:1', 'admin'),
+        )
+
+        self.assertNotIn('RETURNING id', raw_cursor.sql)
+        self.assertIsNone(cursor.lastrowid)
+
+
 if __name__ == '__main__':
     unittest.main()

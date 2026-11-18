@@ -49,7 +49,9 @@ PASSWORD_RESET_TTL_SECONDS = 30 * 60
 
 @auth_bp.route('/')
 def login_landing():
-    return render_template('login.html')
+    response = current_app.make_response(render_template('login.html'))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 @auth_bp.route('/portal-encarregado', methods=['GET', 'POST'])
 def portal_encarregado():

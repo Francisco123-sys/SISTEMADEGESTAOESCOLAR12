@@ -57,6 +57,7 @@ class CsrfProtectionTests(unittest.TestCase):
         response = self.client.get('/')
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('no-store', response.headers['Cache-Control'])
         with self.client.session_transaction() as browser_session:
             token = browser_session['_csrf_token']
         self.assertIn(f'value="{token}"'.encode(), response.data)
@@ -95,6 +96,18 @@ class CsrfProtectionTests(unittest.TestCase):
                 headers={'X-CSRF-Token': token},
                 data={'identificador': 'SEC-1'},
             )
+
+        self.assertEqual(response.status_code, 302)
+
+    def test_valid_login_form_token_allows_post_to_reach_route(self):
+        self.client.get('/')
+        with self.client.session_transaction() as browser_session:
+            token = browser_session['_csrf_token']
+
+        response = self.client.post(
+            '/login',
+            data={'csrf_token': token, 'perfil': 'invalid'},
+        )
 
         self.assertEqual(response.status_code, 302)
 
