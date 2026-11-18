@@ -44,6 +44,12 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 area_curricular TEXT, classe_id INTEGER, ano_lectivo_id INTEGER,
                 diretor_turma_id INTEGER
             );
+            CREATE TABLE teacher_assignments (
+                id INTEGER PRIMARY KEY,
+                teacher_id INTEGER,
+                turma_id INTEGER,
+                subject_id INTEGER
+            );
             CREATE TABLE students (
                 id INTEGER PRIMARY KEY, code TEXT, nome TEXT, sexo TEXT,
                 data_nascimento TEXT, foto_path TEXT, turma_id INTEGER,
@@ -111,17 +117,23 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
             INSERT INTO classes VALUES (8, 8);
             INSERT INTO academic_years VALUES (1, 2026, 1);
             INSERT INTO subjects VALUES (1, 'Matemática');
+            INSERT INTO subjects VALUES (2, 'Português');
+            INSERT INTO subjects VALUES (3, 'Inglês');
             INSERT INTO users VALUES (1, 'Director de Teste', 'director', 1);
             INSERT INTO users VALUES (2, 'Secretaria de Teste', 'secretary', 1);
             INSERT INTO turmas VALUES
                 (1, '8ª A', 'Sala 01', 'Manhã', 'Diurno', 4, 2, NULL, 8, 1, NULL);
+            INSERT INTO teacher_assignments VALUES (1, 2, 1, 1);
+            INSERT INTO teacher_assignments VALUES (2, 2, 1, 2);
+            INSERT INTO teacher_assignments VALUES (3, 2, 1, 3);
             INSERT INTO grades (
                 id, student_id, subject_id, turma_id, trimestre,
                 media_trimestral, media_final, status
             ) VALUES
                 (1, 1, 1, 1, 1, 13.0, 13.0, 'Submetida'),
                 (2, 1, 1, 1, 2, 14.0, 14.0, 'Submetida'),
-                (3, 1, 1, 1, 3, 14.0, 14.0, 'Submetida');
+                (3, 1, 1, 1, 3, 14.0, 14.0, 'Submetida'),
+                (4, 1, 3, 1, 1, 12.0, 12.0, 'Submetida');
             INSERT INTO students (
                 id, code, nome, sexo, data_nascimento, turma_id, classe_ingresso, ativo,
                 encarregado_nome, encarregado_contacto_principal
@@ -205,7 +217,21 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
             declaration = self.client.get('/secretary/documentos/1/notas')
 
         self.assertEqual(declaration.data.count(b'Matem\xc3\xa1tica'), 1)
+        self.assertIn(b'Portugu\xc3\xaas', declaration.data)
+        portugues_row = declaration.data[
+            declaration.data.find(b'Portugu\xc3\xaas'):
+        ]
+        self.assertIn(b'Por indicar', portugues_row)
         self.assertNotIn(b'November', declaration.data)
+
+        with patch('routes.secretary.get_db', return_value=self.db):
+            boletim = self.client.get('/secretary/documentos/1/boletim')
+        self.assertIn(b'Matem\xc3\xa1tica', boletim.data)
+        self.assertIn(b'Portugu\xc3\xaas', boletim.data)
+        boletim_portugues = boletim.data[
+            boletim.data.find(b'Portugu\xc3\xaas'):
+        ]
+        self.assertIn(b'\xe2\x80\x94', boletim_portugues)
 
         with patch('routes.secretary.get_db', return_value=self.db):
             pdf = self.client.get('/secretary/documentos/1/boletim?download=1')

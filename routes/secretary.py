@@ -2243,47 +2243,84 @@ def emitir_documento(student_id, tipo):
         return redirect(url_for('secretary.students_list'))
         
     ano_lectivo_id = request.args.get('ano_lectivo_id', type=int)
+    curriculum_params = [aluno['turma_id']]
+    curriculum_sql = '''
+        SELECT DISTINCT sub.id AS subject_id, sub.nome AS disciplina_nome
+        FROM teacher_assignments ta
+        JOIN subjects sub ON sub.id = ta.subject_id
+        WHERE ta.turma_id = ?
+    '''
+    if ano_lectivo_id:
+        curriculum_params.append(ano_lectivo_id)
+        curriculum_sql += '''
+          AND EXISTS (
+              SELECT 1 FROM turmas curricular_turma
+              JOIN academic_years curricular_year
+                ON curricular_year.id = curricular_turma.ano_lectivo_id
+              WHERE curricular_turma.id = ta.turma_id
+                AND curricular_year.id = ?
+          )
+        '''
+    curriculum_sql += ' ORDER BY ta.id ASC, sub.nome ASC'
+    cursor.execute(curriculum_sql, tuple(curriculum_params))
+    disciplinas = cursor.fetchall()
+
+    notas_por_disciplina = {}
+    for disciplina in disciplinas:
+        notas_por_disciplina[disciplina['subject_id']] = {
+            'disciplina_nome': disciplina['disciplina_nome'],
+            'nota_1': None,
+            'nota_2': None,
+            'nota_3': None,
+            'media_final': None,
+            'resultado': None,
+            'trimestres_validados': set(),
+        }
+
     grade_params = [student_id]
     grade_sql = '''
-        SELECT g.*, sub.nome AS disciplina_nome
+        SELECT g.subject_id, g.trimestre, g.media_trimestral, g.media_final
         FROM grades g
-        JOIN subjects sub ON g.subject_id = sub.id
-        JOIN turmas gt ON gt.id = g.turma_id
-        JOIN academic_years ay ON ay.id = gt.ano_lectivo_id
+        JOIN academic_years ay ON ay.id = (
+            SELECT t.ano_lectivo_id FROM turmas t WHERE t.id = g.turma_id
+        )
         WHERE g.student_id = ?
+          AND g.turma_id = ?
+          AND g.status IN ('Submetida', 'Fechada')
     '''
+    grade_params.append(aluno['turma_id'])
     if ano_lectivo_id:
         grade_sql += ' AND ay.id = ?'
         grade_params.append(ano_lectivo_id)
-    grade_sql += ' ORDER BY sub.nome ASC, g.trimestre ASC'
+    grade_sql += ' ORDER BY g.subject_id ASC, g.trimestre ASC'
     cursor.execute(grade_sql, tuple(grade_params))
-
-    notas_por_disciplina = {}
     for grade in cursor.fetchall():
-        subject_id = grade['subject_id']
-        if subject_id not in notas_por_disciplina:
-            notas_por_disciplina[subject_id] = {
-                'disciplina_nome': grade['disciplina_nome'],
-                'nota_1': None,
-                'nota_2': None,
-                'nota_3': None,
-                'media_final': None,
-                'resultado': None,
-            }
-        item = notas_por_disciplina[subject_id]
+        item = notas_por_disciplina.get(grade['subject_id'])
+        if not item:
+            continue
         trimestre = grade['trimestre']
-        if trimestre in (1, 2, 3):
-            item[f'nota_{trimestre}'] = (
-                grade['media_trimestral']
-                if grade['media_trimestral'] is not None
-                else grade['media_final']
-            )
-        if grade['trimestre'] == 3:
-            item['media_final'] = grade['media_final']
-            item['resultado'] = 'Resultado registado' if grade['media_final'] is not None else 'Pendente'
-        elif item['media_final'] is None and grade['media_final'] is not None:
-            item['media_final'] = grade['media_final']
-    notas = list(notas_por_disciplina.values())
+        if trimestre not in (1, 2, 3):
+            continue
+        nota = (
+            grade['media_trimestral']
+            if grade['media_trimestral'] is not None
+            else grade['media_final']
+        )
+        if nota is not None:
+            item[f'nota_{trimestre}'] = nota
+            item['trimestres_validados'].add(trimestre)
+
+    notas = []
+    for item in notas_por_disciplina.values():
+        if len(item['trimestres_validados']) == 3:
+            notas_trimestres = [
+                item['nota_1'], item['nota_2'], item['nota_3']
+            ]
+            if all(nota is not None for nota in notas_trimestres):
+                item['media_final'] = sum(notas_trimestres) / 3
+                item['resultado'] = 'Pendente'
+        item.pop('trimestres_validados', None)
+        notas.append(item)
 
     data_hoje = _data_portuguesa()
     funcionario_atendeu = session.get('user_nome')
