@@ -52,6 +52,69 @@ class AppStartupTests(unittest.TestCase):
         finally:
             sys.modules.pop('app', None)
 
+    def test_render_startup_requires_postgresql_configuration(self):
+        sys.modules.pop('app', None)
+        database_variables = (
+            'DATABASE_URL',
+            'DATABASE_URL_UNPOOLED',
+            'POSTGRES_URL',
+            'POSTGRES_PRISMA_URL',
+            'POSTGRES_URL_NON_POOLING',
+        )
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    'SECRET_KEY': 'test-secret-key',
+                    'RENDER': 'true',
+                    **{name: '' for name in database_variables},
+                },
+            ), patch('dotenv.load_dotenv'):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    'Defina DATABASE_URL no ambiente do Render antes de iniciar a aplicação.',
+                ):
+                    importlib.import_module('app')
+        finally:
+            sys.modules.pop('app', None)
+
+    def test_render_startup_rejects_malformed_database_url(self):
+        sys.modules.pop('app', None)
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    'SECRET_KEY': 'test-secret-key',
+                    'RENDER': 'true',
+                    'DATABASE_URL': 'postgresql://',
+                },
+            ), patch('dotenv.load_dotenv'):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    'DATABASE_URL deve conter uma ligação PostgreSQL válida no Render.',
+                ):
+                    importlib.import_module('app')
+        finally:
+            sys.modules.pop('app', None)
+
+    def test_render_startup_accepts_environment_configuration(self):
+        sys.modules.pop('app', None)
+        database_url = 'postgresql://db.example.test/school'
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    'SECRET_KEY': 'existing-render-key',
+                    'RENDER': 'true',
+                    'DATABASE_URL': database_url,
+                },
+            ), patch('dotenv.load_dotenv'):
+                app_module = importlib.import_module('app')
+
+            self.assertEqual(app_module.app.secret_key, 'existing-render-key')
+        finally:
+            sys.modules.pop('app', None)
+
     def test_changed_templates_compile(self):
         app_module = importlib.import_module('app')
         for template in (

@@ -12,7 +12,13 @@ from routes.secretary import secretary_bp
 from routes.director import director_bp
 from routes.teacher import teacher_bp
 from routes.admin import admin_bp
-from services.db import close_db, get_db
+from services.db import (
+    close_db,
+    database_target_key,
+    get_database_url,
+    get_db,
+    is_postgres,
+)
 from services.csrf import generate_csrf_token, validate_csrf_token
 from database.init_db import init_db
 from database.complaint_migrations import migrate_complaints
@@ -22,6 +28,23 @@ from services.monitoring import SESSION_TIMEOUT_SECONDS, remove_active_session
 secret_key = os.getenv('SECRET_KEY', '').strip()
 if not secret_key:
     raise RuntimeError('Defina SECRET_KEY no ambiente antes de iniciar a aplicação.')
+
+if os.getenv('RENDER', '').lower() == 'true':
+    database_url = get_database_url()
+    if not database_url:
+        raise RuntimeError(
+            'Defina DATABASE_URL no ambiente do Render antes de iniciar a aplicação.'
+        )
+    if not is_postgres(database_url):
+        raise RuntimeError(
+            'DATABASE_URL deve conter uma ligação PostgreSQL válida no Render.'
+        )
+    try:
+        database_target_key(database_url)
+    except ValueError:
+        raise RuntimeError(
+            'DATABASE_URL deve conter uma ligação PostgreSQL válida no Render.'
+        ) from None
 
 app = Flask(
     __name__,

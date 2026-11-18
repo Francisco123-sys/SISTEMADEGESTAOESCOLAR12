@@ -12,11 +12,11 @@ services:
       sizeGB: 1
     envVars:
       - key: SECRET_KEY
-        generateValue: true
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_UNPOOLED
-        value: ""
+        sync: false
       - key: SESSION_COOKIE_SECURE
         value: "true"
       - key: SIGE_INSTANCE_PATH
@@ -24,26 +24,26 @@ services:
       - key: SIGE_UPLOAD_DIRECTORY
         value: /var/data/instance/student_uploads
       - key: APP_BASE_URL
-        value: ""
+        sync: false
       - key: SMTP_HOST
-        value: ""
+        sync: false
       - key: SMTP_PORT
-        value: "587"
+        sync: false
       - key: SMTP_USERNAME
-        value: ""
+        sync: false
       - key: SMTP_PASSWORD
-        value: ""
+        sync: false
       - key: SMTP_FROM
-        value: ""
+        sync: false
       - key: SMTP_STARTTLS
-        value: "true"
+        sync: false
       - key: SMTP_USE_SSL
-        value: "false"
+        sync: false
       - key: SIGE_INITIAL_ADMIN_EMAIL
-        value: ""
+        sync: false
       - key: SIGE_INITIAL_ADMIN_PASSWORD
-        value: ""
+        sync: false
       - key: SIGE_INITIAL_ADMIN_NAME
-        value: ""
+        sync: false
       - key: SIGE_INITIAL_ADMIN_CONTACT
-        value: ""
+        sync: false

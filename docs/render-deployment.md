@@ -7,35 +7,42 @@ não é adequado para produção.
 
 ## Antes de publicar
 
-1. Se ainda estiver activa, revogue qualquer credencial Neon que tenha sido
-   exposta e crie uma nova credencial.
-2. No Render, ligue o repositório GitHub e crie/sincronize o Blueprint
-   `render.yaml` a partir da branch de deployment.
-3. Configure `DATABASE_URL` com a ligação PostgreSQL. Configure
-   `DATABASE_URL_UNPOOLED` com a ligação directa ao mesmo banco, se as migrações
-   precisarem de uma ligação sem pooler.
-4. Configure `APP_BASE_URL` com o endereço HTTPS público da aplicação.
-5. Configure as variáveis SMTP para activar recuperação por e-mail. Sem SMTP,
-   o sistema não envia mensagens; a aplicação continua a iniciar.
-6. Configure `SIGE_INITIAL_ADMIN_EMAIL` e `SIGE_INITIAL_ADMIN_PASSWORD` apenas
-   se for necessário criar a primeira conta administrativa. Use uma senha forte
-   e remova essas variáveis após a criação.
+O `.env` local é ignorado pelo Git, portanto não é enviado com o checkout que o
+Render usa para executar Gunicorn. `python-dotenv` carrega o ficheiro local
+durante o desenvolvimento; no Render, a aplicação recebe as mesmas
+configurações como variáveis de ambiente do serviço.
 
-O Blueprint declara `SECRET_KEY` com `generateValue: true`; o Render gera o
-valor uma vez e mantém-no nos deployments normais. Não gere uma chave por
-arranque nem substitua o valor por um exemplo. `DATABASE_URL` é uma variável
-externa (`sync: false`) e deve ser configurada no painel Render, sem credenciais
-no repositório. O disco persistente Render tem custo associado e é montado em
-`/var/data`; não armazene uploads privados no disco efémero do container.
+Para reutilizar os valores já existentes sem os copiar para o repositório:
 
-Se o Web Service existente foi criado manualmente, alterar `render.yaml` no
-GitHub não lhe adiciona automaticamente estas variáveis. Sincronize/crie o
-serviço através do Blueprint para o Render gerir as definições do ficheiro ou,
-enquanto o serviço continuar manual, defina `SECRET_KEY` uma única vez na
-página **Environment** desse serviço usando um valor aleatório forte e mantenha
-o mesmo valor nos deployments seguintes. O repositório não permite determinar
-se o serviço existente foi criado manualmente ou por Blueprint; confirme essa
-informação no dashboard Render.
+1. No Render, abra o Web Service e seleccione **Environment**.
+2. Clique em **Add Environment Variable** e depois **Add from .env** (a
+   [importação em lote do Render](https://render.com/docs/configure-environment-variables#adding-in-bulk-from-a-env-file)).
+3. Seleccione o `.env` local existente e confirme a importação das variáveis.
+   Isto importa os valores directamente para o ambiente privado do serviço; não
+   publica o ficheiro nem cria uma nova `SECRET_KEY`.
+4. Guarde com **Save, rebuild, and deploy** para reiniciar Gunicorn com os
+   valores importados. A importação pode ser repetida quando o `.env` mudar.
+
+O Blueprint declara `SECRET_KEY`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED` e as
+restantes configurações externas com `sync: false`. Assim, não gera uma chave
+nova e não substitui os valores que foram importados do `.env` quando o
+Blueprint é sincronizado. As definições de disco, caminhos e cookies continuam
+a ser geridas pelo `render.yaml`.
+
+Se o Web Service foi criado manualmente, a importação em **Environment** aplica
+as variáveis directamente ao serviço existente; não é necessário recriar o
+serviço. Se foi criado por Blueprint, sincronize a branch `deploy/render-setup`
+e faça a mesma importação em **Environment**. O repositório não permite
+determinar qual dos dois casos se aplica; confirme a origem do serviço no
+dashboard Render. Em ambos os casos, a importação inicial do `.env` é a única
+acção necessária no Render para disponibilizar os valores já existentes.
+
+O Render fornece `PORT`; o comando Gunicorn liga-se a `0.0.0.0:$PORT`. Antes de
+criar a aplicação Flask, o arranque verifica a presença de `SECRET_KEY` e,
+quando detecta o Render, exige também uma URL PostgreSQL válida em
+`DATABASE_URL` ou `DATABASE_URL_UNPOOLED`. As mensagens de erro não revelam
+valores de configuração. O disco persistente Render tem custo associado e é
+montado em `/var/data`; não armazene uploads privados no disco efémero.
 
 ## Migrações e arranque
 
@@ -58,8 +65,8 @@ autenticação, acesso à base PostgreSQL e uploads após o primeiro deploy.
 
 ## Publicação via GitHub
 
-Faça push da branch de deployment para GitHub, conecte o repositório no
-dashboard Render e crie/sincronize o Blueprint a partir de `render.yaml`. Não
-envie `.env` nem credenciais para GitHub. Só disponibilize o serviço depois de
-rotacionar qualquer credencial Neon exposta e configurar as variáveis externas
-obrigatórias no Render.
+Faça push da branch de deployment para GitHub e crie/sincronize o Blueprint
+`render.yaml`. Importe o `.env` directamente na página **Environment** do
+serviço Render. Nunca envie `.env` nem credenciais para GitHub. Se uma
+credencial tiver sido exposta anteriormente, revogue-a antes de disponibilizar
+o serviço.

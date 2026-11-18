@@ -27,7 +27,7 @@ O projecto está configurado para persistir todos os dados na nuvem através do 
 
 ## Deployment no Render
 - O Blueprint está em [`render.yaml`](./render.yaml); instruções de configuração, migração e publicação estão em [`docs/render-deployment.md`](./docs/render-deployment.md).
-- O Blueprint gera `SECRET_KEY` automaticamente. Configure `DATABASE_URL` e, se necessário, as restantes variáveis de serviços externos no Render; não publique `.env` nem credenciais.
+- Importe o `.env` local na página Environment do Render para reutilizar as variáveis existentes sem publicar o ficheiro; o Blueprint preserva esses valores entre sincronizações.
 
 ## Funcionalidades Principais:
 1. **Persistência PostgreSQL (Neon) + Fallback SQLite:** Suporte nativo para Neon Pooler (`DATABASE_URL`) e ligação directa (`DATABASE_URL_UNPOOLED`) para migrações/DDL.
