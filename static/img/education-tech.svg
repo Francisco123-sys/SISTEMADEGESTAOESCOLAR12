@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" role="img" aria-labelledby="title desc">
+  <title id="title">Educação e tecnologia</title>
+  <desc id="desc">Ilustração de uma estudante a aprender com livros e ferramentas digitais.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#10243d"/>
+      <stop offset="1" stop-color="#087e8b"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#84caFF"/>
+      <stop offset="1" stop-color="#d1e9ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1100" fill="url(#background)"/>
+  <circle cx="1280" cy="170" r="220" fill="#ffffff" opacity=".06"/>
+  <circle cx="210" cy="860" r="300" fill="#ffffff" opacity=".05"/>
+  <g fill="none" stroke="#d1e9ff" stroke-linecap="round" stroke-width="8" opacity=".58">
+    <path d="M170 220h170v120H170zM220 280h70M255 220v-48M1040 175h165v112h-165zM1080 225h85M1122 175v-43"/>
+    <path d="m340 280 150 70M1040 245l-120 95M1205 230l160-20M275 340l40 120"/>
+    <circle cx="490" cy="350" r="12" fill="#d1e9ff"/><circle cx="920" cy="340" r="12" fill="#d1e9ff"/>
+    <circle cx="1365" cy="210" r="12" fill="#d1e9ff"/><circle cx="315" cy="460" r="12" fill="#d1e9ff"/>
+    <path d="M1320 520h120v90h-120zM1350 550h60M1380 520v-38"/>
+    <path d="m1320 565-145 105M740 175l-10 110M750 850l200-80"/>
+  </g>
+  <g transform="translate(440 325)">
+    <path d="M95 500h610l-52 82H145z" fill="#fdb022"/>
+    <path d="M156 582h483l-34 34H190z" fill="#f79009"/>
+    <rect x="418" y="215" width="270" height="205" rx="18" fill="#fff" opacity=".95"/>
+    <rect x="439" y="237" width="228" height="156" rx="9" fill="url(#screen)"/>
+    <path d="M525 421h55l25 30H500z" fill="#d0d5dd"/>
+    <path d="M455 335h112M455 363h72M596 285h44v42h-44z" fill="none" stroke="#175cd3" stroke-linecap="round" stroke-width="10"/>
+    <path d="M170 508c3-139 75-244 191-244s188 105 191 244z" fill="#f2f4f7"/>
+    <path d="M256 508c7-100 38-172 105-172s98 72 105 172z" fill="#175cd3"/>
+    <circle cx="361" cy="225" r="68" fill="#a15c38"/>
+    <path d="M294 228c-8-94 24-141 78-141 52 0 77 41 73 107-22-9-39-29-47-51-20 30-55 54-104 61z" fill="#142b4a"/>
+    <path d="M320 260c20 17 61 19 82 0" fill="none" stroke="#fdb022" stroke-linecap="round" stroke-width="9"/>
+    <path d="M223 417c-75 0-122 43-122 95h150M500 417c75 0 122 43 122 95H472" fill="none" stroke="#f2f4f7" stroke-linecap="round" stroke-width="24"/>
+    <path d="M204 505V387M206 387c54 8 80 37 81 82-41 0-68-22-81-82z" fill="#12b76a"/>
+    <path d="M170 486c18-65 47-98 91-107M175 471c48-3 80 10 101 42" fill="none" stroke="#ecfdf3" stroke-linecap="round" stroke-width="8"/>
+    <path d="M295 512c-55-39-94-48-129-25 34 31 76 41 129 25z" fill="#d1e9ff"/>
+    <path d="M295 512c48-39 88-48 123-25-34 31-76 41-123 25z" fill="#84caff"/>
+  </g>
+  <g fill="#fdb022">
+    <path d="m760 100 12 28 30 3-23 19 7 30-26-16-26 16 7-30-23-19 30-3z" opacity=".85"/>
+    <circle cx="1250" cy="735" r="8"/><circle cx="365" cy="160" r="7"/><circle cx="1200" cy="410" r="7"/>
+  </g>
+</svg>

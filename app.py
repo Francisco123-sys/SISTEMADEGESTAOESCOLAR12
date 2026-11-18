@@ -1,6 +1,8 @@
 import os
+import time
+from datetime import timedelta
 
-from flask import Flask, abort, request
+from flask import Flask, abort, request, session
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,10 +12,11 @@ from routes.secretary import secretary_bp
 from routes.director import director_bp
 from routes.teacher import teacher_bp
 from routes.admin import admin_bp
-from services.db import close_db
+from services.db import close_db, get_db
 from services.csrf import generate_csrf_token, validate_csrf_token
 from database.init_db import init_db
 from database.complaint_migrations import migrate_complaints
+from services.monitoring import SESSION_TIMEOUT_SECONDS, remove_active_session
 
 secret_key = os.getenv('SECRET_KEY', '').strip()
 if not secret_key:
@@ -25,6 +28,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=os.getenv('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes'),
+    PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_TIMEOUT_SECONDS),
     MAX_CONTENT_LENGTH=5 * 1024 * 1024,
 )
 
@@ -33,6 +37,29 @@ app.register_blueprint(secretary_bp)
 app.register_blueprint(director_bp)
 app.register_blueprint(teacher_bp)
 app.register_blueprint(admin_bp)
+
+
+@app.before_request
+def enforce_session_idle_timeout():
+    if not session.get('user_id') and not session.get('guardian_id'):
+        return
+    if request.endpoint in {
+        'auth.active_users_heartbeat',
+        'auth.active_users_counts',
+        'auth.active_users_details',
+    }:
+        return
+
+    now = time.time()
+    last_seen = session.get('last_seen_at', now)
+    if now - last_seen >= SESSION_TIMEOUT_SECONDS:
+        remove_active_session(
+            get_db().cursor(), session.get('active_account_key')
+        )
+        get_db().commit()
+        session.clear()
+        return
+    session['last_seen_at'] = now
 
 
 @app.before_request

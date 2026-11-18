@@ -94,6 +94,13 @@ class ComplaintWorkflowTests(unittest.TestCase):
                 id INTEGER PRIMARY KEY, nome TEXT, role TEXT,
                 ativo INTEGER NOT NULL DEFAULT 1
             );
+            CREATE TABLE audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+                operacao TEXT NOT NULL, detalhes TEXT NOT NULL,
+                ip_address TEXT, module TEXT, affected_record TEXT,
+                change_details TEXT, result TEXT NOT NULL DEFAULT 'Sucesso',
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE guardians (
                 id INTEGER PRIMARY KEY, nome TEXT NOT NULL, email TEXT NOT NULL,
                 password_hash TEXT NOT NULL, contacto TEXT, ativo INTEGER NOT NULL,
@@ -203,7 +210,10 @@ class ComplaintWorkflowTests(unittest.TestCase):
             1,
         )
         self._set_staff_session('secretary', 1)
-        with patch('routes.secretary.get_db', return_value=self.db):
+        with (
+            patch('routes.secretary.get_db', return_value=self.db),
+            patch('services.db.get_db', return_value=self.db),
+        ):
             updates = self.client.get('/secretary/reclamacoes/updates')
         self.assertEqual(updates.status_code, 200)
         self.assertEqual(updates.get_json()['new_count'], 1)
@@ -246,7 +256,10 @@ class ComplaintWorkflowTests(unittest.TestCase):
         ).fetchone()['id']
         self._set_staff_session('secretary', 1)
 
-        with patch('routes.secretary.get_db', return_value=self.db):
+        with (
+            patch('routes.secretary.get_db', return_value=self.db),
+            patch('services.db.get_db', return_value=self.db),
+        ):
             inbox = self.client.get('/secretary/reclamacoes')
             partial_inbox = self.client.get('/secretary/reclamacoes?_partial=1')
             reply = self.client.post('/secretary/reclamacoes', data={
@@ -295,7 +308,10 @@ class ComplaintWorkflowTests(unittest.TestCase):
         )
 
         self._set_staff_session('director', 2)
-        with patch('routes.director.get_db', return_value=self.db):
+        with (
+            patch('routes.director.get_db', return_value=self.db),
+            patch('services.db.get_db', return_value=self.db),
+        ):
             director_inbox = self.client.get('/director/reclamacoes')
             director_reply = self.client.post('/director/reclamacoes', data={
                 'csrf_token': 'test-csrf-token',

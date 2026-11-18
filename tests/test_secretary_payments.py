@@ -45,8 +45,13 @@ class SecretaryPaymentWorkflowTests(unittest.TestCase):
         with self.client.session_transaction() as browser_session:
             browser_session['user_role'] = 'secretary'
             browser_session['user_id'] = 7
+        self.code_database_patch = patch(
+            'services.student_service.get_db', return_value=self.db
+        )
+        self.code_database_patch.start()
 
     def tearDown(self):
+        self.code_database_patch.stop()
         self.db.close()
 
     def _csrf(self):

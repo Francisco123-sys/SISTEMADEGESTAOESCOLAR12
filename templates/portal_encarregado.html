@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Escola Secundária da Manga - Portal do Encarregado</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261118-1">
     <style>
         .guardian-complaint-list { display:grid; gap:16px; }
         .guardian-complaint { margin:0; border:1px solid #e4e7ec; }
@@ -22,7 +22,7 @@
     </style>
 </head>
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_header with context %}
+    {% from 'components/dashboard_ui.html' import institutional_header, active_users_panel with context %}
     {{ institutional_header(
         'Portal do Encarregado',
         url_for('auth.portal_encarregado'),
@@ -31,6 +31,7 @@
         logout_url=url_for('auth.portal_encarregado') if guardian else None,
         logout_action='logout' if guardian else None
     ) }}
+    {% if guardian %}{{ active_users_panel() }}{% endif %}
 
     <main class="container secretary-dashboard guardian-dashboard"
           {% if guardian and aluno %}

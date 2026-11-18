@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Gestão de Colaboradores') }}
     <div class="navbar">
         <div class="brand">Escola Secundária da Manga | Gestão da Secretaria</div>
         <a href="/secretary/dashboard">Voltar ao Painel</a>
@@ -34,6 +36,11 @@
                 <div class="form-group">
                     <label>Contacto Telefónico:*</label>
                     <input type="text" name="contacto" required>
+                </div>
+                <div class="form-group">
+                    <label for="initial-password">Palavra-passe inicial (mínimo 12 caracteres):*</label>
+                    <input id="initial-password" type="password" name="password"
+                           autocomplete="new-password" minlength="12" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="grid-column: span 3;">Cadastrar Colega da Secretaria</button>
             </form>

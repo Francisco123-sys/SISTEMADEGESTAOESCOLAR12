@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Consulta de Alunos') }}
     <header class="navbar secretary-navbar class-detail-navbar">
         <div class="secretary-brand">
             <img src="{{ url_for('static', filename='img/emblema_moz.png') }}"

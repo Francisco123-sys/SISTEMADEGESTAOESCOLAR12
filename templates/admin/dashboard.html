@@ -4,49 +4,148 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Administração Geral</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261118-1">
 </head>
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_header with context %}
-    {{ institutional_header('Administração do Sistema', url_for('admin.dashboard'),
-        user_name=session.get('user_nome'),
-        password_url=url_for('auth.change_password'),
-        logout_url=url_for('auth.logout')) }}
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Administração do Sistema') }}
     <main class="container secretary-dashboard admin-dashboard">
         <section class="secretary-page-heading">
             <div>
                 <p class="secretary-eyebrow">Segurança e conformidade</p>
                 <h1>Administração do Sistema</h1>
-                <p>Consulte os registos de auditoria e as operações efectuadas no SIGE.</p>
+                <p>Consulte as alterações efectuadas no SIGE. Credenciais não são registadas.</p>
             </div>
         </section>
         <div class="card">
-            <h2 class="card-title">Trilho de Auditoria</h2>
+            <h2 class="card-title">Histórico de Actividades</h2>
+            <form method="GET" class="audit-filter-form">
+                <div>
+                    <label for="audit-module">Módulo</label>
+                    <select id="audit-module" name="module">
+                        <option value="">Todos</option>
+                        {% for module in (
+                            'Alunos e matrículas', 'Turmas', 'Notas e pautas',
+                            'Pagamentos', 'Reclamações', 'Utilizadores e permissões',
+                            'Autenticação', 'Sistema', 'Histórico anterior'
+                        ) %}
+                        <option value="{{ module }}" {% if filters.module == module %}selected{% endif %}>
+                            {{ module }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="audit-operation">Operação</label>
+                    <input id="audit-operation" name="operation" value="{{ filters.operation }}"
+                           maxlength="80" placeholder="Pesquisar operação">
+                </div>
+                <div>
+                    <label for="audit-user">Responsável / ID</label>
+                    <input id="audit-user" name="user" value="{{ filters.user }}"
+                           maxlength="100" placeholder="Nome ou ID do utilizador">
+                </div>
+                <div>
+                    <label for="audit-date-from">Data inicial</label>
+                    <input id="audit-date-from" type="date" name="date_from"
+                           value="{{ filters.date_from }}">
+                </div>
+                <div>
+                    <label for="audit-date-to">Data final</label>
+                    <input id="audit-date-to" type="date" name="date_to"
+                           value="{{ filters.date_to }}">
+                </div>
+                <button class="btn btn-primary" type="submit">Filtrar</button>
+                <a class="btn" href="{{ url_for('admin.dashboard') }}">Limpar</a>
+            </form>
             <div class="secretary-table-wrap">
             <table class="admin-audit-table">
                 <thead>
                     <tr>
-                        <th>ID Log</th>
-                        <th>Utilizador ID</th>
+                        <th>Responsável</th>
+                        <th>Módulo</th>
                         <th>Operação</th>
+                        <th>Registo afectado</th>
+                        <th>Resultado</th>
+                        <th>Data / hora</th>
                         <th>Detalhes</th>
-                        <th>Data / Hora</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for l in logs %}
                     <tr>
-                        <td>{{ l.id }}</td>
-                        <td>{{ l.user_id }}</td>
+                        <td>{{ l.actor_name }}{% if l.user_id %}<br><small>ID {{ l.user_id }}</small>{% endif %}</td>
+                        <td>{{ l.module }}</td>
                         <td><strong>{{ l.operacao }}</strong></td>
-                        <td>{{ l.detalhes }}</td>
+                        <td>{{ l.affected_record }}</td>
+                        <td>{{ l.result }}</td>
                         <td>{{ l.timestamp }}</td>
+                        <td>
+                            <button class="btn btn-primary audit-details-button" type="button"
+                                    data-audit-url="{{ url_for('admin.audit_details', log_id=l.id) }}">
+                                Ver Detalhes
+                            </button>
+                        </td>
                     </tr>
+                    {% else %}
+                    <tr><td colspan="7">Não existem registos para os filtros seleccionados.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
             </div>
         </div>
     </main>
+    <dialog class="sige-active-dialog" id="audit-details-dialog">
+        <div class="sige-active-dialog-heading">
+            <h2>Detalhes da actividade</h2>
+            <button type="button" id="audit-details-close">Fechar</button>
+        </div>
+        <dl class="audit-details-list" id="audit-details-content"></dl>
+        <p id="audit-details-error" role="alert" hidden></p>
+    </dialog>
+    <script>
+        (() => {
+            const dialog = document.getElementById('audit-details-dialog');
+            const content = document.getElementById('audit-details-content');
+            const error = document.getElementById('audit-details-error');
+            document.querySelectorAll('[data-audit-url]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    content.replaceChildren();
+                    error.hidden = true;
+                    try {
+                        const response = await fetch(button.dataset.auditUrl, {
+                            credentials: 'same-origin',
+                            cache: 'no-store'
+                        });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Não foi possível consultar o registo.');
+                        [
+                            ['Utilizador responsável', data.actor_name],
+                            ['Data e hora', data.timestamp],
+                            ['Módulo', data.module],
+                            ['Operação', data.operacao],
+                            ['Registo afectado', data.affected_record],
+                            ['Alteração realizada', data.change_details],
+                            ['Resultado', data.result]
+                        ].forEach(([label, value]) => {
+                            const term = document.createElement('dt');
+                            term.textContent = label;
+                            const description = document.createElement('dd');
+                            description.textContent = value;
+                            content.append(term, description);
+                        });
+                        dialog.showModal();
+                    } catch (requestError) {
+                        error.textContent = requestError.message;
+                        error.hidden = false;
+                        dialog.showModal();
+                    }
+                });
+            });
+            document.getElementById('audit-details-close').addEventListener(
+                'click', () => dialog.close()
+            );
+        })();
+    </script>
 </body>
 </html>

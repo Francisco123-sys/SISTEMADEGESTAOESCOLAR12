@@ -151,7 +151,7 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
             patch('routes.director.get_db', return_value=self.db),
             patch(
                 'routes.director.log_audit',
-                side_effect=lambda *args: self.db.commit(),
+                side_effect=lambda *args, **kwargs: self.db.commit(),
             ) as audit,
         ):
             response = self.client.post(
@@ -187,7 +187,7 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
             patch('routes.director.get_db', return_value=self.db),
             patch(
                 'routes.director.log_audit',
-                side_effect=lambda *args: self.db.commit(),
+                side_effect=lambda *args, **kwargs: self.db.commit(),
             ),
         ):
             response = self.client.post(

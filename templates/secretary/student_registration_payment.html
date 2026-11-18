@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Pagamento de Matrícula') }}
     <div class="navbar">
         <div class="brand">Escola Secundária da Manga | Pagamento Obrigatório de Inscrição</div>
         <a href="/secretary/students/new">Cancelar Inscrição</a>

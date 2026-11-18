@@ -71,3 +71,199 @@
     </span>
 </article>
 {%- endmacro %}
+
+{% macro active_users_panel() -%}
+<section class="sige-active-users card"
+         data-active-users
+         data-counts-url="{{ url_for('auth.active_users_counts') }}"
+         data-heartbeat-url="{{ url_for('auth.active_users_heartbeat') }}"
+         data-details-url="{{ url_for('auth.active_users_details') }}"
+         aria-labelledby="active-users-title">
+    <div class="sige-active-users-heading">
+        <div>
+            <p class="secretary-eyebrow">Presença em tempo real</p>
+            <h2 id="active-users-title">Utilizadores activos por secção</h2>
+        </div>
+        {% if session.get('user_role') in ('admin', 'director', 'chefe_secretaria') %}
+        <button class="btn btn-primary" type="button" data-active-details>
+            Ver Detalhes
+        </button>
+        {% endif %}
+    </div>
+    <div class="sige-active-users-grid" data-active-counts aria-live="polite">
+        {% for section in (
+            'Secretaria', 'Director', 'Direcção Pedagógica I',
+            'Direcção Pedagógica II', 'Professor', 'Administrador',
+            'Encarregado de Educação'
+        ) %}
+        <article class="sige-active-user-card">
+            <strong data-active-section="{{ section }}">—</strong>
+            <span>{{ section }}</span>
+        </article>
+        {% endfor %}
+    </div>
+    {% if session.get('user_role') in ('admin', 'director', 'chefe_secretaria') %}
+    <dialog class="sige-active-dialog" data-active-dialog aria-labelledby="active-dialog-title">
+        <div class="sige-active-dialog-heading">
+            <h2 id="active-dialog-title">Sessões recentes</h2>
+            <button type="button" data-active-close aria-label="Fechar">Fechar</button>
+        </div>
+        <div class="secretary-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome completo</th>
+                        <th>Perfil</th>
+                        <th>Secção</th>
+                        <th>Hora de entrada</th>
+                        <th>Última actividade</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody data-active-session-rows></tbody>
+            </table>
+        </div>
+    </dialog>
+    {% endif %}
+</section>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+    (() => {
+        const panel = document.querySelector('[data-active-users]');
+        if (!panel) return;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        let lastInteraction = Date.now();
+        const noteInteraction = () => { lastInteraction = Date.now(); };
+        ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
+            document.addEventListener(eventName, noteInteraction, {passive: true});
+        });
+
+        const refreshCounts = async () => {
+            try {
+                const response = await fetch(panel.dataset.countsUrl, {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                data.sections.forEach(({section, count}) => {
+                    const target = panel.querySelector(
+                        `[data-active-section="${CSS.escape(section)}"]`
+                    );
+                    if (target) target.textContent = count;
+                });
+            } catch (error) {
+                console.error('Não foi possível actualizar os utilizadores activos.', error);
+            }
+        };
+
+        const heartbeat = async () => {
+            if (document.hidden || Date.now() - lastInteraction > 5 * 60 * 1000) return;
+            try {
+                await fetch(panel.dataset.heartbeatUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'X-CSRF-Token': csrfToken},
+                    cache: 'no-store'
+                });
+            } catch (error) {
+                console.error('Não foi possível actualizar a sessão activa.', error);
+            }
+        };
+
+        const dialog = panel.querySelector('[data-active-dialog]');
+        const detailsButton = panel.querySelector('[data-active-details]');
+        if (dialog && detailsButton) {
+            const rows = dialog.querySelector('[data-active-session-rows]');
+            detailsButton.addEventListener('click', async () => {
+                try {
+                    const response = await fetch(panel.dataset.detailsUrl, {
+                        credentials: 'same-origin',
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error('A consulta foi recusada.');
+                    const data = await response.json();
+                    rows.replaceChildren();
+                    data.sessions.forEach((item) => {
+                        const row = document.createElement('tr');
+                        [
+                            item.name, item.role, item.section, item.login_at,
+                            item.last_activity, item.status
+                        ].forEach((value) => {
+                            const cell = document.createElement('td');
+                            cell.textContent = value;
+                            row.append(cell);
+                        });
+                        rows.append(row);
+                    });
+                    if (!data.sessions.length) {
+                        const row = document.createElement('tr');
+                        const cell = document.createElement('td');
+                        cell.colSpan = 6;
+                        cell.textContent = 'Não existem sessões recentes.';
+                        row.append(cell);
+                        rows.append(row);
+                    }
+                    dialog.showModal();
+                } catch (error) {
+                    console.error('Não foi possível consultar os detalhes das sessões.', error);
+                }
+            });
+            dialog.querySelector('[data-active-close]').addEventListener(
+                'click', () => dialog.close()
+            );
+        }
+
+        refreshCounts();
+        heartbeat();
+        window.setInterval(refreshCounts, 60 * 1000);
+        window.setInterval(heartbeat, 60 * 1000);
+    })();
+</script>
+{%- endmacro %}
+
+{% macro institutional_page_header(section) -%}
+    {% set role = session.get('user_role') %}
+    {% if session.get('guardian_id') %}
+        {% set home_url = url_for('auth.portal_encarregado') %}
+        {% set logout_url = url_for('auth.portal_encarregado') %}
+        {% set logout_action = 'logout' %}
+        {% set user_name = session.get('guardian_nome') %}
+    {% elif role == 'admin' %}
+        {% set home_url = url_for('admin.dashboard') %}
+        {% set logout_url = url_for('auth.logout') %}
+        {% set logout_action = None %}
+        {% set user_name = session.get('user_nome') %}
+    {% elif role in ('director', 'pedagogico_1', 'pedagogico_2') %}
+        {% set home_url = url_for('director.dashboard') %}
+        {% set logout_url = url_for('auth.logout') %}
+        {% set logout_action = None %}
+        {% set user_name = session.get('user_nome') %}
+    {% elif role == 'teacher' %}
+        {% set home_url = url_for('teacher.dashboard') %}
+        {% set logout_url = url_for('auth.logout') %}
+        {% set logout_action = None %}
+        {% set user_name = session.get('user_nome') %}
+    {% elif role in ('secretary', 'chefe_secretaria') %}
+        {% set home_url = url_for('secretary.dashboard') %}
+        {% set logout_url = url_for('auth.logout') %}
+        {% set logout_action = None %}
+        {% set user_name = session.get('user_nome') %}
+    {% else %}
+        {% set home_url = url_for('auth.login_landing') %}
+        {% set logout_url = None %}
+        {% set logout_action = None %}
+        {% set user_name = None %}
+    {% endif %}
+    {{ institutional_header(
+        section,
+        home_url,
+        user_name=user_name,
+        password_url=url_for('auth.change_password') if session.get('user_id') else None,
+        logout_url=logout_url,
+        logout_action=logout_action
+    ) }}
+    {% if session.get('user_id') or session.get('guardian_id') %}
+        {{ active_users_panel() }}
+    {% endif %}
+{%- endmacro %}

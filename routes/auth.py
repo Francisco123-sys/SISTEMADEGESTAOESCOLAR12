@@ -28,6 +28,14 @@ from services.csrf import generate_csrf_token, validate_csrf_token
 from services.db import active_student_condition, get_db, log_audit
 from services.email import build_password_reset_url, send_password_reset_email
 from services.uploads import UPLOAD_DIRECTORY
+from services.monitoring import (
+    DETAILS_ROLES,
+    account_key,
+    current_counts,
+    recent_session_details,
+    remove_active_session,
+    touch_active_session,
+)
 from services.complaints import (
     COMPLAINT_CATEGORIES,
     add_message,
@@ -75,6 +83,14 @@ def portal_encarregado():
             session['guardian_id'] = guardian['id']
             session['guardian_nome'] = guardian['nome']
             session['guardian_session_version'] = guardian['session_version']
+            session['guardian_role'] = 'guardian'
+            session['active_account_key'] = account_key('guardian', guardian['id'])
+            session['last_seen_at'] = time.time()
+            session.permanent = True
+            touch_active_session(
+                cursor, session['active_account_key'], 'guardian', guardian['nome']
+            )
+            db.commit()
             generate_csrf_token()
             return redirect(url_for('auth.portal_encarregado'))
 
@@ -99,6 +115,10 @@ def portal_encarregado():
             flash('Pedido inválido. Actualize a página e tente novamente.', 'danger')
             return redirect(url_for('auth.portal_encarregado'))
         if action == 'logout':
+            remove_active_session(
+                cursor, session.get('active_account_key')
+            )
+            db.commit()
             session.clear()
             flash('Sessão encerrada.', 'info')
             return redirect(url_for('auth.portal_encarregado'))
@@ -730,8 +750,23 @@ def login():
         session['user_code'] = user['code']
         session['user_nome'] = user['nome']
         session['user_role'] = user['role']
+        session['active_account_key'] = account_key('staff', user['id'])
+        session['last_seen_at'] = time.time()
+        session.permanent = True
+        touch_active_session(
+            cursor,
+            session['active_account_key'],
+            user['role'],
+            user['nome'],
+        )
+        generate_csrf_token()
         
-        log_audit(user['id'], 'LOGIN', f"Utilizador {user['code']} autenticado com sucesso.")
+        log_audit(
+            user['id'],
+            'LOGIN',
+            f"Utilizador {user['code']} autenticado com sucesso.",
+            ip=request.remote_addr,
+        )
         
         if user['role'] == 'admin':
             return redirect(url_for('admin.dashboard'))
@@ -774,7 +809,94 @@ def change_password():
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     if 'user_id' in session:
-        log_audit(session['user_id'], 'LOGOUT', f"Utilizador {session.get('user_code')} encerrou a sessão.")
+        log_audit(
+            session['user_id'],
+            'LOGOUT',
+            f"Utilizador {session.get('user_code')} encerrou a sessão.",
+            ip=request.remote_addr,
+        )
+    cursor = get_db().cursor()
+    remove_active_session(cursor, session.get('active_account_key'))
+    get_db().commit()
     session.clear()
     flash('Sessão encerrada com sucesso.', 'info')
     return redirect(url_for('auth.login_landing'))
+
+
+def _authenticated_presence():
+    if session.get('user_id'):
+        account_id = session['user_id']
+        role = session.get('user_role')
+        cursor = get_db().cursor()
+        cursor.execute(
+            'SELECT nome, role FROM users WHERE id = ? AND ativo = 1',
+            (account_id,),
+        )
+        account = cursor.fetchone()
+        if not account or account['role'] != role:
+            remove_active_session(cursor, session.get('active_account_key'))
+            get_db().commit()
+            session.clear()
+            return None
+        return (
+            cursor, account_key('staff', account_id), role, account['nome']
+        )
+
+    if session.get('guardian_id'):
+        account_id = session['guardian_id']
+        cursor = get_db().cursor()
+        cursor.execute('''
+            SELECT nome, session_version FROM guardians
+            WHERE id = ? AND ativo = 1
+        ''', (account_id,))
+        account = cursor.fetchone()
+        if (
+            not account
+            or account['session_version'] != session.get('guardian_session_version')
+        ):
+            remove_active_session(cursor, session.get('active_account_key'))
+            get_db().commit()
+            session.clear()
+            return None
+        return (
+            cursor, account_key('guardian', account_id),
+            'guardian', account['nome'],
+        )
+    return None
+
+
+@auth_bp.route('/api/active-users/heartbeat', methods=['POST'])
+def active_users_heartbeat():
+    presence = _authenticated_presence()
+    if not presence:
+        return jsonify(error='Sessão autenticada necessária.'), 401
+    cursor, key, role, name = presence
+    touch_active_session(cursor, key, role, name)
+    session['active_account_key'] = key
+    session['last_seen_at'] = time.time()
+    session.permanent = True
+    get_db().commit()
+    response = jsonify(ok=True)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@auth_bp.route('/api/active-users')
+def active_users_counts():
+    if not _authenticated_presence():
+        return jsonify(error='Sessão autenticada necessária.'), 401
+    response = jsonify(sections=current_counts(get_db().cursor()))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@auth_bp.route('/api/active-users/details')
+def active_users_details():
+    role = session.get('user_role')
+    if role not in DETAILS_ROLES:
+        return jsonify(error='Não tem autorização para consultar estes detalhes.'), 403
+    if not _authenticated_presence():
+        return jsonify(error='Sessão autenticada necessária.'), 401
+    response = jsonify(sessions=recent_session_details(get_db().cursor()))
+    response.headers['Cache-Control'] = 'no-store'
+    return response

@@ -4,14 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE | Painel do Professor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261118-1">
 </head>
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_header with context %}
-    {{ institutional_header('Painel do Professor', url_for('teacher.dashboard'),
-        user_name=session.get('user_nome'),
-        password_url=url_for('auth.change_password'),
-        logout_url=url_for('auth.logout')) }}
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Painel do Professor') }}
 
     <main class="container secretary-dashboard teacher-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}

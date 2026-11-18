@@ -55,6 +55,11 @@ class GuardianPortalTests(unittest.TestCase):
                 window_started_at REAL NOT NULL,
                 blocked_until REAL NOT NULL DEFAULT 0
             );
+            CREATE TABLE active_sessions (
+                account_key TEXT PRIMARY KEY, role TEXT NOT NULL,
+                display_name TEXT NOT NULL, section TEXT NOT NULL,
+                login_at REAL NOT NULL, last_activity REAL NOT NULL
+            );
             CREATE TABLE students (
                 id INTEGER PRIMARY KEY,
                 nome TEXT,

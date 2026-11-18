@@ -124,6 +124,16 @@ def gerenciar_reclamacoes():
             flash('Acção desconhecida.', 'danger')
             return redirect(url_for('director.gerenciar_reclamacoes'))
         db.commit()
+        log_audit(
+            actor_id,
+            'ALTERAR_RECLAMACAO',
+            f'Reclamação {complaint_id} actualizada pela Direcção ({action}).',
+            module='Reclamações',
+            affected_record=f'Reclamação {complaint_id}',
+            change_details=(
+                f'Operação {action}; estado {complaint["estado"]} actualizado.'
+            ),
+        )
         return redirect(url_for('director.gerenciar_reclamacoes'))
 
     cursor.execute('''
@@ -410,6 +420,12 @@ def configure_class(turma_id):
         session['user_id'],
         'CONFIGURAR_TURMA',
         f'Turma ID {turma_id}: capacidade {capacidade}; Director de Turma ID {diretor_turma_id}.',
+        module='Turmas',
+        affected_record=f'Turma ID {turma_id}',
+        change_details=(
+            f'Capacidade definida como {capacidade}; Director de Turma ID '
+            f'{diretor_turma_id or "não atribuído"}.'
+        ),
     )
     flash('Capacidade e Director de Turma actualizados.', 'success')
     return redirect(url_for('director.manage_classes'))
@@ -523,6 +539,12 @@ def decide_student_deletion(request_id):
         f"decisão {estado}; estado da matrícula "
         f"{'activo → eliminado logicamente' if decision == 'approve' else 'activo → activo'}; "
         f"motivo da decisão: {decision_note or 'Não indicado'}.",
+        module='Alunos e matrículas',
+        affected_record=f'Aluno ID {pedido["student_id"]}; pedido {request_id}',
+        change_details=(
+            f'Pedido de eliminação decidido: {estado}. '
+            f'Matrícula {"desactivada" if decision == "approve" else "mantida activa"}.'
+        ),
     )
     flash(
         'Pedido aprovado; a matrícula foi desactivada e o histórico preservado.'
@@ -551,6 +573,14 @@ def assign_teacher():
             VALUES (?, ?, ?)
         ''', (teacher_id, turma_id, subject_id))
         db.commit()
+        log_audit(
+            session['user_id'],
+            'ATRIBUIR_TURMA_PROFESSOR',
+            f'Professor ID {teacher_id} atribuído à turma {turma_id}, disciplina {subject_id}.',
+            module='Turmas',
+            affected_record=f'Turma {turma_id}; disciplina {subject_id}',
+            change_details=f'Professor ID {teacher_id} associado à turma e disciplina.',
+        )
         flash('Professor atribuído à turma e disciplina com sucesso!', 'success')
         return redirect(url_for('director.assign_teacher'))
 
@@ -594,6 +624,14 @@ def edit_user(user_id):
         role = request.form.get('role', target['role'])
         cursor.execute('UPDATE users SET nome=?, email=?, contacto=?, role=? WHERE id=?', (nome, email, contacto, role, user_id))
         db.commit()
+        log_audit(
+            session['user_id'],
+            'EDITAR_UTILIZADOR',
+            f'Utilizador ID {user_id} actualizado.',
+            module='Utilizadores e permissões',
+            affected_record=f'Utilizador ID {user_id}',
+            change_details=f'Nome, contacto e/ou perfil actualizados para {role}.',
+        )
         flash('Dados do funcionário atualizados!', 'success')
         return redirect(url_for('director.dashboard'))
     return render_template('director/staff_edit.html', staff=target)
@@ -604,7 +642,7 @@ def toggle_user(user_id):
         return redirect(url_for('auth.login_landing'))
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+    cursor.execute('SELECT role, ativo FROM users WHERE id = ?', (user_id,))
     target = cursor.fetchone()
     if not target:
         flash('Utilizador não encontrado.', 'danger')
@@ -616,6 +654,17 @@ def toggle_user(user_id):
         
     cursor.execute('UPDATE users SET ativo = CASE WHEN ativo = 1 THEN 0 ELSE 1 END WHERE id = ?', (user_id,))
     db.commit()
+    log_audit(
+        session['user_id'],
+        'ALTERAR_ESTADO_UTILIZADOR',
+        f'Estado do utilizador ID {user_id} alterado.',
+        module='Utilizadores e permissões',
+        affected_record=f'Utilizador ID {user_id}',
+        change_details=(
+            'Utilizador bloqueado.' if target['ativo']
+            else 'Utilizador activado.'
+        ),
+    )
     flash('Estado do utilizador alterado!', 'info')
     return redirect(url_for('director.dashboard'))
 
@@ -637,6 +686,14 @@ def delete_user(user_id):
         
     cursor.execute('DELETE FROM users WHERE id = ? AND role != "admin"', (user_id,))
     db.commit()
+    log_audit(
+        session['user_id'],
+        'REMOVER_UTILIZADOR',
+        f'Conta do utilizador ID {user_id} removida.',
+        module='Utilizadores e permissões',
+        affected_record=f'Utilizador ID {user_id}',
+        change_details='Conta removida.',
+    )
     flash('Utilizador removido.', 'warning')
     return redirect(url_for('director.dashboard'))
 
@@ -650,6 +707,10 @@ def new_staff():
         email = request.form.get('email', '').strip()
         role = request.form.get('role')
         contacto = request.form.get('contacto')
+        password = request.form.get('password', '')
+        if len(password) < 12:
+            flash('A palavra-passe inicial deve ter pelo menos 12 caracteres.', 'danger')
+            return redirect(url_for('director.new_staff'))
         
         db = get_db()
         cursor = db.cursor()
@@ -661,14 +722,26 @@ def new_staff():
         prefix_map = {'pedagogico_1': 'PED1', 'pedagogico_2': 'PED2', 'chefe_secretaria': 'SEC', 'teacher': 'PROF'}
         prefix = prefix_map.get(role, 'STAFF')
         code = gerar_codigo_unico(prefix, "users")
-        pwd_hash = generate_password_hash("Mozambique2026!")
+        pwd_hash = generate_password_hash(password)
         
         cursor.execute('''
             INSERT INTO users (code, nome, email, password_hash, role, contacto)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (code, nome, email, pwd_hash, role, contacto))
         db.commit()
-        flash(f'Utilizador {code} ({nome}) registado com sucesso!', 'success')
+        log_audit(
+            session['user_id'],
+            'CADASTRO_FUNCIONARIO',
+            f'Utilizador {code} ({nome}) registado com perfil {role}.',
+            module='Utilizadores e permissões',
+            affected_record=code,
+            change_details=f'Conta criada com perfil {role}.',
+        )
+        flash(
+            f'Utilizador {code} ({nome}) registado. '
+            'Entregue a palavra-passe inicial por um canal seguro.',
+            'success',
+        )
         return redirect(url_for('director.dashboard'))
         
     return render_template('director/staff_form.html')
@@ -704,7 +777,14 @@ def rectificar_notas():
         ''', (av1, av2, av3, av4, media_trim, exame_val, media_final, grade_id))
         db.commit()
 
-        log_audit(session['user_id'], 'RECTIFICACAO_NOTA', f"Nota ID {grade_id} alterada por {session.get('user_nome')}. Motivo: {motivo}")
+        log_audit(
+            session['user_id'],
+            'RECTIFICACAO_NOTA',
+            f"Nota ID {grade_id} alterada por {session.get('user_nome')}. Motivo: {motivo}",
+            module='Notas e pautas',
+            affected_record=f'Nota ID {grade_id}',
+            change_details=f'Notas rectificadas. Motivo: {motivo or "Não indicado"}.',
+        )
         flash('Nota rectificada com sucesso e registada no trilho de auditoria!', 'success')
         return redirect(url_for('director.rectificar_notas'))
 

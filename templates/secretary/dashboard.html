@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE | Painel da Secretaria</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261117-2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20261118-1">
 </head>
 {% macro dashboard_icon(name) -%}
 <svg class="secretary-icon-svg" viewBox="0 0 24 24" fill="none"
@@ -50,11 +50,8 @@
 </svg>
 {%- endmacro %}
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_header with context %}
-    {{ institutional_header('Painel da Secretaria', url_for('secretary.dashboard'),
-        user_name=session.get('user_nome'),
-        password_url=url_for('auth.change_password'),
-        logout_url=url_for('auth.logout')) }}
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Painel da Secretaria') }}
 
     <main class="container secretary-dashboard">
         {% with messages = get_flashed_messages(with_categories=true) %}

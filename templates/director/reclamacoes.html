@@ -23,11 +23,8 @@
     </style>
 </head>
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_header with context %}
-    {{ institutional_header('Reclamações encaminhadas', url_for('director.dashboard'),
-        user_name=session.get('user_nome'),
-        password_url=url_for('auth.change_password'),
-        logout_url=url_for('auth.logout')) }}
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Reclamações encaminhadas') }}
     <main class="container director-complaint-list">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for category, message in messages %}

@@ -768,6 +768,9 @@ def manage_guardians():
                 session['user_id'],
                 'ASSOCIAR_ENCARREGADO',
                 f'Conta de encarregado {guardian_id} associada ao aluno {student_id}.',
+                module='Alunos e matrículas',
+                affected_record=f'Aluno ID {student_id}; encarregado ID {guardian_id}',
+                change_details='Conta de encarregado associada ao aluno.',
             )
             flash('Conta de encarregado associada ao aluno.', 'success')
             return redirect(url_for('secretary.manage_guardians'))
@@ -1169,7 +1172,16 @@ def _concluir_matricula_no_banco(db, m, pag):
         payment_id = cursor.lastrowid
         
     db.commit()
-    log_audit(session['user_id'], 'MATRICULA_COM_PAGAMENTO', f"Aluno {codigo_aluno} ({m['nome']}) matriculado na {m['classe']}ª Classe ({m['curso']}).")
+    log_audit(
+        session['user_id'],
+        'MATRICULA_COM_PAGAMENTO',
+        f"Aluno {codigo_aluno} ({m['nome']}) matriculado na {m['classe']}ª Classe ({m['curso']}).",
+        module='Alunos e matrículas',
+        affected_record=f'Aluno {codigo_aluno}',
+        change_details=(
+            f'Matrícula criada na {m["classe"]}.ª Classe, modalidade {m["curso"]}.'
+        ),
+    )
     
     if payment_id:
         flash(f'Matrícula e pagamento registados com sucesso! Aluno: {codigo_aluno}.', 'success')
@@ -1301,6 +1313,14 @@ def student_edit(student_id):
             tuple(values.get(field) for field in update_fields) + (student_id,),
         )
         db.commit()
+        log_audit(
+            session['user_id'],
+            'EDITAR_ALUNO',
+            f'Dados do aluno {aluno["code"]} actualizados.',
+            module='Alunos e matrículas',
+            affected_record=f'Aluno {aluno["code"]}',
+            change_details='Dados pessoais, contacto, transferência e/ou situação escolar actualizados.',
+        )
         flash('Dados do aluno atualizados com sucesso!', 'success')
         return redirect(url_for('secretary.students_list'))
 
@@ -1656,7 +1676,14 @@ def payment_form():
             db.commit()
             
             payment_id = cursor.lastrowid
-            log_audit(session['user_id'], 'PAGAMENTO_REGISTADO', f"Recibo {recibo_num} emitido ({banco}, Ref: {referencia}).")
+            log_audit(
+                session['user_id'],
+                'PAGAMENTO_REGISTADO',
+                f"Recibo {recibo_num} emitido ({banco}, Ref: {referencia}).",
+                module='Pagamentos',
+                affected_record=f'Recibo {recibo_num}',
+                change_details='Pagamento registado e recibo emitido.',
+            )
             flash(f'Pagamento registado com sucesso! Recibo: {recibo_num}', 'success')
             return redirect(url_for('secretary.receipt_view', payment_id=payment_id))
         except DB_INTEGRITY_ERRORS:
@@ -1707,6 +1734,14 @@ def payment_edit(payment_id):
             UPDATE payments SET mes_pago=?, valor_pago=?, banco_plataforma=?, referencia_talao=?, data_deposito=? WHERE id=?
         ''', (mes_pago, valor_pago, banco, referencia, data_deposito, payment_id))
         db.commit()
+        log_audit(
+            session['user_id'],
+            'EDITAR_PAGAMENTO',
+            f'Pagamento do recibo {payment_id} actualizado.',
+            module='Pagamentos',
+            affected_record=f'Recibo {payment_id}',
+            change_details='Período, valor, banco, referência e/ou data de depósito actualizados.',
+        )
         flash('Pagamento atualizado com sucesso!', 'success')
         return redirect(url_for('secretary.dashboard'))
         
@@ -1912,6 +1947,10 @@ def gerenciar_colaboradores():
         nome = request.form.get('nome', '').strip()
         email = request.form.get('email', '').strip()
         contacto = request.form.get('contacto', '').strip()
+        password = request.form.get('password', '')
+        if len(password) < 12:
+            flash('A palavra-passe inicial deve ter pelo menos 12 caracteres.', 'danger')
+            return redirect(url_for('secretary.gerenciar_colaboradores'))
         
         cursor.execute('SELECT id FROM students WHERE LOWER(nome) = LOWER(?)', (nome,))
         if cursor.fetchone():
@@ -1919,16 +1958,26 @@ def gerenciar_colaboradores():
             return redirect(url_for('secretary.gerenciar_colaboradores'))
             
         code = gerar_codigo_unico("SEC", "users")
-        from werkzeug.security import generate_password_hash
-        pwd_hash = generate_password_hash("Secretaria123!")
+        pwd_hash = generate_password_hash(password)
         
         cursor.execute('''
             INSERT INTO users (code, nome, email, password_hash, role, contacto)
             VALUES (?, ?, ?, ?, 'secretary', ?)
         ''', (code, nome, email, pwd_hash, contacto))
         db.commit()
-        log_audit(session['user_id'], 'CADASTRO_FUNCIONARIO', f"Funcionário {code} ({nome}) registado.")
-        flash(f'Colaborador {code} ({nome}) registado com sucesso!', 'success')
+        log_audit(
+            session['user_id'],
+            'CADASTRO_FUNCIONARIO',
+            f"Funcionário {code} ({nome}) registado.",
+            module='Utilizadores e permissões',
+            affected_record=code,
+            change_details='Conta de Secretaria criada.',
+        )
+        flash(
+            f'Colaborador {code} ({nome}) registado. '
+            'Entregue a palavra-passe inicial por um canal seguro.',
+            'success',
+        )
         return redirect(url_for('secretary.gerenciar_colaboradores'))
 
     cursor.execute('SELECT * FROM users WHERE role = "secretary" ORDER BY id DESC')
@@ -1947,6 +1996,14 @@ def edit_colega(user_id):
         contacto = request.form.get('contacto', '').strip()
         cursor.execute('UPDATE users SET nome=?, email=?, contacto=? WHERE id=? AND role="secretary"', (nome, email, contacto, user_id))
         db.commit()
+        log_audit(
+            session['user_id'],
+            'EDITAR_FUNCIONARIO',
+            f'Dados do colaborador ID {user_id} actualizados.',
+            module='Utilizadores e permissões',
+            affected_record=f'Utilizador ID {user_id}',
+            change_details='Nome, e-mail ou contacto actualizados.',
+        )
         flash('Dados do colega atualizados!', 'success')
         return redirect(url_for('secretary.gerenciar_colaboradores'))
     cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
@@ -1961,6 +2018,14 @@ def toggle_colega(user_id):
     cursor = db.cursor()
     cursor.execute('UPDATE users SET ativo = CASE WHEN ativo = 1 THEN 0 ELSE 1 END WHERE id = ? AND role = "secretary"', (user_id,))
     db.commit()
+    log_audit(
+        session['user_id'],
+        'ALTERAR_ESTADO_FUNCIONARIO',
+        f'Estado do colaborador ID {user_id} alterado.',
+        module='Utilizadores e permissões',
+        affected_record=f'Utilizador ID {user_id}',
+        change_details='Estado activo/bloqueado alterado.',
+    )
     flash('Estado do colega alterado!', 'info')
     return redirect(url_for('secretary.gerenciar_colaboradores'))
 
@@ -1972,6 +2037,14 @@ def delete_colega(user_id):
     cursor = db.cursor()
     cursor.execute('DELETE FROM users WHERE id = ? AND role = "secretary"', (user_id,))
     db.commit()
+    log_audit(
+        session['user_id'],
+        'REMOVER_FUNCIONARIO',
+        f'Conta de Secretaria ID {user_id} removida.',
+        module='Utilizadores e permissões',
+        affected_record=f'Utilizador ID {user_id}',
+        change_details='Conta removida.',
+    )
     flash('Conta removida com sucesso.', 'warning')
     return redirect(url_for('secretary.gerenciar_colaboradores'))
 
@@ -2070,7 +2143,14 @@ def gerenciar_turmas():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (nome, sala, classe_id, ano_lectivo_id, turno, curso, capacidade, capacidade, area_curricular))
             db.commit()
-            log_audit(session['user_id'], 'CRIAR_TURMA', f"Turma {nome} ({sala}) criada com {capacidade} vagas.")
+            log_audit(
+                session['user_id'],
+                'CRIAR_TURMA',
+                f"Turma {nome} ({sala}) criada com {capacidade} vagas.",
+                module='Turmas',
+                affected_record=f'Turma {nome}',
+                change_details=f'Turma criada; sala {sala}; capacidade {capacidade}.',
+            )
             flash(f'Turma {nome} ({sala}) criada com {capacidade} vagas!', 'success')
             
         elif acao == 'transferir_aluno':
@@ -2124,7 +2204,14 @@ def gerenciar_turmas():
                     WHERE id = ?
                 ''', (nova_turma_id, destino['turno'], destino['curso'], destino['classe_num'], student_id))
                 db.commit()
-                log_audit(session['user_id'], 'ATRIBUIR_TURMA', f"Aluno ID {student_id} atribuído à Turma ID {nova_turma_id}.")
+                log_audit(
+                    session['user_id'],
+                    'ATRIBUIR_TURMA',
+                    f"Aluno ID {student_id} atribuído à Turma ID {nova_turma_id}.",
+                    module='Alunos e matrículas',
+                    affected_record=f'Aluno ID {student_id}',
+                    change_details=f'Aluno transferido para a turma ID {nova_turma_id}.',
+                )
                 flash('Aluno atribuído à turma e controle de vagas actualizado!', 'success')
         return redirect(url_for('secretary.gerenciar_turmas'))
 
@@ -2425,7 +2512,14 @@ def importar_pauta_csv():
         importados += 1
 
     db.commit()
-    log_audit(session['user_id'], 'IMPORTAR_PAUTA_CSV', f"Importados {importados} registos na Turma {turma_id}, Disciplina {subject_id}.")
+    log_audit(
+        session['user_id'],
+        'IMPORTAR_PAUTA_CSV',
+        f"Importados {importados} registos na Turma {turma_id}, Disciplina {subject_id}.",
+        module='Notas e pautas',
+        affected_record=f'Turma {turma_id}; disciplina {subject_id}',
+        change_details=f'Pauta CSV importada; {importados} registos actualizados.',
+    )
     flash(f'Pauta oficial importada com sucesso! {importados} registos atualizados.', 'success')
     return redirect(url_for('secretary.gerenciar_turmas'))
 
@@ -2561,6 +2655,16 @@ def gerenciar_reclamacoes():
             flash('Acção desconhecida.', 'danger')
             return redirect(url_for('secretary.gerenciar_reclamacoes'))
         db.commit()
+        log_audit(
+            actor_id,
+            'ALTERAR_RECLAMACAO',
+            f'Reclamação {rec_id} actualizada pela Secretaria ({action}).',
+            module='Reclamações',
+            affected_record=f'Reclamação {rec_id}',
+            change_details=(
+                f'Operação {action}; estado {complaint["estado"]} actualizado.'
+            ),
+        )
         return redirect(url_for('secretary.gerenciar_reclamacoes'))
 
     state_filter = request.args.get('estado', '').strip()

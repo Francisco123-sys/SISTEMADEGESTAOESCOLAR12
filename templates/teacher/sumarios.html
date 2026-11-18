@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Livro de Ponto e Sumários') }}
     <div class="navbar" style="padding: 10px 30px;">
         <div style="display:flex; align-items:center; gap:14px;">
             <img src="/static/img/emblema_moz.png" alt="Emblema de Moçambique" style="width:46px; height:46px; object-fit:contain; background:#fff; border-radius:50%; padding:3px;">

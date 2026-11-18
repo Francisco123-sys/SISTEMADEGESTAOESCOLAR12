@@ -27,6 +27,8 @@
     </style>
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Atendimento da Secretaria') }}
     <div class="navbar">
         <div class="brand">SIGE | Atendimento e Reclamações</div>
         <div class="nav-links">

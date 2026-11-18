@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Matrícula de Aluno') }}
     <div class="navbar">
         <div class="brand">Escola Secundária da Manga | Matrícula de Aluno</div>
         <a href="/secretary/dashboard">Voltar ao Painel</a>

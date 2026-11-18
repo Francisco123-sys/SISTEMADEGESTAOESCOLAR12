@@ -19,6 +19,12 @@ O projecto está configurado para persistir todos os dados na nuvem através do 
    python app.py
    ```
 
+### Acesso público no GitHub Codespaces
+- O Codespaces encaminha a porta `5000` com visibilidade `public` segundo `.devcontainer/devcontainer.json`. Para um Codespace já existente, confirme a visibilidade no separador **Ports** ou execute `gh codespace ports visibility 5000:public -c <nome-do-codespace>`.
+- O endereço público só fica disponível enquanto a aplicação estiver em execução no Codespace. A rota `/` apresenta apenas o login; painéis, dados escolares e operações continuam sujeitos a autenticação e autorização.
+- Não publique `.env`, ficheiros da base de dados, credenciais ou portas de serviços de dados. Configure `SECRET_KEY`, `DATABASE_URL` e `SESSION_COOKIE_SECURE=true` no ambiente do Codespace, nunca no repositório.
+- Após a primeira implantação, aplique as migrações aditivas no ambiente pretendido com `python -m flask --app app init-db`. Este comando não elimina dados; faça uma cópia de segurança verificada antes de o executar em produção.
+
 ## Funcionalidades Principais:
 1. **Persistência PostgreSQL (Neon) + Fallback SQLite:** Suporte nativo para Neon Pooler (`DATABASE_URL`) e ligação directa (`DATABASE_URL_UNPOOLED`) para migrações/DDL.
 2. **Bancos & Carteiras Móveis:** Seletor obrigatório com **Banco BCI, Millennium BIM, Standard Bank, M-Pesa e e-Mola**.

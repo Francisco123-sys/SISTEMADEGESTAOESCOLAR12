@@ -70,6 +70,10 @@ class AppStartupTests(unittest.TestCase):
         css_response.close()
         self.assertIn('.sige-login-layout', css)
         self.assertIn('.teacher-assignment-grid', css)
+        self.assertIn('education-tech.svg', css)
+        image_response = client.get('/static/img/education-tech.svg')
+        self.assertEqual(image_response.status_code, 200)
+        self.assertIn(b'educa', image_response.data.lower())
 
     def test_shared_dashboard_header_renders_for_director_and_admin(self):
         from flask import render_template
@@ -86,12 +90,22 @@ class AppStartupTests(unittest.TestCase):
                 funcionarios=[],
             )
         with app_module.app.test_request_context('/admin/dashboard'):
-            admin_html = render_template('admin/dashboard.html', logs=[])
+            admin_html = render_template(
+                'admin/dashboard.html',
+                logs=[],
+                filters={
+                    'module': '',
+                    'operation': '',
+                    'user': '',
+                    'date_from': '',
+                    'date_to': '',
+                },
+            )
 
         self.assertIn('sige-topbar', director_html)
         self.assertIn('Direcção Escolar', director_html)
         self.assertIn('sige-topbar', admin_html)
-        self.assertIn('Trilho de Auditoria', admin_html)
+        self.assertIn('Histórico de Actividades', admin_html)
 
 
 if __name__ == '__main__':

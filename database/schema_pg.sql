@@ -287,5 +287,18 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     operacao TEXT NOT NULL,
     detalhes TEXT NOT NULL,
     ip_address TEXT,
+    module TEXT,
+    affected_record TEXT,
+    change_details TEXT,
+    result TEXT NOT NULL DEFAULT 'Sucesso',
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS active_sessions (
+    account_key TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    section TEXT NOT NULL,
+    login_at DOUBLE PRECISION NOT NULL,
+    last_activity DOUBLE PRECISION NOT NULL
 );

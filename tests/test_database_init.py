@@ -108,6 +108,9 @@ class DatabaseBootstrapTests(unittest.TestCase):
             student_columns = {
                 row[1] for row in conn.execute('PRAGMA table_info(students)').fetchall()
             }
+            audit_columns = {
+                row[1] for row in conn.execute('PRAGMA table_info(audit_logs)').fetchall()
+            }
             conn.close()
 
         self.assertIn('area_curricular', columns)
@@ -123,6 +126,10 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.assertIn('eliminado_em', student_columns)
         self.assertIn('eliminado_por', student_columns)
         self.assertIn('documento_transferencia_path', student_columns)
+        self.assertIn('active_sessions', guardian_tables)
+        self.assertTrue({
+            'module', 'affected_record', 'change_details', 'result'
+        }.issubset(audit_columns))
         self.assertEqual(user_count, 0)
 
 

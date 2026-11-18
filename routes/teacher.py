@@ -422,7 +422,10 @@ def launch_grades(turma_id, subject_id):
                    fj, fnj, total_faltas, comentario))
         db.commit()
         log_audit(session['user_id'], 'SUBMISSAO_NOTAS_FALTAS',
-                  f"Professor {session.get('user_nome')} submeteu pauta (notas, faltas e pareceres) Turma {turma_id}, Disciplina {subject_id}.")
+                  f"Professor {session.get('user_nome')} submeteu pauta (notas, faltas e pareceres) Turma {turma_id}, Disciplina {subject_id}.",
+                  module='Notas e pautas',
+                  affected_record=f'Turma {turma_id}; disciplina {subject_id}',
+                  change_details='Pauta, notas, faltas e pareceres submetidos.')
         flash('Pauta (notas, faltas e pareceres pedagógicos) submetida e bloqueada com sucesso!', 'success')
         return redirect(url_for('teacher.dashboard', trimestre=trimestre))
 

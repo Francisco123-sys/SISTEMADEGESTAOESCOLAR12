@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {{ institutional_page_header('Edição de Funcionário') }}
     <div class="navbar">
         <div class="brand">SIGE | Editar Funcionário {{ staff.code }}</div>
         <a href="/director/dashboard">Voltar ao Painel</a>

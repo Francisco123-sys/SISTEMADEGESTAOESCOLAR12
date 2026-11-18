@@ -121,6 +121,18 @@ def init_db():
 
         with open('database/schema_pg.sql', 'r', encoding='utf-8') as f:
             cursor.execute(f.read())
+        cursor.execute('''
+            ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS module TEXT
+        ''')
+        cursor.execute('''
+            ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS affected_record TEXT
+        ''')
+        cursor.execute('''
+            ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS change_details TEXT
+        ''')
+        cursor.execute('''
+            ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS result TEXT NOT NULL DEFAULT 'Sucesso'
+        ''')
         migrate_complaint_schema(cursor, is_postgres=True)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS code_counters (
@@ -256,6 +268,19 @@ def init_db():
 
         with open('database/schema.sql', 'r', encoding='utf-8') as f:
             cursor.executescript(f.read())
+        audit_columns = {
+            row[1] for row in cursor.execute('PRAGMA table_info(audit_logs)')
+        }
+        for column, definition in (
+            ('module', 'TEXT'),
+            ('affected_record', 'TEXT'),
+            ('change_details', 'TEXT'),
+            ('result', "TEXT NOT NULL DEFAULT 'Sucesso'"),
+        ):
+            if column not in audit_columns:
+                cursor.execute(
+                    f'ALTER TABLE audit_logs ADD COLUMN {column} {definition}'
+                )
         migrate_complaint_schema(cursor)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS code_counters (

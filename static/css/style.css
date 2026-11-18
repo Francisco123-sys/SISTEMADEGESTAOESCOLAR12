@@ -1994,6 +1994,9 @@ progress {
     min-width: 0;
     place-items: center;
     padding: clamp(24px, 6vw, 80px);
+    background:
+        linear-gradient(110deg, rgba(241, 248, 255, 0.88), rgba(232, 241, 250, 0.68)),
+        url("../img/education-tech.svg") center / cover no-repeat;
 }
 
 .sige-login-panel {
@@ -2004,6 +2007,7 @@ progress {
     border: 1px solid #EAECF0;
     border-radius: 14px;
     box-shadow: 0 16px 42px rgba(16, 24, 40, 0.09);
+    backdrop-filter: blur(7px);
 }
 
 .sige-login-panel-heading {
@@ -2154,6 +2158,24 @@ progress {
 
     .sige-login-content {
         padding: 22px 16px;
+        background-position: center;
+    }
+
+    .sige-active-users-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sige-active-dialog {
+        padding: 14px;
+    }
+
+    .audit-details-list {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .audit-details-list dd {
+        margin-bottom: 10px;
     }
 }
 
@@ -2301,6 +2323,121 @@ progress {
     font-size: 0.68rem;
 }
 
+.sige-active-users {
+    max-width: 1440px;
+    margin: 20px auto;
+}
+
+.sige-active-users-heading,
+.sige-active-dialog-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.sige-active-users-heading {
+    margin-bottom: 15px;
+}
+
+.sige-active-users-heading .secretary-eyebrow {
+    margin: 0 0 3px;
+}
+
+.sige-active-users-heading h2,
+.sige-active-dialog-heading h2 {
+    margin: 0;
+    color: var(--navy-dark);
+    font-size: 1.05rem;
+}
+
+.sige-active-users-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 10px;
+}
+
+.sige-active-user-card {
+    display: grid;
+    gap: 3px;
+    padding: 12px;
+    background: #F8FAFC;
+    border: 1px solid #EAECF0;
+    border-radius: 9px;
+}
+
+.sige-active-user-card strong {
+    color: #175CD3;
+    font-size: 1.25rem;
+}
+
+.sige-active-user-card span {
+    color: #475467;
+    font-size: 0.72rem;
+}
+
+.sige-active-dialog {
+    width: min(1050px, calc(100vw - 32px));
+    max-height: 85vh;
+    padding: 20px;
+    border: 0;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(16, 24, 40, 0.25);
+}
+
+.sige-active-dialog::backdrop {
+    background: rgba(16, 24, 40, 0.55);
+}
+
+.sige-active-dialog-heading {
+    margin-bottom: 14px;
+}
+
+.sige-active-dialog-heading button {
+    padding: 7px 12px;
+    color: #344054;
+    background: #F2F4F7;
+    border: 1px solid #D0D5DD;
+    border-radius: 6px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.audit-filter-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    align-items: end;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.audit-filter-form input,
+.audit-filter-form select {
+    min-height: 40px;
+}
+
+.audit-filter-form .btn {
+    min-height: 40px;
+}
+
+.audit-details-list {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
+    gap: 8px 14px;
+    margin: 20px 0 0;
+}
+
+.audit-details-list dt {
+    color: #475467;
+    font-weight: 700;
+}
+
+.audit-details-list dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
     .sige-topbar {
         align-items: flex-start;
@@ -2319,6 +2456,16 @@ progress {
 
     .sige-institutional-copy strong {
         font-size: 0.9rem;
+    }
+
+    .sige-active-users {
+        margin: 14px 12px;
+        padding: 16px;
+    }
+
+    .sige-active-users-heading {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }
 

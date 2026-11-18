@@ -2,7 +2,7 @@ import os
 import re
 import sqlite3
 from urllib.parse import unquote, urlparse
-from flask import g
+from flask import g, has_request_context, request
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -243,11 +243,60 @@ def close_db(exception=None):
         db.close()
 
 
-def log_audit(user_id, operacao, detalhes, ip="127.0.0.1"):
+def log_audit(
+    user_id,
+    operacao,
+    detalhes,
+    ip=None,
+    module=None,
+    affected_record=None,
+    change_details=None,
+    result='Sucesso',
+):
+    if module is None:
+        operation = operacao.upper()
+        if any(term in operation for term in ('ALUNO', 'MATRICULA')):
+            module = 'Alunos e matrículas'
+        elif any(term in operation for term in ('TURMA', 'CLASSE')):
+            module = 'Turmas'
+        elif any(term in operation for term in ('NOTA', 'PAUTA')):
+            module = 'Notas e pautas'
+        elif 'PAGAMENTO' in operation:
+            module = 'Pagamentos'
+        elif 'RECLAMACAO' in operation:
+            module = 'Reclamações'
+        elif any(term in operation for term in ('FUNCIONARIO', 'UTILIZADOR', 'CONTA', 'SENHA')):
+            module = 'Utilizadores e permissões'
+        elif operation in ('LOGIN', 'LOGOUT'):
+            module = 'Autenticação'
+        else:
+            module = 'Sistema'
+
+    details = _redact_audit_credentials(str(detalhes))
+    change = _redact_audit_credentials(
+        str(change_details if change_details is not None else detalhes)
+    )
+    ip_address = ip or (
+        request.remote_addr if has_request_context() else '127.0.0.1'
+    )
     db = get_db()
     cursor = db.cursor()
     cursor.execute('''
-        INSERT INTO audit_logs (user_id, operacao, detalhes, ip_address)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, operacao, detalhes, ip))
+        INSERT INTO audit_logs (
+            user_id, operacao, detalhes, ip_address, module,
+            affected_record, change_details, result
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        user_id, operacao, details, ip_address, module,
+        affected_record, change, result,
+    ))
     db.commit()
+
+
+def _redact_audit_credentials(value):
+    return re.sub(
+        r'(?i)\b(password(?:_hash)?|senha|palavra[- ]?passe|token|secret)'
+        r'\s*[:=]\s*([^\s,;]+)',
+        r'\1=[REDACTED]',
+        value,
+    )
