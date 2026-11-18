@@ -209,6 +209,9 @@
 
         <div class="class-meta">
             <span><strong>Classe:</strong> {{ info.classe_num }}.ª</span>
+            {% if info.area_curricular %}
+            <span><strong>Área:</strong> Área {{ info.area_curricular }}</span>
+            {% endif %}
             <span><strong>Turma:</strong> {{ info.turma_nome }}</span>
             <span><strong>Disciplina:</strong> {{ info.disciplina_nome }}</span>
             <span><strong>Ano lectivo:</strong> {{ info.ano_lectivo or '—' }}</span>

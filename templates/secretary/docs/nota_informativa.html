@@ -42,7 +42,9 @@
         <div class="student-fields">
             <p><strong>ANO LECTIVO:</strong> {{ aluno.ano_lectivo or 'Por indicar' }}</p>
             <p><strong>CLASSE:</strong> {{ aluno.classe_num or 'Por indicar' }}ª Classe</p>
-            <p><strong>ÁREA:</strong> {{ area_curricular_nome or 'Não aplicável' }}</p>
+            {% if area_curricular_nome %}
+            <p><strong>ÁREA:</strong> {{ area_curricular_nome }}</p>
+            {% endif %}
             <p><strong>N.º:</strong> {{ aluno.code }}</p>
             <p><strong>TURMA:</strong> {{ aluno.turma_nome or 'Por indicar' }}</p>
             <p><strong>MODALIDADE:</strong> {% if aluno.turma_curso == 'À Distância' %}ENSINO À DISTÂNCIA{% else %}ENSINO PRESENCIAL{% endif %}</p>

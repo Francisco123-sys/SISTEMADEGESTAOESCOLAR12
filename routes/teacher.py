@@ -267,7 +267,7 @@ def pauta_oficial_impressao(turma_id, subject_id):
             return redirect(url_for('teacher.dashboard'))
     active_students = active_student_condition(cursor, 's')
     cursor.execute('''
-        SELECT t.nome AS turma_nome, t.sala, t.curso, t.turno,
+        SELECT t.nome AS turma_nome, t.sala, t.curso, t.turno, t.area_curricular,
                c.numero AS classe_num, s.nome AS disciplina_nome,
                ay.ano AS ano_lectivo, u.nome AS diretor_turma
         FROM turmas t

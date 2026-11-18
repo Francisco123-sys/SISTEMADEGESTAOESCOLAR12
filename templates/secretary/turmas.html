@@ -195,9 +195,11 @@
                             <span class="secretary-modality-badge is-{{ modalidade }}">{{ modalidade_label }}</span>
                         </div>
                         <h3>{{ t.nome }}</h3>
+                        {% if t.area_curricular %}
                         <p class="secretary-turma-area">
-                            {{ areas_curriculares.get(t.area_curricular, 'Ciclo comum') }}
+                            {{ areas_curriculares.get(t.area_curricular, t.area_curricular) }}
                         </p>
+                        {% endif %}
                         <div class="secretary-turma-details">
                             <span>{{ t.sala or 'Sala não indicada' }}</span>
                             <span>{{ t.turno or 'Turno não indicado' }}</span>

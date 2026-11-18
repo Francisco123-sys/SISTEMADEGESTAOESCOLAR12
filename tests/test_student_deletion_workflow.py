@@ -49,9 +49,49 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 data_nascimento TEXT, foto_path TEXT, turma_id INTEGER,
                 classe_ingresso INTEGER,
                 ano_lectivo_id INTEGER,
+                data_matricula TEXT,
+                documento_identificacao_numero TEXT,
+                documento_identificacao_tipo TEXT,
+                documento_identificacao_pais TEXT,
+                bi_cedula TEXT,
+                naturalidade TEXT,
+                provincia_nascimento TEXT,
+                distrito_nascimento TEXT,
+                pais_nascimento TEXT,
+                nacionalidade TEXT,
+                pais_residencia TEXT,
+                provincia_residencia TEXT,
+                distrito_residencia TEXT,
+                morada TEXT,
+                nome_pai TEXT,
+                pai_naturalidade TEXT,
+                pai_profissao TEXT,
+                pai_contacto TEXT,
+                nome_mae TEXT,
+                mae_naturalidade TEXT,
+                mae_profissao TEXT,
+                mae_contacto TEXT,
+                encarregado_nome TEXT,
+                encarregado_parentesco TEXT,
+                encarregado_contacto_principal TEXT,
+                encarregado_contacto_1 TEXT,
+                encarregado_contacto_alternativo TEXT,
+                encarregado_contacto_2 TEXT,
+                encarregado_email TEXT,
+                encarregado_profissao TEXT,
+                encarregado_morada TEXT,
+                ingresso_situacao TEXT,
+                escola_origem TEXT,
+                provincia_origem TEXT,
+                distrito_origem TEXT,
+                classe_anterior TEXT,
+                ano_lectivo_anterior TEXT,
+                isento_taxa INTEGER,
+                justificacao_isencao TEXT,
+                nee_tipo TEXT,
+                observacoes_transferencia TEXT,
                 ativo INTEGER NOT NULL DEFAULT 1, eliminado_em TIMESTAMP,
-                eliminado_por INTEGER, encarregado_nome TEXT,
-                encarregado_contacto_principal TEXT, encarregado_contacto_1 TEXT
+                eliminado_por INTEGER
             );
             CREATE TABLE guardians (
                 id INTEGER PRIMARY KEY, nome TEXT, contacto TEXT, ativo INTEGER
@@ -145,6 +185,11 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
         self.assertIn(b'Limpar filtros', response.data)
 
     def test_academic_document_preview_is_individual_and_deduplicates_subjects(self):
+        with patch('routes.secretary.get_db', return_value=self.db):
+            profile = self.client.get('/secretary/students/1/profile')
+        self.assertEqual(profile.status_code, 200)
+        self.assertNotIn(b'\xc3\x81rea curricular', profile.data)
+
         for tipo in ('boletim', 'notas', 'frequencia', 'matricula'):
             with self.subTest(tipo=tipo):
                 with patch('routes.secretary.get_db', return_value=self.db):
@@ -154,6 +199,7 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 self.assertIn(b'Ana de Teste', response.data)
                 self.assertIn(b'Descarregar PDF', response.data)
                 self.assertIn(b'Imprimir', response.data)
+                self.assertNotIn(b'N\xc3\xa3o aplic\xc3\xa1vel', response.data)
 
         with patch('routes.secretary.get_db', return_value=self.db):
             declaration = self.client.get('/secretary/documentos/1/notas')

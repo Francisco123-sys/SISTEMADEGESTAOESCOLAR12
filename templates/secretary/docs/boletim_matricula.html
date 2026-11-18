@@ -78,7 +78,11 @@
                 <div class="field"><strong>Encarregado</strong><span>{{ aluno.encarregado_nome or '' }} · {{ aluno.encarregado_parentesco or '' }}</span></div>
                 <div class="field"><strong>Profissão / morada</strong><span>{{ aluno.encarregado_profissao or '' }} · {{ aluno.encarregado_morada or '' }}</span></div>
                 <div class="field"><strong>Classe pretendida</strong><span>{{ aluno.classe_num or aluno.classe_ingresso }}.ª Classe</span></div>
-                <div class="field"><strong>Turma / área</strong><span>{{ aluno.turma_nome or '' }} · {{ areas_curriculares.get(aluno.area_curricular, 'Não aplicável') if aluno.area_curricular else 'Não aplicável' }}</span></div>
+                {% if aluno.area_curricular %}
+                <div class="field"><strong>Turma / área</strong><span>{{ aluno.turma_nome or '' }} · {{ areas_curriculares.get(aluno.area_curricular, aluno.area_curricular) }}</span></div>
+                {% else %}
+                <div class="field"><strong>Turma</strong><span>{{ aluno.turma_nome or '' }}</span></div>
+                {% endif %}
                 <div class="field"><strong>Modalidade / turno</strong><span>{% if aluno.turma_curso == 'À Distância' %}ENSINO À DISTÂNCIA{% else %}ENSINO PRESENCIAL{% endif %} · {{ aluno.turma_turno or aluno.turno or '' }}</span></div>
                 <div class="field"><strong>Última escola / ano</strong><span>{{ aluno.escola_origem or '' }} · {{ aluno.ano_lectivo_anterior or '' }}</span></div>
             </div>

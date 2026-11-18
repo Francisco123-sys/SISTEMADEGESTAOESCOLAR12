@@ -691,17 +691,24 @@ def student_profile(student_id):
         flash('Aluno não encontrado ou sem permissão para consulta.', 'warning')
         return redirect(url_for('secretary.students_list'))
 
+    dados_escolares = [
+        ('Processo', aluno['code']),
+        ('Classe', f"{aluno['classe_num']}.ª" if aluno['classe_num'] else '—'),
+        ('Turma', aluno['turma_nome'] or 'Sem turma'),
+    ]
+    if aluno['area_curricular']:
+        dados_escolares.append(
+            ('Área curricular', AREAS_CURRICULARES.get(aluno['area_curricular']))
+        )
+    dados_escolares.extend([
+        ('Ano lectivo', aluno['ano_lectivo'] or '—'),
+        ('Director de Turma', aluno['diretor_turma'] or 'Não atribuído'),
+        ('Data de matrícula', aluno['data_matricula']),
+        ('Situação da matrícula', 'Activa' if aluno['ativo'] else 'Inactiva'),
+    ])
+
     secoes = (
-        ('Dados escolares', (
-            ('Processo', aluno['code']),
-            ('Classe', f"{aluno['classe_num']}.ª" if aluno['classe_num'] else '—'),
-            ('Turma', aluno['turma_nome'] or 'Sem turma'),
-            ('Área curricular', AREAS_CURRICULARES.get(aluno['area_curricular'], '—')),
-            ('Ano lectivo', aluno['ano_lectivo'] or '—'),
-            ('Director de Turma', aluno['diretor_turma'] or 'Não atribuído'),
-            ('Data de matrícula', aluno['data_matricula']),
-            ('Situação da matrícula', 'Activa' if aluno['ativo'] else 'Inactiva'),
-        )),
+        ('Dados escolares', tuple(dados_escolares)),
         ('Identificação', (
             ('Nome completo', aluno['nome']),
             (
