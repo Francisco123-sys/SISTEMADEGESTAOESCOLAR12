@@ -3,90 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SIGE - Gerir Colegas da Secretaria</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>SIGE - Gestão de Colaboradores</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=premium-3">
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Gestão de Colaboradores') }}
-    <div class="navbar">
-        <div class="brand">Escola Secundária da Manga | Gestão da Secretaria</div>
-        <a href="/secretary/dashboard">Voltar ao Painel</a>
-    </div>
-    <div class="container">
+    <main class="container staff-management-page">
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
         {% endwith %}
-        
-        <div class="card">
-            <h3 class="card-title">Cadastrar Novo Assistente de Secretaria</h3>
-            <form action="/secretary/colaboradores" method="POST" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
+
+        <section class="staff-management-heading" aria-labelledby="staff-management-title">
+            <div>
+                <p class="staff-management-eyebrow">Utilizadores e permissões</p>
+                <h1 id="staff-management-title">Gestão de Colaboradores</h1>
+                <p>Consulte as contas da Secretaria, actualize dados e controle o estado de acesso.</p>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('secretary.dashboard') }}">
+                Voltar ao Painel
+            </a>
+        </section>
+
+        <section class="card staff-create-panel" aria-labelledby="staff-create-title">
+            <div class="staff-section-heading">
+                <div>
+                    <p class="staff-management-eyebrow">Nova conta</p>
+                    <h2 id="staff-create-title">Cadastrar assistente de Secretaria</h2>
+                </div>
+            </div>
+            <form action="{{ url_for('secretary.gerenciar_colaboradores') }}"
+                  method="POST" class="staff-create-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
-                    <label>Nome Completo:*</label>
-                    <input type="text" name="nome" required>
+                    <label for="staff-name">Nome completo *</label>
+                    <input id="staff-name" type="text" name="nome" autocomplete="name" required>
                 </div>
                 <div class="form-group">
-                    <label>Email de Acesso:*</label>
-                    <input type="email" name="email" required>
+                    <label for="staff-email">E-mail de acesso *</label>
+                    <input id="staff-email" type="email" name="email" autocomplete="email" required>
                 </div>
                 <div class="form-group">
-                    <label>Contacto Telefónico:*</label>
-                    <input type="text" name="contacto" required>
+                    <label for="staff-contact">Contacto telefónico *</label>
+                    <input id="staff-contact" type="text" name="contacto" autocomplete="tel" required>
                 </div>
                 <div class="form-group">
-                    <label for="initial-password">Palavra-passe inicial (mínimo 12 caracteres):*</label>
+                    <label for="initial-password">Palavra-passe inicial (mínimo 12 caracteres) *</label>
                     <input id="initial-password" type="password" name="password"
                            autocomplete="new-password" minlength="12" required>
                 </div>
-                <button type="submit" class="btn btn-primary" style="grid-column: span 3;">Cadastrar Colega da Secretaria</button>
+                <button type="submit" class="btn btn-primary staff-create-submit">
+                    Cadastrar colega da Secretaria
+                </button>
             </form>
-        </div>
+        </section>
 
-        <div class="card">
-            <h3 class="card-title">Lista de Colegas do Departamento de Secretaria</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Nome</th>
-                        <th>Email</th>
-                        <th>Contacto</th>
-                        <th>Estado</th>
-                        <th>Ações do Chefe</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for c in colegas %}
-                    <tr>
-                        <td><strong>{{ c.code }}</strong></td>
-                        <td>{{ c.nome }}</td>
-                        <td>{{ c.email }}</td>
-                        <td>{{ c.contacto or '-' }}</td>
-                        <td>{{ 'ATIVO' if c.ativo else 'BLOQUEADO' }}</td>
-                        <td>
-                            <a href="/secretary/colaboradores/edit/{{ c.id }}" class="btn btn-warning" style="padding:3px 8px; font-size:0.75rem;">Editar</a>
-                            <form method="POST" action="/secretary/colaboradores/toggle/{{ c.id }}" style="display:inline;">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-primary" style="padding:3px 8px; font-size:0.75rem;">
+        <section class="card staff-directory" data-staff-directory
+                 aria-labelledby="staff-directory-title">
+            <div class="staff-directory-heading">
+                <div>
+                    <p class="staff-management-eyebrow">Contas do departamento</p>
+                    <h2 id="staff-directory-title">Colaboradores da Secretaria</h2>
+                    <p class="staff-directory-count" aria-live="polite">
+                        <span id="staff-visible-count" data-staff-count>{{ colegas|length }}</span>
+                        de {{ colegas|length }} colaboradores
+                    </p>
+                </div>
+                <div class="staff-search">
+                    <label class="visually-hidden" for="staff-search-input">
+                        Pesquisar por nome, código, e-mail ou função
+                    </label>
+                    <input id="staff-search-input" type="search"
+                           data-staff-search
+                           placeholder="Pesquisar nome, código, e-mail ou função"
+                           autocomplete="off">
+                    <button id="staff-search-clear" class="btn btn-secondary" type="button"
+                            data-staff-clear
+                            aria-label="Limpar pesquisa" title="Limpar pesquisa">
+                        Limpar
+                    </button>
+                </div>
+            </div>
+
+            <div id="staff-card-grid" class="staff-card-grid" data-staff-grid>
+                {% for c in colegas %}
+                {% set estado = 'Activo' if c.ativo else 'Bloqueado' %}
+                <article class="staff-card"
+                         data-search="{{ (c.nome ~ ' ' ~ c.code ~ ' ' ~ c.email ~ ' Secretaria ' ~ estado)|lower }}">
+                    <div class="staff-card-heading">
+                        <span class="staff-avatar" aria-hidden="true">{{ c.nome[:1]|upper }}</span>
+                        <div class="staff-card-identity">
+                            <h3>{{ c.nome }}</h3>
+                            <p>Código <strong>{{ c.code }}</strong></p>
+                        </div>
+                        <span class="staff-status {{ 'is-active' if c.ativo else 'is-blocked' }}">
+                            {{ estado }}
+                        </span>
+                    </div>
+
+                    <dl class="staff-card-details">
+                        <div>
+                            <dt>E-mail</dt>
+                            <dd><a href="mailto:{{ c.email }}">{{ c.email }}</a></dd>
+                        </div>
+                        <div>
+                            <dt>Contacto</dt>
+                            <dd>{{ c.contacto or '-' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Função</dt>
+                            <dd><span class="staff-role-badge">Secretaria</span></dd>
+                        </div>
+                    </dl>
+
+                    <div class="staff-card-actions" aria-label="Acções para {{ c.nome }}">
+                        <a href="{{ url_for('secretary.edit_colega', user_id=c.id) }}"
+                           class="btn btn-warning">Editar</a>
+                        <form method="POST"
+                              action="{{ url_for('secretary.toggle_colega', user_id=c.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-primary">
                                 {{ 'Bloquear' if c.ativo else 'Desbloquear' }}
-                                </button>
-                            </form>
-                            <form method="POST" action="/secretary/colaboradores/delete/{{ c.id }}" style="display:inline;"
-                                  onsubmit="return confirm('Tem certeza que deseja apagar esta conta?')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-danger" style="padding:3px 8px; font-size:0.75rem;">Apagar</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+                            </button>
+                        </form>
+                        <form method="POST"
+                              action="{{ url_for('secretary.delete_colega', user_id=c.id) }}"
+                              onsubmit="return confirm('Tem certeza que deseja apagar esta conta?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-danger">Apagar</button>
+                        </form>
+                    </div>
+                </article>
+                {% else %}
+                <p class="staff-directory-empty">Ainda não existem colaboradores da Secretaria registados.</p>
+                {% endfor %}
+            </div>
+            <p id="staff-search-empty" class="staff-directory-empty" data-staff-empty
+               role="status" hidden>
+                Nenhum colaborador corresponde à pesquisa.
+            </p>
+        </section>
+    </main>
+    <script src="{{ url_for('static', filename='js/staff-directory.js') }}?v=1" defer></script>
 </body>
 </html>

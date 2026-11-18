@@ -62,6 +62,26 @@ class CsrfProtectionTests(unittest.TestCase):
             token = browser_session['_csrf_token']
         self.assertIn(f'value="{token}"'.encode(), response.data)
 
+    def test_login_csrf_token_remains_valid_after_refresh(self):
+        first_response = self.client.get('/')
+        with self.client.session_transaction() as browser_session:
+            first_token = browser_session['_csrf_token']
+
+        refreshed_response = self.client.get('/')
+        with self.client.session_transaction() as browser_session:
+            refreshed_token = browser_session['_csrf_token']
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(refreshed_response.status_code, 200)
+        self.assertEqual(first_token, refreshed_token)
+        self.assertIn(f'value="{refreshed_token}"'.encode(), refreshed_response.data)
+
+        response = self.client.post(
+            '/login',
+            data={'csrf_token': refreshed_token, 'perfil': 'invalid'},
+        )
+        self.assertEqual(response.status_code, 302)
+
     def test_every_post_form_contains_a_csrf_field(self):
         missing = []
         post_forms = 0

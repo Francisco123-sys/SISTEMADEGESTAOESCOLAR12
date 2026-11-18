@@ -456,3 +456,100 @@
         {{ active_users_panel() }}
     {% endif %}
 {%- endmacro %}
+
+{% macro staff_account_directory(staff_members, directory_id, title, eyebrow) -%}
+{% set role_labels = {
+    'admin': 'Administrador',
+    'director': 'Director',
+    'pedagogico_1': 'Direcção Pedagógica I',
+    'pedagogico_2': 'Direcção Pedagógica II',
+    'chefe_secretaria': 'Chefe da Secretaria',
+    'secretary': 'Assistente de Secretaria',
+    'teacher': 'Professor'
+} %}
+<section class="card staff-directory" data-staff-directory
+         aria-labelledby="{{ directory_id }}-title">
+    <div class="staff-directory-heading">
+        <div>
+            <p class="staff-management-eyebrow">{{ eyebrow }}</p>
+            <h2 id="{{ directory_id }}-title">{{ title }}</h2>
+            <p class="staff-directory-count" aria-live="polite">
+                <span data-staff-count>{{ staff_members|length }}</span>
+                de {{ staff_members|length }} funcionários
+            </p>
+        </div>
+        <div class="staff-search">
+            <label class="visually-hidden" for="{{ directory_id }}-search">
+                Pesquisar por nome, código, e-mail ou função
+            </label>
+            <input id="{{ directory_id }}-search" type="search" data-staff-search
+                   placeholder="Pesquisar nome, código, e-mail ou função"
+                   autocomplete="off">
+            <button class="btn btn-secondary" type="button" data-staff-clear
+                    aria-label="Limpar pesquisa" title="Limpar pesquisa">
+                Limpar
+            </button>
+        </div>
+    </div>
+
+    <div class="staff-card-grid" data-staff-grid>
+        {% for staff in staff_members %}
+        {% set role_label = role_labels.get(staff.role, staff.role) %}
+        {% set state_label = 'Activo' if staff.ativo else 'Bloqueado' %}
+        <article class="staff-card"
+                 data-search="{{ (staff.nome ~ ' ' ~ staff.code ~ ' ' ~ (staff.email or '') ~ ' ' ~ role_label ~ ' ' ~ staff.role ~ ' ' ~ state_label)|lower }}">
+            <div class="staff-card-heading">
+                <span class="staff-avatar" aria-hidden="true">{{ staff.nome[:1]|upper }}</span>
+                <div class="staff-card-identity">
+                    <h3>{{ staff.nome }}</h3>
+                    <p>Código <strong>{{ staff.code }}</strong></p>
+                </div>
+                <span class="staff-status {{ 'is-active' if staff.ativo else 'is-blocked' }}">
+                    {{ state_label }}
+                </span>
+            </div>
+
+            <dl class="staff-card-details">
+                <div>
+                    <dt>E-mail</dt>
+                    <dd>
+                        {% if staff.email %}
+                        <a href="mailto:{{ staff.email }}">{{ staff.email }}</a>
+                        {% else %}—{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt>Cargo / função</dt>
+                    <dd><span class="staff-role-badge">{{ role_label }}</span></dd>
+                </div>
+            </dl>
+
+            {% if staff.role != 'admin' %}
+            <div class="staff-card-actions" aria-label="Acções para {{ staff.nome }}">
+                <a href="{{ url_for('director.edit_user', user_id=staff.id) }}"
+                   class="btn btn-warning">Editar</a>
+                <form method="POST"
+                      action="{{ url_for('director.toggle_user', user_id=staff.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-primary">
+                        {{ 'Bloquear' if staff.ativo else 'Desbloquear' }}
+                    </button>
+                </form>
+                <form method="POST"
+                      action="{{ url_for('director.delete_user', user_id=staff.id) }}"
+                      onsubmit="return confirm('Tem certeza que deseja apagar este funcionário?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">Apagar</button>
+                </form>
+            </div>
+            {% endif %}
+        </article>
+        {% else %}
+        <p class="staff-directory-empty">Não existem contas de funcionários registadas.</p>
+        {% endfor %}
+    </div>
+    <p class="staff-directory-empty" data-staff-empty role="status" hidden>
+        Nenhum funcionário corresponde à pesquisa.
+    </p>
+</section>
+{%- endmacro %}

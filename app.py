@@ -2,7 +2,7 @@ import os
 import time
 from datetime import timedelta
 
-from flask import Flask, abort, request, session
+from flask import Flask, abort, flash, redirect, request, session, url_for
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -59,7 +59,8 @@ def enforce_session_idle_timeout():
         )
         get_db().commit()
         session.clear()
-        return
+        flash('A sessão expirou. Inicie sessão novamente.', 'warning')
+        return redirect(url_for('auth.login_landing'))
     session['last_seen_at'] = now
 
 

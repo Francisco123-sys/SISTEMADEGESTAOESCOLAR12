@@ -54,6 +54,10 @@ def login_landing():
     response.headers['Cache-Control'] = 'no-store'
     return response
 
+@auth_bp.route('/favicon.ico')
+def favicon():
+    return redirect(url_for('static', filename='img/emblema_moz.png'))
+
 @auth_bp.route('/portal-encarregado', methods=['GET', 'POST'])
 def portal_encarregado():
     if not session.get('guardian_id'):
@@ -720,8 +724,11 @@ def guardian_password_reset(token):
     return redirect(url_for('auth.portal_encarregado'))
 
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'GET':
+        return redirect(url_for('auth.login_landing'))
+
     perfil = request.form.get('perfil')
     identificador = request.form.get('identificador', '').strip()
     password = request.form.get('password', '')

@@ -58,9 +58,20 @@ def dashboard():
         LIMIT 100
     ''', params)
     logs = cursor.fetchall()
+    cursor.execute('''
+        SELECT id, code, nome, email, role, ativo
+        FROM users
+        ORDER BY role ASC, nome ASC
+    ''')
+    funcionarios = cursor.fetchall()
     if invalid_date:
         flash('Uma data do filtro é inválida e foi ignorada.', 'warning')
-    return render_template('admin/dashboard.html', logs=logs, filters=filters)
+    return render_template(
+        'admin/dashboard.html',
+        logs=logs,
+        filters=filters,
+        funcionarios=funcionarios,
+    )
 
 
 @admin_bp.route('/audit/<int:log_id>')

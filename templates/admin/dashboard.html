@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE - Administração Geral</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=premium-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=premium-3">
 </head>
 <body>
-    {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
+    {% from 'components/dashboard_ui.html' import institutional_page_header, staff_account_directory with context %}
     {{ institutional_page_header('Administração do Sistema') }}
     <main class="container secretary-dashboard admin-dashboard">
         <section class="secretary-page-heading">
@@ -94,6 +94,9 @@
             </table>
             </div>
         </div>
+        {{ staff_account_directory(funcionarios, 'admin-staff-directory',
+                                   'Gestão de Contas de Funcionários',
+                                   'Equipa escolar') }}
     </main>
     <dialog class="sige-active-dialog" id="audit-details-dialog">
         <div class="sige-active-dialog-heading">
@@ -147,5 +150,6 @@
             );
         })();
     </script>
+    <script src="{{ url_for('static', filename='js/staff-directory.js') }}?v=1" defer></script>
 </body>
 </html>

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ os.environ.setdefault('SECRET_KEY', 'activity-endpoint-test-key')
 
 from app import app
 from database import init_db as database_init
+from services.monitoring import SESSION_TIMEOUT_SECONDS
 import services.db as db_service
 
 
@@ -146,6 +148,82 @@ class ActiveUserEndpointTests(unittest.TestCase):
         with self.client.session_transaction() as browser_session:
             self.assertEqual(browser_session.get('guardian_role'), 'guardian')
 
+    def test_secretary_colleagues_page_renders_searchable_cards_and_actions(self):
+        self._staff_login('secretary', 'CHEFE-TEST')
+
+        response = self.client.get('/secretary/colaboradores')
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('staff-search-input', html)
+        self.assertEqual(html.count('class="staff-card"'), 1)
+        self.assertIn('SEC-TEST', html)
+        self.assertIn('/secretary/colaboradores/edit/', html)
+        self.assertIn('/secretary/colaboradores/toggle/', html)
+        self.assertIn('/secretary/colaboradores/delete/', html)
+        directory_start = html.index('<section class="card staff-directory"')
+        directory_end = html.index('</section>', directory_start)
+        self.assertNotIn('<table', html[directory_start:directory_end])
+
+    def test_director_dashboard_renders_staff_account_cards(self):
+        self._staff_login('director', 'DIR-TEST')
+
+        response = self.client.get('/director/dashboard')
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('director-staff-directory', html)
+        self.assertIn('SEC-TEST', html)
+        self.assertIn('/director/user/edit/', html)
+        self.assertIn('/director/user/toggle/', html)
+        self.assertIn('/director/user/delete/', html)
+
+    def test_logout_clears_session_and_protects_dashboard(self):
+        self._staff_login('admin', 'ADM-TEST')
+        csrf_token = self._csrf_token()
+
+        response = self.client.post(
+            '/logout',
+            data={'csrf_token': csrf_token},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        with self.client.session_transaction() as browser_session:
+            self.assertNotIn('user_id', browser_session)
+        self.assertEqual(self.client.get('/admin/dashboard').status_code, 302)
+
+    def test_idle_session_expires_and_redirects_from_protected_dashboard(self):
+        self._staff_login('teacher', 'PROF-TEST')
+        with self.client.session_transaction() as browser_session:
+            browser_session['last_seen_at'] = (
+                time.time() - SESSION_TIMEOUT_SECONDS - 1
+            )
+
+        response = self.client.get('/teacher/dashboard')
+
+        self.assertEqual(response.status_code, 302)
+        with self.client.session_transaction() as browser_session:
+            self.assertNotIn('user_id', browser_session)
+
+    def test_idle_pedagogical_session_redirects_before_csrf_validation(self):
+        self._staff_login('pedagogico_1', 'PED1-TEST')
+        csrf_token = self._csrf_token()
+        with self.client.session_transaction() as browser_session:
+            browser_session['last_seen_at'] = (
+                time.time() - SESSION_TIMEOUT_SECONDS - 1
+            )
+
+        response = self.client.post(
+            '/logout',
+            data={'csrf_token': csrf_token},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers['Location'].endswith('/'))
+        with self.client.session_transaction() as browser_session:
+            self.assertNotIn('user_id', browser_session)
+            self.assertNotIn('_csrf_token', browser_session)
+
     def test_counts_are_authenticated_details_are_authorized_and_tabs_deduplicate(self):
         self._staff_login('admin', 'ADM-TEST')
         csrf_token = self._csrf_token()
@@ -177,6 +255,8 @@ class ActiveUserEndpointTests(unittest.TestCase):
         response = self.client.get('/admin/dashboard?module=Autenticação&operation=LOGIN')
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('admin-staff-directory', response.get_data(as_text=True))
+        self.assertIn('SEC-TEST', response.get_data(as_text=True))
         self.assertIn('Ver Detalhes', response.get_data(as_text=True))
         connection = sqlite3.connect(self.database_path)
         log_id = connection.execute(
