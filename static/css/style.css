@@ -590,7 +590,34 @@ progress {
 }
 
 .secretary-turmas-heading {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+}
+
+.secretary-turma-filters {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 0.9fr) minmax(220px, 1.4fr) auto;
+    align-items: end;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 14px;
+    background: #F8FAFC;
+    border: 1px solid #EAECF0;
+    border-radius: 10px;
+}
+
+.secretary-turma-filters .form-group {
+    min-width: 0;
+    margin: 0;
+}
+
+.secretary-turma-filters select,
+.secretary-turma-filters input {
+    min-height: 42px;
+}
+
+.secretary-turma-clear {
+    min-height: 42px;
+    white-space: nowrap;
 }
 
 .secretary-turmas-heading h2,
@@ -656,7 +683,8 @@ progress {
 }
 
 .secretary-class-badge,
-.secretary-year-badge {
+.secretary-year-badge,
+.secretary-modality-badge {
     display: inline-flex;
     align-items: center;
     min-height: 26px;
@@ -674,6 +702,22 @@ progress {
 .secretary-year-badge {
     color: #475467;
     background: #F2F4F7;
+}
+
+.secretary-modality-badge {
+    text-align: center;
+}
+
+.secretary-modality-badge.is-presencial {
+    color: #067647;
+    background: #ECFDF3;
+    border: 1px solid #ABEFC6;
+}
+
+.secretary-modality-badge.is-distancia {
+    color: #3538CD;
+    background: #EEF4FF;
+    border: 1px solid #C7D7FE;
 }
 
 .secretary-turma-card h3 {
@@ -944,6 +988,14 @@ progress {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .secretary-turma-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .secretary-turma-clear {
+        width: 100%;
+    }
+
     .class-detail-heading,
     .class-students-heading {
         align-items: flex-start;
@@ -958,6 +1010,10 @@ progress {
 @media (max-width: 600px) {
     .secretary-form-grid,
     .secretary-form-grid-thirds {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .secretary-turma-filters {
         grid-template-columns: minmax(0, 1fr);
     }
 

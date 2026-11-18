@@ -114,6 +114,12 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
         self.assertIn(b'secretary-turma-card', response.data)
         self.assertIn(b'href="/secretary/turmas/1"', response.data)
         self.assertIn(b'8\xc2\xaa A', response.data)
+        self.assertIn(b'data-turma-class-filter', response.data)
+        self.assertIn(b'data-turma-modality-filter', response.data)
+        self.assertIn(b'data-turma-search', response.data)
+        self.assertIn(b'data-modalidade="presencial"', response.data)
+        self.assertIn(b'Ensino Presencial', response.data)
+        self.assertIn(b'Limpar filtros', response.data)
 
     def test_secretary_can_request_deletion_but_cannot_delete_student_or_duplicate_request(self):
         with (

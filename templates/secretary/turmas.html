@@ -58,8 +58,8 @@
                         <div class="form-group">
                             <label>Modalidade:*</label>
                             <select name="curso" required>
-                                <option value="Diurno">Diurno</option>
-                                <option value="À Distância">À Distância</option>
+                                <option value="Diurno">Ensino Presencial</option>
+                                <option value="À Distância">Ensino à Distância</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -142,12 +142,37 @@
                 <div>
                     <p class="secretary-eyebrow">Organização escolar</p>
                     <h2 id="turmas-title">Turmas, capacidade e listas nominais</h2>
-                    <p>Seleccione uma turma para consultar os alunos e os indicadores individuais.</p>
+                    <p>Consulte e organize as turmas por classe, modalidade de ensino e ano lectivo.</p>
                 </div>
-                <div class="secretary-turma-search">
-                    <label class="sr-only" for="turma-search">Pesquisar turma</label>
-                    <input id="turma-search" type="search" placeholder="Pesquisar turma, classe ou sala">
+            </div>
+            <div class="secretary-turma-filters" aria-label="Filtros das turmas">
+                <div class="form-group">
+                    <label for="turma-class-filter">Classe</label>
+                    <select id="turma-class-filter" data-turma-class-filter>
+                        <option value="">Todas as classes</option>
+                        {% for c in filter_classes %}
+                        <option value="{{ c.numero }}">{{ c.numero }}.ª Classe</option>
+                        {% endfor %}
+                    </select>
                 </div>
+                <div class="form-group">
+                    <label for="turma-modality-filter">Modalidade de ensino</label>
+                    <select id="turma-modality-filter" data-turma-modality-filter>
+                        <option value="">Todas as modalidades</option>
+                        <option value="presencial">Ensino Presencial</option>
+                        <option value="distancia">Ensino à Distância</option>
+                    </select>
+                </div>
+                <div class="form-group secretary-turma-search">
+                    <label for="turma-search">Pesquisar turma</label>
+                    <input id="turma-search" type="search"
+                           placeholder="Nome ou código da turma"
+                           data-turma-search>
+                </div>
+                <button class="btn btn-secondary secretary-turma-clear"
+                        type="button" data-turma-clear>
+                    Limpar filtros
+                </button>
             </div>
             {% if turmas %}
             <div class="secretary-turma-grid" id="secretary-turma-grid">
@@ -156,14 +181,18 @@
                 {% set inscritos = t.inscritos or 0 %}
                 {% set vagas = [capacidade - inscritos, 0]|max %}
                 {% set ocupacao = ((inscritos * 100 / capacidade)|round|int) if capacidade else 0 %}
+                {% set modalidade = 'distancia' if t.curso == 'À Distância' else 'presencial' %}
+                {% set modalidade_label = 'Ensino à Distância' if modalidade == 'distancia' else 'Ensino Presencial' %}
                 <article class="secretary-turma-card"
                          data-turma-card
+                         data-classe="{{ t.classe_num }}"
+                         data-modalidade="{{ modalidade }}"
                          data-search="{{ (t.nome ~ ' ' ~ t.classe_num ~ ' ' ~ (t.sala or '') ~ ' ' ~ areas_curriculares.get(t.area_curricular, ''))|lower }}">
                     <a class="secretary-turma-card-main"
                        href="{{ url_for('secretary.class_detail', turma_id=t.id) }}">
                         <div class="secretary-turma-card-top">
                             <span class="secretary-class-badge">{{ t.classe_num }}.ª Classe</span>
-                            <span class="secretary-year-badge">{{ t.ano_lectivo }}</span>
+                            <span class="secretary-modality-badge is-{{ modalidade }}">{{ modalidade_label }}</span>
                         </div>
                         <h3>{{ t.nome }}</h3>
                         <p class="secretary-turma-area">
@@ -171,7 +200,8 @@
                         </p>
                         <div class="secretary-turma-details">
                             <span>{{ t.sala or 'Sala não indicada' }}</span>
-                            <span>{{ 'À Distância' if t.curso == 'À Distância' else t.turno }}</span>
+                            <span>{{ t.turno or 'Turno não indicado' }}</span>
+                            <span>{{ t.ano_lectivo }}</span>
                         </div>
                         <div class="secretary-turma-occupancy">
                             <div>
@@ -224,7 +254,7 @@
                 {% endfor %}
             </div>
             <p class="secretary-no-turmas-found" id="secretary-no-turmas-found" hidden>
-                Nenhuma turma corresponde à pesquisa.
+                Nenhuma turma encontrada para os filtros seleccionados.
             </p>
             {% else %}
             <p class="secretary-empty-state">Não existem turmas configuradas.</p>
@@ -243,19 +273,56 @@
         turmaClass.addEventListener('change', updateTurmaArea);
         updateTurmaArea();
 
-        const turmaSearch = document.getElementById('turma-search');
+        const turmaSearch = document.querySelector('[data-turma-search]');
+        const turmaClassFilter = document.querySelector('[data-turma-class-filter]');
+        const turmaModalityFilter = document.querySelector('[data-turma-modality-filter]');
+        const turmaClear = document.querySelector('[data-turma-clear]');
         const turmaCards = document.querySelectorAll('[data-turma-card]');
         const noTurmasFound = document.getElementById('secretary-no-turmas-found');
-        if (turmaSearch && turmaCards.length && noTurmasFound) {
-            turmaSearch.addEventListener('input', () => {
-                const search = turmaSearch.value.trim().toLocaleLowerCase();
-                let visibleCount = 0;
-                turmaCards.forEach((card) => {
-                    const matches = card.dataset.search.includes(search);
-                    card.hidden = !matches;
-                    visibleCount += matches ? 1 : 0;
-                });
+
+        function normalizeTurmaText(value) {
+            return value
+                .toLocaleLowerCase('pt')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function applyTurmaFilters() {
+            const search = normalizeTurmaText(turmaSearch?.value || '');
+            const selectedClass = turmaClassFilter?.value || '';
+            const selectedModality = turmaModalityFilter?.value || '';
+            let visibleCount = 0;
+
+            turmaCards.forEach((card) => {
+                const matchesSearch = !search ||
+                    normalizeTurmaText(card.dataset.search || '').includes(search);
+                const matchesClass = !selectedClass ||
+                    card.dataset.classe === selectedClass;
+                const matchesModality = !selectedModality ||
+                    card.dataset.modalidade === selectedModality;
+                const matches = matchesSearch && matchesClass && matchesModality;
+                card.hidden = !matches;
+                visibleCount += matches ? 1 : 0;
+            });
+
+            if (noTurmasFound) {
                 noTurmasFound.hidden = visibleCount > 0;
+            }
+        }
+
+        if (turmaSearch && turmaCards.length) {
+            turmaSearch.addEventListener('input', applyTurmaFilters);
+            turmaClassFilter?.addEventListener('change', applyTurmaFilters);
+            turmaModalityFilter?.addEventListener('change', applyTurmaFilters);
+            turmaClear?.addEventListener('click', () => {
+                turmaClassFilter.value = '';
+                turmaModalityFilter.value = '';
+                turmaSearch.value = '';
+                applyTurmaFilters();
+                turmaSearch.focus();
             });
         }
     </script>

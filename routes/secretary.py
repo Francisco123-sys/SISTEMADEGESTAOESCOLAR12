@@ -2369,6 +2369,10 @@ def gerenciar_turmas():
         'SELECT id, numero FROM classes WHERE numero BETWEEN 8 AND 12 ORDER BY numero'
     )
     classes = cursor.fetchall()
+    cursor.execute(
+        'SELECT id, numero FROM classes WHERE numero BETWEEN 1 AND 12 ORDER BY numero'
+    )
+    filter_classes = cursor.fetchall()
     
     if request.method == 'POST':
         acao = request.form.get('acao')
@@ -2553,6 +2557,7 @@ def gerenciar_turmas():
         alunos=alunos,
         disciplinas=disciplinas,
         classes=classes,
+        filter_classes=filter_classes,
         areas_curriculares=AREAS_CURRICULARES,
         academic_years=academic_years,
     )
