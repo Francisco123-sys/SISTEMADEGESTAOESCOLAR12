@@ -1848,14 +1848,14 @@ progress {
 .sige-login-layout {
     display: grid;
     min-height: 100vh;
-    grid-template-columns: minmax(340px, 0.78fr) minmax(0, 1.22fr);
+    grid-template-columns: minmax(300px, 0.34fr) minmax(0, 0.66fr);
 }
 
 .sige-login-sidebar {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    padding: clamp(24px, 4vw, 56px);
+    padding: clamp(20px, 2.8vw, 40px);
     color: #FFFFFF;
     background: linear-gradient(155deg, #10243D 0%, #173B62 68%, #245B8F 100%);
 }
@@ -1869,10 +1869,10 @@ progress {
 }
 
 .sige-login-identity img {
-    width: 76px;
-    height: 76px;
-    margin-bottom: 12px;
-    padding: 5px;
+    width: 66px;
+    height: 66px;
+    margin-bottom: 8px;
+    padding: 4px;
     object-fit: contain;
     background: #FFFFFF;
     border-radius: 50%;
@@ -1892,7 +1892,7 @@ progress {
 }
 
 .sige-login-profile-heading {
-    margin: 30px 0 12px;
+    margin: 22px 0 10px;
 }
 
 .sige-login-profile-heading h2 {
@@ -1909,21 +1909,21 @@ progress {
 
 .sige-profile-list {
     display: grid;
-    gap: 8px;
+    gap: 6px;
 }
 
 .sige-profile-option {
     display: flex;
     width: 100%;
-    min-height: 54px;
+    min-height: 46px;
     align-items: center;
-    gap: 11px;
+    gap: 9px;
     box-sizing: border-box;
-    padding: 8px 11px;
+    padding: 6px 9px;
     color: #F2F4F7;
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 9px;
+    border-radius: 7px;
     font: inherit;
     text-align: left;
     text-decoration: none;
@@ -1945,14 +1945,14 @@ progress {
 
 .sige-profile-mark {
     display: grid;
-    width: 34px;
-    height: 34px;
-    flex: 0 0 34px;
+    width: 29px;
+    height: 29px;
+    flex: 0 0 29px;
     place-items: center;
     color: #D1E9FF;
     background: rgba(255, 255, 255, 0.11);
-    border-radius: 8px;
-    font-size: 0.68rem;
+    border-radius: 7px;
+    font-size: 0.64rem;
     font-weight: 800;
 }
 
@@ -1968,13 +1968,13 @@ progress {
 }
 
 .sige-profile-option strong {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
 }
 
 .sige-profile-option small {
     margin-top: 2px;
     color: #D0D5DD;
-    font-size: 0.68rem;
+    font-size: 0.66rem;
 }
 
 .sige-profile-option:hover small,
@@ -2102,11 +2102,11 @@ progress {
 
 @media (max-width: 820px) {
     .sige-login-layout {
-        grid-template-columns: minmax(290px, 0.8fr) minmax(0, 1.2fr);
+        grid-template-columns: minmax(260px, 0.36fr) minmax(0, 0.64fr);
     }
 
     .sige-login-sidebar {
-        padding: 24px;
+        padding: 20px;
     }
 
     .sige-login-content {
@@ -2137,9 +2137,9 @@ progress {
     }
 
     .sige-profile-option {
-        min-height: 58px;
-        gap: 8px;
-        padding: 7px;
+        min-height: 50px;
+        gap: 7px;
+        padding: 6px 7px;
     }
 
     .sige-profile-option strong {
@@ -2151,9 +2151,9 @@ progress {
     }
 
     .sige-profile-mark {
-        width: 29px;
-        height: 29px;
-        flex-basis: 29px;
+        width: 27px;
+        height: 27px;
+        flex-basis: 27px;
     }
 
     .sige-login-content {
