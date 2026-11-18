@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SIGE | Acesso institucional</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=login-profile-cards-2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=login-profile-compact-3">
 </head>
 <body class="sige-login-page">
     <main class="sige-login-layout">
@@ -23,43 +23,43 @@
                 <p>Escolha o tipo de conta para apresentar o formulário de acesso.</p>
             </div>
             <nav class="sige-profile-list" aria-label="Perfis de acesso">
-                <button class="secretary-quick-link sige-profile-option is-selected" type="button"
+                <button class="sige-profile-option is-selected" type="button"
                         data-profile="secretary" data-label="Secretaria"
                         data-title="Acesso da Secretaria" aria-pressed="true">
                     <span class="sige-profile-mark" aria-hidden="true">SE</span>
                     <strong>Secretaria</strong><small>Gestão escolar e financeira</small>
                 </button>
-                <button class="secretary-quick-link sige-profile-option" type="button"
+                <button class="sige-profile-option" type="button"
                         data-profile="director" data-label="Director"
                         data-title="Acesso do Director" aria-pressed="false">
                     <span class="sige-profile-mark" aria-hidden="true">DI</span>
                     <strong>Director</strong><small>Direcção e gestão da escola</small>
                 </button>
-                <button class="secretary-quick-link sige-profile-option" type="button"
+                <button class="sige-profile-option" type="button"
                         data-profile="pedagogico_1" data-label="Direcção Pedagógica I"
                         data-title="Acesso da Direcção Pedagógica I" aria-pressed="false">
                     <span class="sige-profile-mark" aria-hidden="true">P1</span>
                     <strong>Direcção Pedagógica I</strong><small>Perfil pedagógico autorizado</small>
                 </button>
-                <button class="secretary-quick-link sige-profile-option" type="button"
+                <button class="sige-profile-option" type="button"
                         data-profile="pedagogico_2" data-label="Direcção Pedagógica II"
                         data-title="Acesso da Direcção Pedagógica II" aria-pressed="false">
                     <span class="sige-profile-mark" aria-hidden="true">P2</span>
                     <strong>Direcção Pedagógica II</strong><small>Perfil pedagógico autorizado</small>
                 </button>
-                <button class="secretary-quick-link sige-profile-option" type="button"
+                <button class="sige-profile-option" type="button"
                         data-profile="teacher" data-label="Professor"
                         data-title="Acesso do Professor" aria-pressed="false">
                     <span class="sige-profile-mark" aria-hidden="true">PR</span>
                     <strong>Professor</strong><small>Área pedagógica e avaliações</small>
                 </button>
-                <button class="secretary-quick-link sige-profile-option" type="button"
+                <button class="sige-profile-option" type="button"
                         data-profile="admin" data-label="Administrador do Sistema"
                         data-title="Acesso do Administrador do Sistema" aria-pressed="false">
                     <span class="sige-profile-mark" aria-hidden="true">AD</span>
                     <strong>Administrador do Sistema</strong><small>Administração e auditoria</small>
                 </button>
-                <a class="secretary-quick-link sige-profile-option" href="{{ url_for('auth.portal_encarregado') }}"
+                <a class="sige-profile-option" href="{{ url_for('auth.portal_encarregado') }}"
                    data-profile="guardian" data-label="Encarregado de Educação"
                    data-title="Acesso do Encarregado de Educação"
                    aria-label="Acesso do Encarregado de Educação">
