@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash
 from services.complaints import (
     COMPLAINT_STATES,
     add_message,
+    build_complaint_timeline,
     notify_new_message,
     notify_state_change,
     record_state_change,
@@ -136,14 +137,60 @@ def gerenciar_reclamacoes():
         )
         return redirect(url_for('director.gerenciar_reclamacoes'))
 
-    cursor.execute('''
-        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code
+    view_filter = request.args.get('filtro', 'todas').strip()
+    if view_filter not in (
+        'todas', 'novas', 'nao_lidas', 'em_tratamento',
+        'respondidas', 'resolvidas',
+    ):
+        view_filter = 'todas'
+    search = request.args.get('q', '').strip()
+    conditions = ['r.forwarded_to_director = 1']
+    params = [session.get('user_id')]
+    if search:
+        conditions.append('''
+            (CAST(r.id AS TEXT) LIKE ? OR s.nome LIKE ? OR s.code LIKE ?
+             OR r.assunto LIKE ? OR r.nome_encarregado LIKE ?)
+        ''')
+        params.extend([f'%{search}%'] * 5)
+    if view_filter == 'novas':
+        conditions.append("r.estado IN ('Nova', 'Reaberta')")
+    elif view_filter == 'nao_lidas':
+        conditions.append('''
+            EXISTS (
+                SELECT 1 FROM complaint_notifications cn
+                WHERE cn.complaint_id = r.id
+                  AND cn.recipient_user_id = ? AND cn.read_at IS NULL
+            )
+        ''')
+        params.append(session.get('user_id'))
+    elif view_filter == 'em_tratamento':
+        conditions.append("r.estado = 'Em Tratamento'")
+    elif view_filter == 'respondidas':
+        conditions.append("r.estado = 'Respondida'")
+    elif view_filter == 'resolvidas':
+        conditions.append("r.estado = 'Resolvida'")
+    cursor.execute(f'''
+        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code,
+               EXISTS (
+                   SELECT 1 FROM complaint_notifications cn
+                   WHERE cn.complaint_id = r.id
+                     AND cn.recipient_user_id = ?
+                     AND cn.read_at IS NULL
+               ) AS has_unread_activity
         FROM reclamacoes_encarregados r
         JOIN students s ON s.id = r.student_id
-        WHERE r.forwarded_to_director = 1
-        ORDER BY r.updated_at DESC, r.id DESC
-    ''')
+        WHERE {' AND '.join(conditions)}
+        ORDER BY COALESCE(r.updated_at, r.created_at) DESC, r.id DESC
+    ''', tuple(params))
     complaints = cursor.fetchall()
+    cursor.execute('''
+        SELECT COUNT(*) AS total, COUNT(DISTINCT complaint_id) AS complaint_total
+        FROM complaint_notifications
+        WHERE recipient_user_id = ? AND read_at IS NULL
+    ''', (session.get('user_id'),))
+    unread_counts = cursor.fetchone()
+    complaint_unread_count = unread_counts['total']
+    complaint_unread_case_count = unread_counts['complaint_total']
     cursor.execute('''
         SELECT id, complaint_id, kind, created_at
         FROM complaint_notifications
@@ -156,36 +203,51 @@ def gerenciar_reclamacoes():
         ids = [row['id'] for row in complaints]
         placeholders = ', '.join('?' for _ in ids)
         cursor.execute(f'''
-            SELECT complaint_id, sender_type, body, created_at
-            FROM complaint_messages
-            WHERE complaint_id IN ({placeholders})
-            ORDER BY created_at, id
+            SELECT m.id, m.complaint_id, m.sender_type, m.body, m.created_at,
+                   COALESCE(g.nome, u.nome) AS actor_name
+            FROM complaint_messages m
+            LEFT JOIN guardians g ON g.id = m.sender_guardian_id
+            LEFT JOIN users u ON u.id = m.sender_user_id
+            WHERE m.complaint_id IN ({placeholders})
+            ORDER BY m.created_at, m.id
         ''', tuple(ids))
         messages_by_complaint = {}
         for message in cursor.fetchall():
             messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
         cursor.execute(f'''
-            SELECT complaint_id, old_state, new_state, note, created_at
-            FROM complaint_status_history
-            WHERE complaint_id IN ({placeholders})
-            ORDER BY created_at, id
+            SELECT h.id, h.complaint_id, h.old_state, h.new_state,
+                   h.actor_type, h.note, h.created_at,
+                   COALESCE(g.nome, u.nome) AS actor_name
+            FROM complaint_status_history h
+            LEFT JOIN guardians g ON g.id = h.actor_guardian_id
+            LEFT JOIN users u ON u.id = h.actor_user_id
+            WHERE h.complaint_id IN ({placeholders})
+            ORDER BY h.created_at, h.id
         ''', tuple(ids))
         history_by_complaint = {}
         for event in cursor.fetchall():
             history_by_complaint.setdefault(event['complaint_id'], []).append(event)
-        complaints = [
-            {
-                **dict(row),
-                'messages': messages_by_complaint.get(row['id'], []),
-                'history': history_by_complaint.get(row['id'], []),
-            }
-            for row in complaints
-        ]
+        prepared_complaints = []
+        for row in complaints:
+            complaint = dict(row)
+            messages = messages_by_complaint.get(row['id'], [])
+            history = history_by_complaint.get(row['id'], [])
+            complaint['messages'] = messages
+            complaint['history'] = history
+            complaint['timeline'] = build_complaint_timeline(
+                complaint, messages, history,
+            )
+            prepared_complaints.append(complaint)
+        complaints = prepared_complaints
     return render_template(
         'director/reclamacoes.html',
         reclamacoes=complaints,
         complaint_states=COMPLAINT_STATES,
         complaint_notifications=complaint_notifications,
+        complaint_unread_count=complaint_unread_count,
+        complaint_unread_case_count=complaint_unread_case_count,
+        view_filter=view_filter,
+        search=search,
         complaint_message_keys={
             row['id']: f"complaint:{row['id']}:{secrets.token_urlsafe(24)}"
             for row in complaints

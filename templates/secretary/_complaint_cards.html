@@ -1,89 +1,127 @@
-<section class="complaint-list" id="complaint-list">
-    {% for r in reclamacoes %}
-    <article class="complaint-card" id="complaint-{{ r.id }}">
-        <header class="complaint-heading">
-            <div>
-                <h2>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h2>
-                <div class="complaint-meta">
-                    <p><strong>Educando:</strong> {{ r.aluno_nome }} ({{ r.aluno_code }})</p>
-                    <p><strong>Encarregado:</strong> {{ r.nome_encarregado }}</p>
-                    <p><strong>Contacto:</strong> {{ r.contacto or 'Não indicado' }}</p>
-                    <p><strong>Categoria:</strong> {{ r.categoria or 'Outros Assuntos' }}</p>
-                    <p><strong>Recebida:</strong> {{ r.created_at|string }}</p>
-                </div>
-            </div>
-            <span class="complaint-state">{{ r.estado or r.status }}</span>
-        </header>
-        <div class="complaint-thread" aria-label="Conversa da reclamação">
-            {% if r.messages %}
-                {% for message in r.messages %}
-                <div class="complaint-message">
-                    <strong>
-                        {% if message.sender_type == 'guardian' %}Encarregado
-                        {% elif message.sender_type == 'director' %}Direcção
-                        {% else %}Secretaria{% endif %}
-                    </strong>
-                    <p>{{ message.body }}</p>
-                    <small>{{ message.created_at|string }}</small>
-                </div>
-                {% endfor %}
-            {% else %}
-            <div class="complaint-message">
-                <strong>Encarregado</strong>
-                <p>{{ r.mensagem }}</p>
-            </div>
-            {% if r.resposta_escola %}
-            <div class="complaint-message">
-                <strong>Secretaria</strong>
-                <p>{{ r.resposta_escola }}</p>
-            </div>
+<section class="complaint-workspace" id="complaint-list" data-complaint-workspace>
+    <div class="complaint-master-list" aria-label="Lista de reclamações">
+        {% for r in reclamacoes %}
+        <button class="complaint-list-item{% if r.has_unread_activity %} has-unread{% endif %}"
+                id="complaint-{{ r.id }}" type="button"
+                data-complaint-select="{{ r.id }}"
+                aria-controls="complaint-detail-{{ r.id }}" aria-expanded="false">
+            <span class="complaint-list-item-top">
+                <strong>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</strong>
+                <span class="complaint-list-state">{{ r.estado or r.status }}</span>
+            </span>
+            <span class="complaint-list-meta">
+                {{ r.aluno_nome }} · {{ r.categoria or 'Outros Assuntos' }}
+            </span>
+            <span class="complaint-list-preview">{{ r.mensagem|truncate(115, True) }}</span>
+            <span class="complaint-list-foot">
+                <span>Ref. #{{ r.id }} · {{ 'Direcção' if r.forwarded_to_director else 'Secretaria' }}</span>
+                <time>{{ (r.updated_at or r.created_at)|string }}</time>
+            </span>
+            {% if r.has_unread_activity %}
+            <span class="complaint-unread-badge">Nova actividade</span>
             {% endif %}
-            {% endif %}
+        </button>
+        {% else %}
+        <div class="complaint-empty-state">
+            <strong>Não existem reclamações para os filtros seleccionados.</strong>
+            <span>Ajuste a pesquisa ou os filtros para ver outros registos.</span>
         </div>
-        <div class="complaint-actions">
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="rec_id" value="{{ r.id }}">
-                <input type="hidden" name="action" value="reply">
-                <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
-                <label for="response-{{ r.id }}">Responder ao encarregado</label>
-                <textarea id="response-{{ r.id }}" name="resposta_escola" rows="3" maxlength="5000" required></textarea>
-                <button type="submit" class="btn btn-primary">Enviar resposta</button>
-            </form>
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="rec_id" value="{{ r.id }}">
-                <input type="hidden" name="action" value="status">
-                <label for="state-{{ r.id }}">Actualizar estado</label>
-                <select id="state-{{ r.id }}" name="estado" required>
-                    {% for estado in complaint_states %}
-                    <option value="{{ estado }}" {% if r.estado == estado %}selected{% endif %}>{{ estado }}</option>
+        {% endfor %}
+    </div>
+
+    <div class="complaint-detail-panel" aria-live="polite">
+        {% for r in reclamacoes %}
+        <article class="complaint-detail" id="complaint-detail-{{ r.id }}"
+                 data-complaint-detail="{{ r.id }}" hidden>
+            <button type="button" class="complaint-back-button" data-complaint-back>
+                <span aria-hidden="true">←</span> Voltar à lista
+            </button>
+            <header class="complaint-detail-heading">
+                <div>
+                    <p class="complaint-reference">Referência #{{ r.id }} · {{ r.created_at|string }}</p>
+                    <h2>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h2>
+                </div>
+                <span class="complaint-state">{{ r.estado or r.status }}</span>
+            </header>
+            <dl class="complaint-detail-meta">
+                <div><dt>Educando</dt><dd>{{ r.aluno_nome }} · {{ r.aluno_code }}</dd></div>
+                <div><dt>Encarregado</dt><dd>{{ r.nome_encarregado }}</dd></div>
+                <div><dt>Contacto</dt><dd>{{ r.contacto or 'Não indicado' }}</dd></div>
+                <div><dt>Categoria</dt><dd>{{ r.categoria or 'Outros Assuntos' }}</dd></div>
+                <div><dt>Responsável</dt><dd>{{ 'Direcção' if r.forwarded_to_director else 'Secretaria' }}</dd></div>
+                {% if r.forwarded_to_director and r.forward_reason %}
+                <div><dt>Motivo do encaminhamento</dt><dd>{{ r.forward_reason }}</dd></div>
+                {% endif %}
+            </dl>
+
+            <section class="complaint-conversation" aria-label="Histórico da reclamação">
+                <h3>Conversa e histórico</h3>
+                <ol class="complaint-timeline">
+                    {% for event in r.timeline %}
+                    <li class="complaint-timeline-event complaint-timeline-{{ event.kind }}">
+                        <div class="complaint-timeline-marker" aria-hidden="true"></div>
+                        <div class="complaint-timeline-content">
+                            <div class="complaint-timeline-heading">
+                                <strong>
+                                    {% if event.kind == 'submitted' %}Reclamação submetida
+                                    {% elif event.kind == 'status' %}Estado actualizado
+                                    {% else %}Mensagem · {{ event.actor_name or 'Escola' }}{% endif %}
+                                </strong>
+                                <time>{{ event.created_at|string }}</time>
+                            </div>
+                            {% if event.kind == 'status' %}
+                            <p class="complaint-state-change">
+                                {{ event.old_state or 'Criada' }} <span aria-hidden="true">→</span> {{ event.new_state }}
+                            </p>
+                            {% if event.note %}<p class="complaint-event-note">{{ event.note }}</p>{% endif %}
+                            {% else %}
+                            <p class="complaint-event-body">{{ event.body }}</p>
+                            {% endif %}
+                        </div>
+                    </li>
                     {% endfor %}
-                </select>
-                <button type="submit" class="btn btn-secondary">Guardar estado</button>
-            </form>
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="rec_id" value="{{ r.id }}">
-                <input type="hidden" name="action" value="forward">
-                <label for="forward-{{ r.id }}">Encaminhar à Direcção</label>
-                <textarea id="forward-{{ r.id }}" name="forward_reason" rows="3" maxlength="1000" placeholder="Motivo (opcional)"></textarea>
-                <button type="submit" class="btn btn-secondary">Encaminhar</button>
-                {% if r.forwarded_to_director %}<small>Já encaminhada à Direcção.</small>{% endif %}
-            </form>
+                </ol>
+            </section>
+
+            <div class="complaint-actions">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="rec_id" value="{{ r.id }}">
+                    <input type="hidden" name="action" value="reply">
+                    <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
+                    <label for="response-{{ r.id }}">Responder ao encarregado</label>
+                    <textarea id="response-{{ r.id }}" name="resposta_escola" rows="3" maxlength="5000" required></textarea>
+                    <button type="submit" class="btn btn-primary">Enviar resposta</button>
+                </form>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="rec_id" value="{{ r.id }}">
+                    <input type="hidden" name="action" value="status">
+                    <label for="state-{{ r.id }}">Actualizar estado</label>
+                    <select id="state-{{ r.id }}" name="estado" required>
+                        {% for estado in complaint_states %}
+                        <option value="{{ estado }}" {% if r.estado == estado %}selected{% endif %}>{{ estado }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-secondary">Guardar estado</button>
+                </form>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="rec_id" value="{{ r.id }}">
+                    <input type="hidden" name="action" value="forward">
+                    <label for="forward-{{ r.id }}">Encaminhar à Direcção</label>
+                    <textarea id="forward-{{ r.id }}" name="forward_reason" rows="3" maxlength="1000" placeholder="Motivo (opcional)"></textarea>
+                    <button type="submit" class="btn btn-secondary">Encaminhar</button>
+                    {% if r.forwarded_to_director %}<small>Já encaminhada à Direcção.</small>{% endif %}
+                </form>
+            </div>
+        </article>
+        {% else %}
+        <div class="complaint-detail-placeholder">
+            <span aria-hidden="true">✉</span>
+            <h2>Seleccione uma reclamação</h2>
+            <p>Os detalhes, a conversa e as acções disponíveis serão apresentados aqui.</p>
         </div>
-        {% if r.history %}
-        <details style="margin-top:16px;">
-            <summary>Histórico de estado</summary>
-            <ul>
-                {% for event in r.history %}
-                <li>{{ event.old_state or 'Criada' }} para {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
-                {% endfor %}
-            </ul>
-        </details>
-        {% endif %}
-    </article>
-    {% else %}
-    <div class="card">Não existem reclamações para os filtros seleccionados.</div>
-    {% endfor %}
+        {% endfor %}
+    </div>
 </section>

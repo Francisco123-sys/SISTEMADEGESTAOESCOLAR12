@@ -4,22 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Escola Secundária da Manga - Portal do Encarregado</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=responsive-1">
-    <style>
-        .guardian-complaint-list { display:grid; gap:16px; }
-        .guardian-complaint { margin:0; border:1px solid #e4e7ec; }
-        .guardian-complaint-heading { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
-        .guardian-complaint-heading p { color:#667085; font-size:.88rem; margin:6px 0 0; }
-        .guardian-complaint-state { border-radius:999px; background:#eef4ff; color:#344054; padding:5px 10px; white-space:nowrap; font-size:.82rem; }
-        .guardian-complaint-thread { display:grid; gap:10px; margin:16px 0; }
-        .guardian-thread-message { border-left:3px solid #98a2b3; background:#f9fafb; padding:10px 12px; }
-        .guardian-thread-message p { margin:6px 0 0; white-space:pre-wrap; }
-        .guardian-reply-form { display:grid; gap:10px; }
-        @media (max-width:600px) {
-            .guardian-complaint-heading { flex-direction:column; }
-            .guardian-complaint-state { white-space:normal; }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=responsive-2">
 </head>
 <body>
     {% from 'components/dashboard_ui.html' import institutional_header, active_users_panel with context %}
@@ -205,7 +190,7 @@
             </div>
         </div>
 
-        <div class="card">
+        <div class="card" id="guardian-complaints">
             <h3 class="card-title">Submeter Reclamação ou Pedido de Esclarecimento</h3>
             <p style="font-size:0.9rem; color:#475467; margin-bottom:15px;">
                 Caso tenha alguma preocupação ou dúvida relativamente ao aluno <strong>{{ aluno.nome }}</strong> ({{ aluno.code }}), preencha os seus dados e envie a sua mensagem à Secretaria da Escola.
@@ -239,73 +224,101 @@
             </form>
 
             {% if reclamacoes %}
-            <hr style="margin:20px 0; border:0; border-top:1px solid #EAECF0;">
-            <h4>As suas reclamações e conversas</h4>
-            <div class="guardian-complaint-list">
-                {% for r in reclamacoes %}
-                <article class="card guardian-complaint" id="complaint-{{ r.id }}">
-                    <div class="guardian-complaint-heading">
-                        <div>
+            <hr class="guardian-complaint-divider">
+            <h2 class="guardian-complaint-section-title">As suas reclamações e conversas</h2>
+            <section class="complaint-workspace guardian-complaint-workspace"
+                     data-complaint-workspace>
+                <div class="complaint-master-list" aria-label="Lista das suas reclamações">
+                    {% for r in reclamacoes %}
+                    <button class="complaint-list-item" id="complaint-{{ r.id }}" type="button"
+                            data-complaint-select="{{ r.id }}"
+                            aria-controls="complaint-detail-{{ r.id }}" aria-expanded="false">
+                        <span class="complaint-list-item-top">
                             <strong>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</strong>
-                            <p>{{ r.categoria or 'Outros Assuntos' }} · {{ r.created_at_display }}</p>
-                        </div>
-                        <span class="guardian-complaint-state"
-                              data-complaint-state="{{ r.id }}">{{ r.estado or r.status }}</span>
-                    </div>
-                    <div class="guardian-complaint-thread">
-                        {% if r.messages %}
-                            {% for message in r.messages %}
-                            <div class="guardian-thread-message" data-message-id="{{ message.id }}">
-                                <strong>
-                                    {% if message.sender_type == 'guardian' %}A sua mensagem
-                                    {% elif message.sender_type == 'director' %}Direcção
-                                    {% else %}Secretaria{% endif %}
-                                </strong>
-                                <p>{{ message.body }}</p>
+                            <span class="complaint-list-state" data-complaint-state="{{ r.id }}">
+                                {{ r.estado or r.status }}
+                            </span>
+                        </span>
+                        <span class="complaint-list-meta">{{ r.categoria or 'Outros Assuntos' }}</span>
+                        <span class="complaint-list-preview">{{ r.mensagem|truncate(115, True) }}</span>
+                        <span class="complaint-list-foot">
+                            <span>Ref. #{{ r.id }}</span>
+                            <time>{{ (r.updated_at or r.created_at)|string }}</time>
+                        </span>
+                    </button>
+                    {% endfor %}
+                </div>
+                <div class="complaint-detail-panel" aria-live="polite">
+                    {% for r in reclamacoes %}
+                    <article class="complaint-detail guardian-complaint"
+                             id="complaint-detail-{{ r.id }}"
+                             data-complaint-detail="{{ r.id }}" hidden>
+                        <button type="button" class="complaint-back-button" data-complaint-back>
+                            <span aria-hidden="true">←</span> Voltar às reclamações
+                        </button>
+                        <header class="complaint-detail-heading">
+                            <div>
+                                <p class="complaint-reference">
+                                    Referência #{{ r.id }} · {{ r.created_at_display }}
+                                </p>
+                                <h2>{{ r.assunto or 'Reclamação ou pedido de esclarecimento' }}</h2>
                             </div>
-                            {% if r.history %}
-                            <details>
-                                <summary>Histórico de estado</summary>
-                                <ul>
-                                    {% for event in r.history %}
-                                    <li>{{ event.old_state or 'Criada' }} → {{ event.new_state }} · {{ event.created_at|string }}{% if event.note %} — {{ event.note }}{% endif %}</li>
-                                    {% endfor %}
-                                </ul>
-                            </details>
-                            {% endif %}
-                            {% endfor %}
-                        {% else %}
-                        <div class="guardian-thread-message">
-                            <strong>A sua mensagem</strong>
-                            <p>{{ r.mensagem }}</p>
-                        </div>
-                        {% if r.resposta_escola %}
-                        <div class="guardian-thread-message">
-                            <strong>Secretaria</strong>
-                            <p>{{ r.resposta_escola }}</p>
-                        </div>
+                            <span class="complaint-state" data-complaint-state="{{ r.id }}">
+                                {{ r.estado or r.status }}
+                            </span>
+                        </header>
+                        <p class="complaint-guardian-category">{{ r.categoria or 'Outros Assuntos' }}</p>
+                        <section class="complaint-conversation" aria-label="Conversa e actualizações">
+                            <h3>Conversa e histórico</h3>
+                            <ol class="complaint-timeline guardian-complaint-thread">
+                                {% for event in r.timeline %}
+                                <li class="complaint-timeline-event complaint-timeline-{{ event.kind }}"
+                                    {% if event.kind == 'message' %}data-message-id="{{ event.id }}"{% endif %}>
+                                    <div class="complaint-timeline-marker" aria-hidden="true"></div>
+                                    <div class="complaint-timeline-content">
+                                        <div class="complaint-timeline-heading">
+                                            <strong>
+                                                {% if event.kind == 'submitted' %}Reclamação submetida
+                                                {% elif event.kind == 'status' %}Estado actualizado
+                                                {% elif event.actor_type == 'guardian' %}A sua mensagem
+                                                {% else %}{{ event.actor_name }}{% endif %}
+                                            </strong>
+                                            <time>{{ event.created_at|string }}</time>
+                                        </div>
+                                        {% if event.kind == 'status' %}
+                                        <p class="complaint-state-change">
+                                            {{ event.old_state or 'Criada' }} <span aria-hidden="true">→</span> {{ event.new_state }}
+                                        </p>
+                                        {% else %}
+                                        <p class="complaint-event-body">{{ event.body }}</p>
+                                        {% endif %}
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ol>
+                        </section>
+                        {% if r.estado != 'Resolvida' %}
+                        <form method="POST" action="/portal-encarregado"
+                              class="guardian-reply-form">
+                            <input type="hidden" name="acao" value="reclamacao_message">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="rec_id" value="{{ r.id }}">
+                            <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
+                            <label for="reply-{{ r.id }}">Adicionar mensagem</label>
+                            <textarea id="reply-{{ r.id }}" name="mensagem" rows="2" maxlength="5000" required></textarea>
+                            <button type="submit" class="btn btn-primary">Enviar mensagem</button>
+                        </form>
                         {% endif %}
-                        {% endif %}
-                    </div>
-                    {% if r.estado != 'Resolvida' %}
-                    <form method="POST" action="/portal-encarregado" class="guardian-reply-form">
-                        <input type="hidden" name="acao" value="reclamacao_message">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="rec_id" value="{{ r.id }}">
-                        <input type="hidden" name="message_key" value="{{ complaint_message_keys[r.id] }}">
-                        <label for="reply-{{ r.id }}">Adicionar mensagem</label>
-                        <textarea id="reply-{{ r.id }}" name="mensagem" rows="2" maxlength="5000" required></textarea>
-                        <button type="submit" class="btn btn-primary">Enviar mensagem</button>
-                    </form>
-                    {% endif %}
-                </article>
-                {% endfor %}
-            </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
             {% endif %}
         </div>
         {% endif %}
     </main>
     {% if guardian and aluno %}
+    <script src="{{ url_for('static', filename='js/complaint-center.js') }}" defer></script>
     <script>
         (() => {
             const portal = document.querySelector('.guardian-dashboard[data-guardian-live]');
@@ -351,26 +364,37 @@
                     const data = await response.json();
 
                     for (const state of data.complaint_states) {
-                        const stateElement = document.querySelector(
+                        document.querySelectorAll(
                             `[data-complaint-state="${state.id}"]`
-                        );
-                        if (stateElement) stateElement.textContent = state.state;
+                        ).forEach((stateElement) => { stateElement.textContent = state.state; });
                     }
                     for (const message of data.messages) {
                         const thread = document.querySelector(
-                            `#complaint-${message.complaint_id} .guardian-complaint-thread`
+                            `#complaint-detail-${message.complaint_id} .guardian-complaint-thread`
                         );
                         if (!thread || thread.querySelector(`[data-message-id="${message.id}"]`)) continue;
                         const entry = document.createElement('div');
-                        entry.className = 'guardian-thread-message';
+                        entry.className = 'complaint-timeline-event complaint-timeline-message';
                         entry.dataset.messageId = message.id;
+                        const marker = document.createElement('div');
+                        marker.className = 'complaint-timeline-marker';
+                        marker.setAttribute('aria-hidden', 'true');
+                        const content = document.createElement('div');
+                        content.className = 'complaint-timeline-content';
+                        const heading = document.createElement('div');
+                        heading.className = 'complaint-timeline-heading';
                         const sender = document.createElement('strong');
                         sender.textContent = message.sender_type === 'guardian'
                             ? 'A sua mensagem'
                             : message.sender_type === 'director' ? 'Direcção' : 'Secretaria';
+                        const time = document.createElement('time');
+                        time.textContent = message.created_at;
                         const body = document.createElement('p');
+                        body.className = 'complaint-event-body';
                         body.textContent = message.body;
-                        entry.append(sender, body);
+                        heading.append(sender, time);
+                        content.append(heading, body);
+                        entry.append(marker, content);
                         thread.append(entry);
                         lastMessageId = Math.max(lastMessageId, message.id);
                     }

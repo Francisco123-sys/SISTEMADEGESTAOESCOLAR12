@@ -8,6 +8,7 @@ os.environ.setdefault('SECRET_KEY', 'test-secret-key')
 from app import app
 from database.complaint_migrations import migrate_complaint_schema
 from services.db import ensure_same_database_target, get_database_url
+from services.complaints import build_complaint_timeline
 
 
 class DatabaseConfigurationTests(unittest.TestCase):
@@ -81,6 +82,66 @@ class ComplaintMigrationTests(unittest.TestCase):
             self.assertIn('message_key', message_columns)
         finally:
             db.close()
+
+
+class ComplaintTimelineTests(unittest.TestCase):
+    def test_timeline_is_chronological_and_hides_internal_notes_from_guardians(self):
+        complaint = {
+            'mensagem': 'Mensagem inicial',
+            'nome_encarregado': 'Encarregada Teste',
+            'created_at': '2026-03-04 10:00:00',
+        }
+        messages = [
+            {
+                'id': 1, 'sender_type': 'guardian', 'body': 'Mensagem inicial',
+                'created_at': '2026-03-04 10:00:00', 'actor_name': 'Encarregada Teste',
+            },
+            {
+                'id': 2, 'sender_type': 'director', 'body': 'Resposta da Direcção',
+                'created_at': '2026-03-04 10:03:00', 'actor_name': 'Director Confidencial',
+            },
+        ]
+        history = [
+            {
+                'id': 1, 'actor_type': 'guardian', 'old_state': None,
+                'new_state': 'Nova', 'created_at': '2026-03-04 10:00:00',
+                'note': None, 'actor_name': 'Encarregada Teste',
+            },
+            {
+                'id': 2, 'actor_type': 'director', 'old_state': 'Nova',
+                'new_state': 'Respondida', 'created_at': '2026-03-04 10:03:00',
+                'note': 'Nota interna confidencial', 'actor_name': 'Director Confidencial',
+            },
+        ]
+
+        timeline = build_complaint_timeline(
+            complaint, messages, history, include_private_details=False,
+        )
+
+        self.assertEqual(
+            [event['kind'] for event in timeline],
+            ['submitted', 'status', 'message', 'status'],
+        )
+        self.assertEqual(timeline[2]['actor_name'], 'Direcção')
+        self.assertIsNone(timeline[3]['note'])
+        self.assertNotIn('Director Confidencial', str(timeline))
+        self.assertNotIn('Nota interna confidencial', str(timeline))
+
+    def test_timeline_preserves_legacy_school_response_without_a_message_row(self):
+        timeline = build_complaint_timeline(
+            {
+                'mensagem': 'Pedido antigo',
+                'resposta_escola': 'Resposta histórica',
+                'created_at': '2026-01-03 09:00:00',
+                'updated_at': '2026-01-04 10:00:00',
+            },
+            [],
+            [],
+        )
+
+        self.assertEqual([event['kind'] for event in timeline], ['submitted', 'message'])
+        self.assertEqual(timeline[1]['body'], 'Resposta histórica')
+        self.assertEqual(timeline[1]['actor_name'], 'Secretaria')
 
 
 class ComplaintWorkflowTests(unittest.TestCase):
@@ -336,6 +397,118 @@ class ComplaintWorkflowTests(unittest.TestCase):
         with patch('routes.director.get_db', return_value=self.db):
             response = self.client.get('/director/reclamacoes')
         self.assertEqual(response.status_code, 302)
+
+    def test_secretary_unread_filter_and_activity_order(self):
+        self.db.executemany('''
+            INSERT INTO reclamacoes_encarregados (
+                student_id, guardian_id, nome_encarregado, contacto, mensagem,
+                categoria, assunto, estado, created_at, updated_at
+            ) VALUES (10, 1, 'Encarregada Teste', '', ?, 'Atendimento', ?, ?, ?, ?)
+        ''', (
+            (
+                'Mensagem antiga', 'Pedido antigo', 'Nova',
+                '2026-02-01 09:00:00', '2026-02-01 09:00:00',
+            ),
+            (
+                'Mensagem recente', 'Pedido recente', 'Resolvida',
+                '2026-02-02 09:00:00', '2026-02-03 09:00:00',
+            ),
+        ))
+        complaint_ids = [
+            row['id'] for row in self.db.execute(
+                'SELECT id FROM reclamacoes_encarregados ORDER BY id'
+            )
+        ]
+        self.db.execute('''
+            INSERT INTO complaint_notifications (
+                event_key, complaint_id, kind, recipient_user_id
+            ) VALUES ('unread-test-event', ?, 'new_message', 1)
+        ''', (complaint_ids[0],))
+        self.db.commit()
+        self._set_staff_session('secretary', 1)
+
+        with patch('routes.secretary.get_db', return_value=self.db):
+            unread = self.client.get('/secretary/reclamacoes?filtro=nao_lidas')
+            latest = self.client.get('/secretary/reclamacoes')
+
+        self.assertEqual(unread.status_code, 200)
+        self.assertIn(
+            f'data-complaint-select="{complaint_ids[0]}"'.encode(),
+            unread.data,
+        )
+        self.assertNotIn(
+            f'data-complaint-select="{complaint_ids[1]}"'.encode(),
+            unread.data,
+        )
+        self.assertLess(
+            latest.data.index(f'id="complaint-{complaint_ids[1]}"'.encode()),
+            latest.data.index(f'id="complaint-{complaint_ids[0]}"'.encode()),
+        )
+
+    def test_director_unread_filter_shows_only_forwarded_complaints(self):
+        self.db.executemany('''
+            INSERT INTO reclamacoes_encarregados (
+                student_id, guardian_id, nome_encarregado, contacto, mensagem,
+                categoria, assunto, estado, forwarded_to_director
+            ) VALUES (10, 1, 'Encarregada Teste', '', ?, 'Atendimento', ?, 'Em Tratamento', ?)
+        ''', (
+            ('Encaminhada', 'Caso encaminhado', 1),
+            ('Não encaminhada', 'Caso da Secretaria', 0),
+        ))
+        complaint_ids = [
+            row['id'] for row in self.db.execute(
+                'SELECT id FROM reclamacoes_encarregados ORDER BY id'
+            )
+        ]
+        self.db.execute('''
+            INSERT INTO complaint_notifications (
+                event_key, complaint_id, kind, recipient_user_id
+            ) VALUES ('director-unread-event', ?, 'forwarded', 2)
+        ''', (complaint_ids[0],))
+        self.db.commit()
+        self._set_staff_session('director', 2)
+
+        with patch('routes.director.get_db', return_value=self.db):
+            response = self.client.get('/director/reclamacoes?filtro=nao_lidas')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'data-complaint-select="{complaint_ids[0]}"'.encode(), response.data)
+        self.assertNotIn(f'data-complaint-select="{complaint_ids[1]}"'.encode(), response.data)
+
+    def test_guardian_timeline_does_not_expose_internal_history_notes(self):
+        self.db.execute('''
+            INSERT INTO reclamacoes_encarregados (
+                student_id, guardian_id, nome_encarregado, contacto, mensagem,
+                categoria, assunto, estado
+            ) VALUES (10, 1, 'Encarregada Teste', '', 'Pedido inicial',
+                      'Atendimento', 'Pedido confidencial', 'Nova')
+        ''')
+        complaint_id = self.db.execute(
+            'SELECT id FROM reclamacoes_encarregados'
+        ).fetchone()['id']
+        cursor = self.db.cursor()
+        cursor.execute('''
+            INSERT INTO complaint_messages (
+                complaint_id, sender_type, sender_user_id, body
+            ) VALUES (?, 'director', 2, 'Resposta visível')
+        ''', (complaint_id,))
+        cursor.execute('''
+            INSERT INTO complaint_status_history (
+                complaint_id, old_state, new_state, actor_type,
+                actor_user_id, note
+            ) VALUES (?, 'Nova', 'Respondida', 'director', 2,
+                      'Nota interna confidencial')
+        ''', (complaint_id,))
+        self.db.commit()
+        self._set_guardian_session()
+
+        with patch('routes.auth.get_db', return_value=self.db):
+            response = self.client.get('/portal-encarregado?aluno=10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Resposta vis\xc3\xadvel', response.data)
+        self.assertNotIn(b'Nota interna confidencial', response.data)
+        self.assertNotIn(b'Director Teste', response.data)
 
     def test_staff_notifications_endpoint_rejects_unauthorized_profiles(self):
         with patch('routes.secretary.get_db', return_value=self.db):

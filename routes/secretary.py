@@ -26,6 +26,7 @@ from services.complaints import (
     COMPLAINT_CATEGORIES,
     COMPLAINT_STATES,
     add_message,
+    build_complaint_timeline,
     notify_directors,
     notify_guardian,
     notify_new_message,
@@ -172,11 +173,6 @@ def complaint_updates():
         WHERE recipient_user_id = ? AND read_at IS NULL
     ''', (user_id,))
     unread_count = cursor.fetchone()['total']
-    cursor.execute('''
-        SELECT COUNT(*) AS total FROM complaint_notifications
-        WHERE recipient_user_id = ? AND read_at IS NULL
-    ''', (session.get('user_id'),))
-    complaint_unread_count = cursor.fetchone()['total']
     cursor.execute('''
         SELECT id, complaint_id, kind, created_at
         FROM complaint_notifications
@@ -2670,6 +2666,12 @@ def gerenciar_reclamacoes():
     state_filter = request.args.get('estado', '').strip()
     category_filter = request.args.get('categoria', '').strip()
     search = request.args.get('q', '').strip()
+    view_filter = request.args.get('filtro', 'todas').strip()
+    if view_filter not in (
+        'todas', 'novas', 'nao_lidas', 'em_tratamento',
+        'encaminhadas', 'respondidas', 'resolvidas',
+    ):
+        view_filter = 'todas'
     conditions = ['1 = 1']
     params = []
     if state_filter in COMPLAINT_STATES:
@@ -2680,18 +2682,42 @@ def gerenciar_reclamacoes():
         params.append(category_filter)
     if search:
         conditions.append('''
-            (s.nome LIKE ? OR s.code LIKE ? OR r.assunto LIKE ?
-             OR r.nome_encarregado LIKE ?)
+            (CAST(r.id AS TEXT) LIKE ? OR s.nome LIKE ? OR s.code LIKE ?
+             OR r.assunto LIKE ? OR r.nome_encarregado LIKE ?)
         ''')
-        params.extend([f'%{search}%'] * 4)
+        params.extend([f'%{search}%'] * 5)
+    if view_filter == 'novas':
+        conditions.append("r.estado IN ('Nova', 'Reaberta')")
+    elif view_filter == 'nao_lidas':
+        conditions.append('''
+            EXISTS (
+                SELECT 1 FROM complaint_notifications cn
+                WHERE cn.complaint_id = r.id
+                  AND cn.recipient_user_id = ? AND cn.read_at IS NULL
+            )
+        ''')
+        params.append(session.get('user_id'))
+    elif view_filter == 'em_tratamento':
+        conditions.append("r.estado = 'Em Tratamento'")
+    elif view_filter == 'encaminhadas':
+        conditions.append('r.forwarded_to_director = 1')
+    elif view_filter == 'respondidas':
+        conditions.append("r.estado = 'Respondida'")
+    elif view_filter == 'resolvidas':
+        conditions.append("r.estado = 'Resolvida'")
     cursor.execute(f'''
-        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code
+        SELECT r.*, s.nome AS aluno_nome, s.code AS aluno_code,
+               EXISTS (
+                   SELECT 1 FROM complaint_notifications cn
+                   WHERE cn.complaint_id = r.id
+                     AND cn.recipient_user_id = ?
+                     AND cn.read_at IS NULL
+               ) AS has_unread_activity
         FROM reclamacoes_encarregados r
         JOIN students s ON r.student_id = s.id
         WHERE {' AND '.join(conditions)}
-        ORDER BY CASE r.estado WHEN 'Nova' THEN 0 WHEN 'Reaberta' THEN 1 ELSE 2 END,
-                 r.updated_at DESC, r.id DESC
-    ''', tuple(params))
+        ORDER BY COALESCE(r.updated_at, r.created_at) DESC, r.id DESC
+    ''', tuple([session.get('user_id')] + params))
     reclamacoes = cursor.fetchall()
     cursor.execute('''
         SELECT COUNT(*) AS total FROM reclamacoes_encarregados
@@ -2699,10 +2725,13 @@ def gerenciar_reclamacoes():
     ''')
     complaint_new_count = cursor.fetchone()['total']
     cursor.execute('''
-        SELECT COUNT(*) AS total FROM complaint_notifications
+        SELECT COUNT(*) AS total, COUNT(DISTINCT complaint_id) AS complaint_total
+        FROM complaint_notifications
         WHERE recipient_user_id = ? AND read_at IS NULL
     ''', (session.get('user_id'),))
-    complaint_unread_count = cursor.fetchone()['total']
+    unread_counts = cursor.fetchone()
+    complaint_unread_count = unread_counts['total']
+    complaint_unread_case_count = unread_counts['complaint_total']
     cursor.execute('''
         SELECT id, complaint_id, kind, created_at
         FROM complaint_notifications
@@ -2715,37 +2744,49 @@ def gerenciar_reclamacoes():
         ids = [row['id'] for row in reclamacoes]
         placeholders = ', '.join('?' for _ in ids)
         cursor.execute(f'''
-            SELECT complaint_id, sender_type, body, created_at
-            FROM complaint_messages
-            WHERE complaint_id IN ({placeholders})
-            ORDER BY created_at, id
+            SELECT m.id, m.complaint_id, m.sender_type, m.body, m.created_at,
+                   COALESCE(g.nome, u.nome) AS actor_name
+            FROM complaint_messages m
+            LEFT JOIN guardians g ON g.id = m.sender_guardian_id
+            LEFT JOIN users u ON u.id = m.sender_user_id
+            WHERE m.complaint_id IN ({placeholders})
+            ORDER BY m.created_at, m.id
         ''', tuple(ids))
         messages_by_complaint = {}
         for message in cursor.fetchall():
             messages_by_complaint.setdefault(message['complaint_id'], []).append(message)
         cursor.execute(f'''
-            SELECT complaint_id, old_state, new_state, note, created_at
-            FROM complaint_status_history
-            WHERE complaint_id IN ({placeholders})
-            ORDER BY created_at, id
+            SELECT h.id, h.complaint_id, h.old_state, h.new_state,
+                   h.actor_type, h.note, h.created_at,
+                   COALESCE(g.nome, u.nome) AS actor_name
+            FROM complaint_status_history h
+            LEFT JOIN guardians g ON g.id = h.actor_guardian_id
+            LEFT JOIN users u ON u.id = h.actor_user_id
+            WHERE h.complaint_id IN ({placeholders})
+            ORDER BY h.created_at, h.id
         ''', tuple(ids))
         history_by_complaint = {}
         for event in cursor.fetchall():
             history_by_complaint.setdefault(event['complaint_id'], []).append(event)
-        reclamacoes = [
-            {
-                **dict(row),
-                'messages': messages_by_complaint.get(row['id'], []),
-                'history': history_by_complaint.get(row['id'], []),
-            }
-            for row in reclamacoes
-        ]
+        prepared_complaints = []
+        for row in reclamacoes:
+            complaint = dict(row)
+            messages = messages_by_complaint.get(row['id'], [])
+            history = history_by_complaint.get(row['id'], [])
+            complaint['messages'] = messages
+            complaint['history'] = history
+            complaint['timeline'] = build_complaint_timeline(
+                complaint, messages, history,
+            )
+            prepared_complaints.append(complaint)
+        reclamacoes = prepared_complaints
     template_context = {
         'reclamacoes': reclamacoes,
         'complaint_states': COMPLAINT_STATES,
         'complaint_categories': COMPLAINT_CATEGORIES,
         'complaint_notifications': complaint_notifications,
         'complaint_unread_count': complaint_unread_count,
+        'complaint_unread_case_count': complaint_unread_case_count,
         'complaint_new_count': complaint_new_count,
         'latest_notification_id': (
             complaint_notifications[0]['id'] if complaint_notifications else 0
@@ -2757,6 +2798,7 @@ def gerenciar_reclamacoes():
         'selected_state': state_filter,
         'selected_category': category_filter,
         'search': search,
+        'view_filter': view_filter,
     }
     if request.args.get('_partial') == '1':
         return render_template('secretary/_complaint_cards.html', **template_context)

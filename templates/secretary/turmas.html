@@ -9,21 +9,6 @@
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Gestão de Turmas') }}
-    <div class="navbar">
-        <div class="brand">SIGE | Gestão de Turmas, Salas, Vagas e Pautas CSV</div>
-        <div class="nav-links">
-            <a href="/secretary/dashboard">Dashboard</a>
-            <a href="/secretary/students">Alunos & Matrículas</a>
-            <a href="/secretary/turmas" style="font-weight:bold; text-decoration:underline;">Turmas & Vagas</a>
-            <a href="/secretary/reclamacoes">Reclamações</a>
-            <a href="/secretary/colaboradores">Colaboradores</a>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
-            </form>
-        </div>
-    </div>
-
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}

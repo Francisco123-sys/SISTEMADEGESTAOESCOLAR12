@@ -21,6 +21,107 @@ STAFF_ROLES = ('secretary', 'chefe_secretaria', 'admin')
 DIRECTOR_ROLES = ('director', 'admin')
 
 
+def build_complaint_timeline(
+    complaint,
+    messages,
+    history,
+    *,
+    include_private_details=True,
+):
+    complaint = dict(complaint)
+    message_events = [dict(message) for message in messages]
+    events = []
+    initial_message_index = next((
+        index for index, event in enumerate(message_events)
+        if event.get('sender_type') == 'guardian'
+        and event.get('body') == complaint.get('mensagem')
+        and str(event.get('created_at')) == str(complaint.get('created_at'))
+    ), None)
+
+    if complaint.get('mensagem') and initial_message_index is None:
+        events.append({
+            'id': 0,
+            'kind': 'submitted',
+            'created_at': complaint.get('created_at'),
+            'actor_type': 'guardian',
+            'actor_name': (
+                complaint.get('nome_encarregado')
+                if include_private_details else 'Encarregado de Educação'
+            ),
+            'body': complaint['mensagem'],
+            'old_state': None,
+            'new_state': None,
+            'note': None,
+        })
+
+    actor_labels = {
+        'guardian': 'Encarregado de Educação',
+        'secretary': 'Secretaria',
+        'director': 'Direcção',
+    }
+    for index, event in enumerate(message_events):
+        actor_type = event.get('sender_type')
+        events.append({
+            'id': event.get('id', 0),
+            'kind': 'submitted' if index == initial_message_index else 'message',
+            'created_at': event.get('created_at'),
+            'actor_type': actor_type,
+            'actor_name': (
+                event.get('actor_name') if include_private_details
+                else actor_labels.get(actor_type, 'Escola')
+            ),
+            'body': event.get('body'),
+            'old_state': None,
+            'new_state': None,
+            'note': None,
+        })
+
+    legacy_response = complaint.get('resposta_escola')
+    response_recorded = any(
+        event.get('sender_type') in ('secretary', 'director')
+        and event.get('body') == legacy_response
+        for event in message_events
+    )
+    if legacy_response and not response_recorded:
+        events.append({
+            'id': 0,
+            'kind': 'message',
+            'created_at': complaint.get('updated_at') or complaint.get('created_at'),
+            'actor_type': 'secretary',
+            'actor_name': 'Secretaria',
+            'body': legacy_response,
+            'old_state': None,
+            'new_state': None,
+            'note': None,
+        })
+
+    for event in history:
+        event = dict(event)
+        actor_type = event.get('actor_type')
+        events.append({
+            'id': event.get('id', 0),
+            'kind': 'status',
+            'created_at': event.get('created_at'),
+            'actor_type': actor_type,
+            'actor_name': (
+                event.get('actor_name') if include_private_details
+                else actor_labels.get(actor_type, 'Escola')
+            ),
+            'body': None,
+            'old_state': event.get('old_state'),
+            'new_state': event.get('new_state'),
+            'note': event.get('note') if include_private_details else None,
+        })
+
+    event_order = {'submitted': 0, 'message': 1, 'status': 2}
+    events.sort(key=lambda event: (
+        str(event.get('created_at') or ''),
+        event_order[event['kind']],
+        int(event.get('id') or 0),
+    ))
+    return events
+
+
 def _insert_notification(
     cursor,
     *,

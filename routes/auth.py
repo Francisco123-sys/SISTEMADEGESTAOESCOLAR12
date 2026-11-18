@@ -39,6 +39,7 @@ from services.monitoring import (
 from services.complaints import (
     COMPLAINT_CATEGORIES,
     add_message,
+    build_complaint_timeline,
     notify_new_complaint,
     notify_new_message,
     record_state_change,
@@ -375,8 +376,9 @@ def portal_encarregado():
         ''', (aluno['id'],))
         total_faltas = cursor.fetchone()['total_faltas']
         cursor.execute('''
-            SELECT id, nome_encarregado, mensagem, status, resposta_escola,
-                   created_at, categoria, assunto, estado
+            SELECT id, student_id, nome_encarregado, mensagem, status,
+                   resposta_escola, created_at, updated_at, categoria,
+                   assunto, estado
             FROM reclamacoes_encarregados
             WHERE student_id = ? AND (
                 guardian_id = ? OR (
@@ -385,7 +387,7 @@ def portal_encarregado():
                     AND COALESCE(TRIM(contacto), '') = COALESCE(TRIM(?), '')
                 )
             )
-            ORDER BY id DESC
+            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
         ''', (
             aluno['id'], guardian['id'], guardian['nome'], guardian['contacto'],
         ))
@@ -425,7 +427,8 @@ def portal_encarregado():
             for reclamacao in reclamacoes:
                 reclamacao['messages'] = messages_by_complaint.get(reclamacao['id'], [])
             cursor.execute(f'''
-                SELECT complaint_id, old_state, new_state, note, created_at
+                SELECT id, complaint_id, old_state, new_state, actor_type,
+                       note, created_at
                 FROM complaint_status_history
                 WHERE complaint_id IN ({placeholders})
                 ORDER BY created_at, id
@@ -435,6 +438,12 @@ def portal_encarregado():
                 history_by_complaint.setdefault(history['complaint_id'], []).append(history)
             for reclamacao in reclamacoes:
                 reclamacao['history'] = history_by_complaint.get(reclamacao['id'], [])
+                reclamacao['timeline'] = build_complaint_timeline(
+                    reclamacao,
+                    reclamacao['messages'],
+                    reclamacao['history'],
+                    include_private_details=False,
+                )
 
     return render_template(
         'portal_encarregado.html',

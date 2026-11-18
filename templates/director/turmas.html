@@ -9,16 +9,6 @@
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Gestão de Turmas') }}
-    <div class="navbar">
-        <div class="brand">SIGE | Gestão de Turmas</div>
-        <div class="nav-links">
-            <a href="/director/dashboard">Painel da Direcção</a>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
-            </form>
-        </div>
-    </div>
     <main class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}

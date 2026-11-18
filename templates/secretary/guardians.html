@@ -9,17 +9,6 @@
 <body>
     {% from 'components/dashboard_ui.html' import institutional_page_header with context %}
     {{ institutional_page_header('Contas de Encarregados') }}
-    <div class="navbar">
-        <div class="brand">SIGE | Contas de Encarregados</div>
-        <div class="nav-links">
-            <a href="/secretary/dashboard">Painel da Secretaria</a>
-            <a href="/secretary/students">Alunos</a>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" style="border:0;background:none;color:#FFB4AB;cursor:pointer;">Sair</button>
-            </form>
-        </div>
-    </div>
     <main class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
