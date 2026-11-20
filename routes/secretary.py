@@ -2218,6 +2218,154 @@ def exportar_lista_doc(turma_id):
         mimetype='application/msword'
     )
 
+def _build_matricula_pdf(aluno, data_hoje, funcionario_atendido, areas_curriculares):
+    output = io.BytesIO()
+    document = SimpleDocTemplate(
+        output, pagesize=A4,
+        rightMargin=0.7 * cm, leftMargin=0.7 * cm,
+        topMargin=0.7 * cm, bottomMargin=0.7 * cm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'MatriculaTitle', parent=styles['Heading1'],
+        fontName='Helvetica-Bold', fontSize=10, leading=12,
+        alignment=TA_CENTER, spaceAfter=2,
+    )
+    body_style = ParagraphStyle(
+        'MatriculaBody', parent=styles['BodyText'],
+        fontName='Helvetica', fontSize=8.2, leading=10,
+    )
+    label_style = ParagraphStyle(
+        'MatriculaLabel', parent=body_style,
+        fontName='Helvetica-Bold', fontSize=8.2,
+    )
+
+    emblem_path = os.path.join('static', 'img', 'emblema_moz.png')
+    emblem = ReportImage(emblem_path, width=1.5 * cm, height=1.5 * cm)
+
+    def value(field, default=''):
+        return aluno[field] if field in aluno.keys() else default
+
+    photo = 'FOTO'
+    if value('foto_path'):
+        photo_path = os.path.join(str(UPLOAD_DIRECTORY), value('foto_path'))
+        if os.path.isfile(photo_path):
+            photo = ReportImage(photo_path, width=2.4 * cm, height=3.0 * cm)
+
+    header = Table([[
+        emblem,
+        [
+            Paragraph('REPÚBLICA DE MOÇAMBIQUE', title_style),
+            Paragraph('GOVERNO DO DISTRITO DA BEIRA', body_style),
+            Paragraph('ESCOLA SECUNDÁRIA DA MANGA', title_style),
+            Paragraph('BOLETIM DE INSCRIÇÃO / MATRÍCULA', title_style),
+        ],
+        photo,
+    ]], colWidths=[1.7 * cm, 12.5 * cm, 2.8 * cm], hAlign='LEFT')
+    header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+        ('LINEBELOW', (0, 0), (-1, -1), 1.2, colors.black),
+        ('BOX', (2, 0), (2, 0), 0.8, colors.black),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+
+    sexo = 'Masculino' if value('sexo') == 'M' else 'Feminino' if value('sexo') == 'F' else ''
+    naturalidade = ' · '.join(str(item) for item in (
+        value('naturalidade'), value('distrito_nascimento'), value('provincia_nascimento')
+    ) if item)
+    morada = ' · '.join(str(item) for item in (
+        value('morada'), value('bairro'), value('rua')
+    ) if item)
+    telefone = value('encarregado_contacto_principal') or value('encarregado_contacto_1')
+    encarregado = ' · '.join(str(item) for item in (
+        value('encarregado_nome'), value('encarregado_parentesco')
+    ) if item)
+    profissao_morada = ' · '.join(str(item) for item in (
+        value('encarregado_profissao'), value('encarregado_morada')
+    ) if item)
+    turma_area = value('turma_nome')
+    if value('area_curricular'):
+        area = areas_curriculares.get(value('area_curricular'), value('area_curricular'))
+        turma_area = f'{turma_area} · {area}'.strip(' ·')
+
+    modalidade = 'ENSINO À DISTÂNCIA' if value('turma_curso') == 'À Distância' else 'ENSINO PRESENCIAL'
+    turno = value('turma_turno') or value('turno')
+    fields = [
+        ('Nome completo', value('nome')),
+        ('Data de nascimento', value('data_nascimento')),
+        ('Sexo', sexo),
+        ('Naturalidade', naturalidade),
+        ('Nome do pai', value('nome_pai')),
+        ('Nome da mãe', value('nome_mae')),
+        ('Nacionalidade', value('nacionalidade')),
+        ('Documento', f"{value('documento_identificacao_tipo')} — {value('documento_identificacao_numero') or value('bi_cedula')}"),
+        ('Morada / residência', morada),
+        ('Telefones', telefone),
+        ('Encarregado', encarregado),
+        ('Profissão / morada', profissao_morada),
+        ('Classe pretendida', f"{value('classe_num') or value('classe_ingresso')}ª Classe"),
+        ('Turma / área' if value('area_curricular') else 'Turma', turma_area),
+        ('Modalidade / turno', f'{modalidade} · {turno}'.strip(' ·')),
+        ('Última escola / ano', f"{value('escola_origem')} · {value('ano_lectivo_anterior')}".strip(' ·')),
+        ('Ano lectivo', value('ano_lectivo')),
+    ]
+
+    field_rows = [[Paragraph(label, label_style), Paragraph(str(value or ''), body_style)] for label, value in fields]
+    fields_table = Table(field_rows, colWidths=[4.2 * cm, 12.2 * cm], hAlign='LEFT')
+    fields_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.black),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+
+    main = [header, Spacer(1, 0.25 * cm), fields_table, Spacer(1, 0.7 * cm)]
+    main.append(Paragraph(f'Beira, aos {data_hoje}', body_style))
+    main.append(Spacer(1, 0.45 * cm))
+    main.append(Paragraph('<br/>_________________________________<br/>O ALUNO OU ENCARREGADO DE EDUCAÇÃO', body_style))
+
+    side_rows = []
+    side_sections = (
+        ('INFORMAÇÃO DA SECRETARIA', 'Data: __________<br/>Observações: __________'),
+        ('RECEBI E CONFERI O BOLETIM', 'Data: __________<br/>Assinatura: __________'),
+        ('DESPACHO DO DIRECTOR', 'Data: __________<br/>Despacho: __________'),
+    )
+    for heading, details in side_sections:
+        side_rows.append([Paragraph(f'<b>{heading}</b><br/><br/>{details}', body_style)])
+    side = Table(side_rows, colWidths=[4.0 * cm], rowHeights=[5.3 * cm, 5.3 * cm, 5.3 * cm])
+    side.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.8, colors.black),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    sheet = Table([[side, main]], colWidths=[4.0 * cm, 16.7 * cm], hAlign='LEFT')
+    sheet.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1.2, colors.black),
+        ('LINEBEFORE', (1, 0), (1, 0), 1.2, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+
+    document.build([sheet])
+    output.seek(0)
+    return output
+
+
 @secretary_bp.route('/documentos/<int:student_id>/<tipo>')
 def emitir_documento(student_id, tipo):
     if not check_secretary():
@@ -2331,6 +2479,21 @@ def emitir_documento(student_id, tipo):
     if tipo not in ('frequencia', 'notas', 'boletim', 'matricula'):
         flash('Tipo de documento inválido.', 'danger')
         return redirect(url_for('secretary.students_list'))
+
+    if request.args.get('download') == '1' and tipo == 'matricula':
+        output = _build_matricula_pdf(
+            aluno,
+            data_hoje,
+            funcionario_atendeu,
+            AREAS_CURRICULARES,
+        )
+        safe_name = f'Boletim_Matricula_{aluno["code"]}.pdf'
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=safe_name,
+            mimetype='application/pdf',
+        )
 
     if request.args.get('download') == '1':
         output = io.BytesIO()

@@ -213,6 +213,26 @@ class StudentDeletionWorkflowTests(unittest.TestCase):
                 self.assertIn(b'Imprimir', response.data)
                 self.assertNotIn(b'N\xc3\xa3o aplic\xc3\xa1vel', response.data)
 
+    def test_matricula_download_is_a_student_specific_pdf(self):
+        for student_id, code in (
+            (1, 'ALU-000001'),
+            (2, 'ALU-000002'),
+        ):
+            with self.subTest(student_id=student_id):
+                with patch('routes.secretary.get_db', return_value=self.db):
+                    response = self.client.get(
+                        f'/secretary/documentos/{student_id}/matricula?download=1'
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.mimetype, 'application/pdf')
+                self.assertIn(
+                    f'Boletim_Matricula_{code}.pdf'.encode(),
+                    response.headers['Content-Disposition'].encode(),
+                )
+                pdf_data = response.data
+                self.assertTrue(pdf_data.startswith(b'%PDF-'))
+
         with patch('routes.secretary.get_db', return_value=self.db):
             declaration = self.client.get('/secretary/documentos/1/notas')
 
